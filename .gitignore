@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+dist/
+.env
+.coverage
+htmlcov/
+.pytest_cache/
+*.sqlite3
+playwright-report/
+test-results/
+
+# macOS
+.DS_Store
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# macOS
+.DS_Store
+
+# TypeScript build cache
+*.tsbuildinfo
