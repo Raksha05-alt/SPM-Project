@@ -24,10 +24,12 @@ def test_ac1_the_queue_shows_everything_a_coordinator_needs_to_triage(
         "expected_attendance",
         "status",
         "status_label",
+        "status_description",
         "submitted_at",
     ):
         assert field in row
     assert row["organisation_name"] == "Acme Pte Ltd"
+    assert row["status_description"]
 
 
 @pytest.mark.django_db

@@ -1,8 +1,10 @@
 """US-06.1 - See an event's current status."""
 
 import pytest
+from django.utils import timezone
 
 from apps.core.statuses import INTERNAL_STATUSES, EventStatus
+from conftest import make_event
 
 STATUSES = "/api/event-statuses/"
 
@@ -14,6 +16,23 @@ def test_ac1_an_event_shows_its_current_status(signed_in_organiser, complete_dra
     assert response.status_code == 200
     assert response.data["status"] == EventStatus.DRAFT
     assert response.data["status_label"] == "Draft"
+
+
+@pytest.mark.django_db
+def test_ac1_status_labels_match_the_product_vocabulary(signed_in_coordinator):
+    response = signed_in_coordinator.get(STATUSES)
+
+    assert {entry["value"]: entry["label"] for entry in response.data} == {
+        EventStatus.DRAFT: "Draft",
+        EventStatus.SUBMITTED: "Submitted",
+        EventStatus.UNDER_REVIEW: "Awaiting Clarification",
+        EventStatus.APPROVED: "Approved",
+        EventStatus.PLANNING: "Planning",
+        EventStatus.CONFIRMED: "Confirmed",
+        EventStatus.COMPLETED: "Completed",
+        EventStatus.CANCELLED: "Cancelled",
+        EventStatus.REJECTED: "Rejected",
+    }
 
 
 @pytest.mark.django_db
@@ -41,9 +60,23 @@ def test_ac3_the_date_of_the_most_recent_status_change_is_shown(
 
 
 @pytest.mark.django_db
-def test_ac4_an_attendee_is_not_shown_internal_planning_statuses(api, attendee, coordinator):
+def test_ac4_an_attendee_is_not_shown_internal_planning_statuses(
+    api, attendee, coordinator, organiser
+):
+    changed_at = timezone.now()
+    confirmed = make_event(
+        organiser,
+        status=EventStatus.CONFIRMED,
+        status_changed_at=changed_at,
+        description="A public partner conference.",
+    )
+    planning = make_event(organiser, status=EventStatus.PLANNING, name="Still being planned")
+
     api.force_authenticate(attendee)
     external = api.get(STATUSES)
+    attendee_events = api.get("/api/events/")
+    confirmed_detail = api.get(f"/api/events/{confirmed.pk}/")
+    planning_detail = api.get(f"/api/events/{planning.pk}/")
 
     api.force_authenticate(coordinator)
     internal = api.get(STATUSES)
@@ -57,3 +90,26 @@ def test_ac4_an_attendee_is_not_shown_internal_planning_statuses(api, attendee, 
         EventStatus.CANCELLED,
     }
     assert internal_values == set(EventStatus.values)
+    assert attendee_events.status_code == 200
+    assert [event["id"] for event in attendee_events.data] == [confirmed.pk]
+    assert confirmed_detail.status_code == 200
+    assert confirmed_detail.data["status_label"] == "Confirmed"
+    assert confirmed_detail.data["status_description"]
+    assert confirmed_detail.data["status_changed_at"] is not None
+    assert "organisation_name" not in confirmed_detail.data
+    assert "coordinator_name" not in confirmed_detail.data
+    assert planning_detail.status_code == 403
+
+
+@pytest.mark.django_db
+def test_ac4_an_attendee_cannot_change_a_visible_event(api, attendee, organiser):
+    confirmed = make_event(organiser, status=EventStatus.CONFIRMED)
+    api.force_authenticate(attendee)
+
+    response = api.patch(
+        f"/api/events/{confirmed.pk}/", {"name": "Changed by attendee"}, format="json"
+    )
+
+    assert response.status_code == 403
+    confirmed.refresh_from_db()
+    assert confirmed.name == "Regional Partner Conference"

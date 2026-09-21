@@ -21,7 +21,9 @@ def test_ac2_an_attendee_cannot_see_internal_planning_information(api, attendee,
     api.force_authenticate(attendee)
 
     assert api.get(f"/api/events/{submitted_event.pk}/").status_code == 403
-    assert api.get("/api/events/").status_code == 403
+    event_list = api.get("/api/events/")
+    assert event_list.status_code == 200
+    assert event_list.data == []
 
 
 @pytest.mark.django_db

@@ -65,8 +65,8 @@ Sign in as both organisers to see that neither can reach the other's events.
 ## Tests
 
 ```bash
-cd api  && pytest                 # 70 tests, coverage gate at 80%
-cd web  && npm run test           # 10 tests
+cd api  && pytest                 # 72 tests, coverage gate at 80%
+cd web  && npm run test           # 12 tests
 cd web  && npm run e2e            # Playwright, needs api + web running
 ```
 

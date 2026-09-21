@@ -1,5 +1,5 @@
 import { request } from "./client";
-import type { EventRequest, QueueRow } from "../types";
+import type { AttendeeEvent, EventRequest, QueueRow } from "../types";
 
 export type EventDraft = Partial<
   Pick<
@@ -18,6 +18,8 @@ export type EventDraft = Partial<
 >;
 
 export const listEvents = () => request<EventRequest[]>("/api/events/");
+
+export const listAttendeeEvents = () => request<AttendeeEvent[]>("/api/events/");
 
 export const getEvent = (id: number) => request<EventRequest>(`/api/events/${id}/`);
 

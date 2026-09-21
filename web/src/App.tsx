@@ -4,6 +4,7 @@ import { RequireRole } from "./auth/RequireRole";
 import { useAuth } from "./auth/AuthContext";
 import { Layout } from "./components/Layout";
 import { CoordinatorQueue } from "./pages/CoordinatorQueue";
+import { AttendeeEvents } from "./pages/AttendeeEvents";
 import { EventRequestForm } from "./pages/EventRequestForm";
 import { LoginPage } from "./pages/LoginPage";
 import { OrganiserDashboard } from "./pages/OrganiserDashboard";
@@ -75,7 +76,7 @@ export default function App() {
             path="/events"
             element={
               <RequireRole roles={["ATTENDEE"]}>
-                <PlaceholderPage title="Events open for registration" sprint="sprint 4" />
+                <AttendeeEvents />
               </RequireRole>
             }
           />

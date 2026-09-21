@@ -11,7 +11,7 @@ from django.db import models
 class EventStatus(models.TextChoices):
     DRAFT = "DRAFT", "Draft"
     SUBMITTED = "SUBMITTED", "Submitted"
-    UNDER_REVIEW = "UNDER_REVIEW", "Under review"
+    UNDER_REVIEW = "UNDER_REVIEW", "Awaiting Clarification"
     APPROVED = "APPROVED", "Approved"
     PLANNING = "PLANNING", "Planning"
     CONFIRMED = "CONFIRMED", "Confirmed"
@@ -43,6 +43,14 @@ INTERNAL_STATUSES = frozenset(
         EventStatus.APPROVED,
         EventStatus.PLANNING,
         EventStatus.REJECTED,
+    }
+)
+
+ATTENDEE_VISIBLE_STATUSES = frozenset(
+    {
+        EventStatus.CONFIRMED,
+        EventStatus.COMPLETED,
+        EventStatus.CANCELLED,
     }
 )
 

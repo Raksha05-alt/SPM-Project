@@ -95,10 +95,37 @@ class EventRequestSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class AttendeeEventSerializer(serializers.ModelSerializer):
+    """Public event details that are safe and useful to an Attendee."""
+
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    status_description = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EventRequest
+        fields = [
+            "id",
+            "name",
+            "description",
+            "preferred_start",
+            "preferred_end",
+            "accessibility_needs",
+            "registration_required",
+            "status",
+            "status_label",
+            "status_description",
+            "status_changed_at",
+        ]
+
+    def get_status_description(self, obj) -> str:
+        return STATUS_DESCRIPTIONS[EventStatus(obj.status)]
+
+
 class EventQueueSerializer(serializers.ModelSerializer):
     """The narrower shape the coordinator queue needs (US-04.1 AC1)."""
 
     status_label = serializers.CharField(source="get_status_display", read_only=True)
+    status_description = serializers.SerializerMethodField()
     organisation_name = serializers.CharField(source="organisation.name", read_only=True)
     coordinator_name = serializers.SerializerMethodField()
 
@@ -112,9 +139,13 @@ class EventQueueSerializer(serializers.ModelSerializer):
             "expected_attendance",
             "status",
             "status_label",
+            "status_description",
             "submitted_at",
             "coordinator_name",
         ]
+
+    def get_status_description(self, obj) -> str:
+        return STATUS_DESCRIPTIONS[EventStatus(obj.status)]
 
     def get_coordinator_name(self, obj) -> str | None:
         if obj.coordinator is None:

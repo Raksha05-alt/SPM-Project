@@ -8,10 +8,20 @@ from rest_framework.viewsets import ModelViewSet
 from apps.accounts.models import Role
 from apps.core.audit import record_denied
 from apps.core.permissions import HasAnyRole
-from apps.core.statuses import INTERNAL_STATUSES, EventStatus, InvalidTransition, describe
+from apps.core.statuses import (
+    ATTENDEE_VISIBLE_STATUSES,
+    INTERNAL_STATUSES,
+    EventStatus,
+    InvalidTransition,
+    describe,
+)
 from apps.events.models import EventRequest
 from apps.events.permissions import CanAccessEventRequest
-from apps.events.serializers import EventQueueSerializer, EventRequestSerializer
+from apps.events.serializers import (
+    AttendeeEventSerializer,
+    EventQueueSerializer,
+    EventRequestSerializer,
+)
 from apps.events.services import MissingMandatoryFields, submit_event
 
 QUEUE_EXCLUDED = (EventStatus.DRAFT, EventStatus.REJECTED)
@@ -20,7 +30,12 @@ QUEUE_EXCLUDED = (EventStatus.DRAFT, EventStatus.REJECTED)
 class EventRequestViewSet(ModelViewSet):
     serializer_class = EventRequestSerializer
     permission_classes = [IsAuthenticated, HasAnyRole, CanAccessEventRequest]
-    allowed_roles = frozenset({Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR})
+    allowed_roles = frozenset({Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR, Role.ATTENDEE})
+
+    def get_serializer_class(self):
+        if self.request.user.role == Role.ATTENDEE:
+            return AttendeeEventSerializer
+        return EventRequestSerializer
 
     def get_queryset(self):
         user = self.request.user
@@ -31,6 +46,8 @@ class EventRequestViewSet(ModelViewSet):
         if user.role == Role.EVENT_COORDINATOR:
             # US-03.1 AC4 - drafts never reach ConnectSphere.
             return base.exclude(status=EventStatus.DRAFT)
+        if user.role == Role.ATTENDEE:
+            return base.filter(status__in=ATTENDEE_VISIBLE_STATUSES)
         return base.none()
 
     def get_object(self):

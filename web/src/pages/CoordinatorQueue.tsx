@@ -50,7 +50,11 @@ export function CoordinatorQueue() {
                       : "—"}
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge status={row.status} label={row.status_label} />
+                    <StatusBadge
+                      status={row.status}
+                      label={row.status_label}
+                      title={row.status_description}
+                    />
                   </td>
                 </tr>
               ))}

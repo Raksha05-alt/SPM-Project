@@ -27,14 +27,13 @@ earlier check normally shadows, is covered by unit tests in
 Raise the gate to 90% at the start of Sprint 2 and to 100% at the start of
 Sprint 4.
 
-## Deferrals to flag at the review
+## Scope boundary to flag at the review
 
-**US-06.1 AC4** says an Attendee should see only the statuses relevant to them.
-There are no confirmed events in Sprint 1, so an Attendee cannot reach an event
-at all yet. What is implemented is the status vocabulary endpoint
-`/api/event-statuses/`, which already filters internal statuses out for external
-users, plus a test that an Attendee is refused access to an event request. The
-criterion is fully satisfiable once EP-18 lands in Sprint 4.
+**US-06.1 AC4** is implemented as a read-only Attendee event list. Attendees can
+see Confirmed, Completed and Cancelled events, including the plain-language
+status and its latest change date. Draft, Submitted, Awaiting Clarification,
+Approved, Planning and Rejected events are filtered out by the API, not only by
+the interface. Registration remains in EP-18 and is outside Sprint 1.
 
 **US-04.1** delivers only the queue. Reviewing, approving and rejecting a
 request are US-04.2 to US-04.4 and belong to Sprint 2, so a coordinator can read

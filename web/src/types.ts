@@ -63,6 +63,21 @@ export interface QueueRow {
   expected_attendance: number | null;
   status: EventStatus;
   status_label: string;
+  status_description: string;
   submitted_at: string | null;
   coordinator_name: string | null;
+}
+
+export interface AttendeeEvent {
+  id: number;
+  name: string;
+  description: string;
+  preferred_start: string | null;
+  preferred_end: string | null;
+  accessibility_needs: string;
+  registration_required: boolean;
+  status: "CONFIRMED" | "COMPLETED" | "CANCELLED";
+  status_label: string;
+  status_description: string;
+  status_changed_at: string | null;
 }
