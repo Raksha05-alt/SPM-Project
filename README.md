@@ -17,6 +17,11 @@ Sprint 1 delivered one thin vertical slice through the whole stack:
 | US-04.1 | An Event Coordinator sees submitted requests in a queue |
 | US-06.1 | Every event shows its current status in plain language |
 
+Sprint 2 extended US-01.2 (SCRUM-1): anonymous refusals are now recorded, the
+audit write can no longer turn a 403 into a 500, and `GET /api/audit/` lets
+ConnectSphere staff read the recorded refusals back. See
+`docs/scrum-1-access-control-notes.md`.
+
 Venues, equipment, registration, change requests and notifications arrive in
 sprints 2 to 4. Their Django apps exist but are deliberately empty, so that the
 repository structure matches the C4 level 3 component diagram in `docs/c4`.
@@ -65,8 +70,8 @@ Sign in as both organisers to see that neither can reach the other's events.
 ## Tests
 
 ```bash
-cd api  && pytest                 # 70 tests, coverage gate at 80%
-cd web  && npm run test           # 10 tests
+cd api  && pytest                 # 97 tests, coverage gate at 80%
+cd web  && npm run test           # 17 tests
 cd web  && npm run e2e            # Playwright, needs api + web running
 ```
 
