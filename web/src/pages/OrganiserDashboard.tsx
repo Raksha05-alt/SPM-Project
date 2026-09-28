@@ -13,6 +13,9 @@ export function OrganiserDashboard() {
   if (isError) return <p role="alert">We could not load your event requests.</p>;
 
   const events = data ?? [];
+  const drafts = events.filter((e) => e.status === "DRAFT");
+  const submitted = events.filter((e) => e.status !== "DRAFT");
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -27,11 +30,12 @@ export function OrganiserDashboard() {
 
       {events.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 p-8 text-center text-slate-500">
-          You have no event requests yet. Create a new event request to get started.
+          You have no event requests yet. Start one and save it as a draft whenever you like.
         </p>
       )}
 
-      {events.length > 0 && <Section title="Requests" rows={events} />}
+      {drafts.length > 0 && <Section title="Drafts" rows={drafts} />}
+      {submitted.length > 0 && <Section title="Sent to ConnectSphere" rows={submitted} />}
     </div>
   );
 }
@@ -58,7 +62,12 @@ function Section({
         {rows.map((row) => (
           <li key={row.id} className="flex items-center justify-between px-4 py-3">
             <div>
-              <p className="font-medium text-navy-700">{row.name || "(untitled request)"}</p>
+              <Link
+                to={`/organiser/requests/${row.id}`}
+                className="font-medium text-navy-700 hover:underline"
+              >
+                {row.name || "(untitled draft)"}
+              </Link>
               <p className="text-xs text-slate-500">
                 {row.preferred_start
                   ? new Date(row.preferred_start).toLocaleString("en-SG")

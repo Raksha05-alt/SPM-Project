@@ -45,6 +45,8 @@ class EventRequest(TimeStampedModel):
     status = models.CharField(max_length=20, choices=EventStatus.choices, default=EventStatus.DRAFT)
     status_changed_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    assignment_requires_attention = models.BooleanField(default=False)
+    approved_at = models.DateTimeField(null=True, blank=True)
 
     organisation = models.ForeignKey(
         "accounts.ClientOrganisation", on_delete=models.PROTECT, related_name="event_requests"
@@ -58,6 +60,13 @@ class EventRequest(TimeStampedModel):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="coordinated_event_requests",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="approved_event_requests",
     )
 
     class Meta:

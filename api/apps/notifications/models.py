@@ -1,0 +1,34 @@
+from django.conf import settings
+from django.db import models
+
+
+class NotificationKind(models.TextChoices):
+    ASSIGNMENT = "ASSIGNMENT", "Coordinator assigned"
+    APPROVED = "APPROVED", "Request approved"
+
+
+class Notification(models.Model):
+    """Persistent, recipient-only messages about an event request."""
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications"
+    )
+    event = models.ForeignKey(
+        "events.EventRequest", on_delete=models.CASCADE, related_name="notifications"
+    )
+    kind = models.CharField(
+        max_length=20, choices=NotificationKind.choices, default=NotificationKind.ASSIGNMENT
+    )
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["recipient", "event", "kind"], name="unique_notification_per_kind"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} notification for user {self.recipient_id}, event {self.event_id}"
