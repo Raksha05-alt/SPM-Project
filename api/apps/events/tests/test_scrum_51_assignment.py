@@ -8,6 +8,7 @@ import pytest
 from django.db import close_old_connections
 
 from apps.accounts.models import Role, User
+from apps.core.models import AuditLog
 from apps.core.statuses import EventStatus, InvalidTransition
 from apps.events.models import EventRequest
 from apps.events.services import MissingMandatoryFields, submit_event
@@ -148,6 +149,7 @@ def test_notifications_are_recipient_only(
 ):
     submit_event(complete_draft, organiser)
     assert api.get("/api/notifications/").status_code == 403
+    assert AuditLog.objects.get(action="GET /api/notifications/").actor is None
     for user in (organiser, coordinator, other_organiser):
         api.force_authenticate(user)
         response = api.get("/api/notifications/")

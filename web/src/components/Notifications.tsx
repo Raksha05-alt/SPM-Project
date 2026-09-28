@@ -13,11 +13,18 @@ export function Notifications({ userId }: { userId: number }) {
     <details className="relative">
       <summary className="cursor-pointer">Notifications ({data.length})</summary>
       <div className="absolute right-0 z-10 mt-2 max-h-80 w-80 overflow-y-auto rounded-md border border-slate-200 bg-white p-4 shadow-lg">
-        {isLoading ? <p>Loading notifications…</p> : isError ? (
+        {isLoading ? (
+          <p>Loading notifications…</p>
+        ) : isError ? (
           <p role="alert">
-            We could not load notifications. <button type="button" className="underline" onClick={() => void refetch()}>Try again</button>
+            We could not load notifications.{" "}
+            <button type="button" className="underline" onClick={() => void refetch()}>
+              Try again
+            </button>
           </p>
-        ) : data.length === 0 ? <p>No notifications yet.</p> : (
+        ) : data.length === 0 ? (
+          <p>No notifications yet.</p>
+        ) : (
           <ul className="space-y-3" aria-label="Assignment notifications">
             {data.map((notification) => (
               <li key={notification.id} className="border-b border-slate-100 pb-2">

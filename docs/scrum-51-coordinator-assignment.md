@@ -4,6 +4,10 @@
 
 Story: SCRUM-51, assigned to Nethren Balamurugan in Sprint 2; 5 points, Medium.
 Feature branch: `feature/SCRUM-51-coordinator-assignment`, based on `Nethren`.
+Includes Jerom's latest `7364463` access-control/audit changes. Merge conflicts
+in the README, event permissions wiring, and access-control tests were resolved
+by preserving the attendee-safe serializer/status filtering from Nethren and
+the newer anonymous-refusal auditing from Jerom. No shared branch was changed.
 No other Sprint 2 implementation was assigned to Nethren when Jira was checked
 on 28 September 2026. This does not mean the rest of Sprint 2 is implemented.
 
@@ -35,14 +39,14 @@ notification failure rollback, recipient isolation, and client attempts to set
 assignment fields. The event row lock protects only submission; this does not
 claim that future review/edit services already have concurrency protection.
 
-## Team decision to confirm
+## Confirmed implementation decisions
 
 Availability is implemented as `User.is_active` plus a staff-admin-managed
 `coordinator_available` flag. It defaults to true, preserving eligibility of
 existing active coordinator accounts. No supplied answer defines capacity,
 working hours, leave calendars, or event-date conflicts for coordinators. This
-is an implementation assumption, not a confirmed customer rule; confirm it with
-the team before replacing it with a workload/calendar policy.
+was confirmed by Nethren on 28 September 2026 as the team's implementation
+choice. It is not a claim that the customer prescribed this exact policy.
 
 The organiser notified is the submitting user. Contact details mean email,
 because the existing account model has no phone number. Notifications are
@@ -64,3 +68,18 @@ Run backend pytest, Ruff lint/format checks, migration drift checks, frontend
 type checks/unit tests/production build, and the browser test. These are
 verification evidence, not a claim that all possible bugs are absent. Team
 review and user validation are still needed before declaring the story Done.
+
+## Verified results — 28 September 2026
+
+After integrating Jerom's latest branch: 114 backend tests passed, including
+15 SCRUM-51 tests; 26 frontend tests passed. Ruff lint and formatting checks,
+frontend type checks and production build passed. All migrations applied to a
+fresh PostgreSQL 16 database and no migration drift was detected. The real
+browser assignment/notification journey passed both before integration and
+against the merged version.
+
+The reported pytest coverage is 99.80%; its configured denominator includes
+test files and migrations, so it should not be presented as production-code-only
+coverage. Dependency deprecation warnings are present (Django/Python, React
+Router); these did not fail the checks. One existing status migration was
+formatted without changing its operations to satisfy the CI formatting gate.

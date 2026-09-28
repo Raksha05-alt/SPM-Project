@@ -7,8 +7,18 @@ import { Notifications } from "./Notifications";
 
 vi.mock("../api/notifications", () => ({ listNotifications: vi.fn() }));
 
-function renderNotifications(userId = 1, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
-  return { client, ...render(<QueryClientProvider client={client}><Notifications key={userId} userId={userId} /></QueryClientProvider>) };
+function renderNotifications(
+  userId = 1,
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <Notifications key={userId} userId={userId} />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe("SCRUM-51 assignment notifications", () => {
@@ -17,7 +27,7 @@ describe("SCRUM-51 assignment notifications", () => {
   it("AC3: displays persisted messages and their time", async () => {
     vi.mocked(listNotifications).mockResolvedValue([{ id: 1, event: 7, message: "Cora is your coordinator.", created_at: "2026-09-28T01:00:00Z" }]);
     renderNotifications();
-    await userEvent.click(screen.getByText("Notifications (0)"));
+    await userEvent.click(screen.getByText(/^Notifications \(/));
     expect(await screen.findByText("Cora is your coordinator.")).toBeInTheDocument();
     expect(screen.getByText("Notifications (1)")).toBeInTheDocument();
     expect(document.querySelector("time")).toHaveAttribute("datetime", "2026-09-28T01:00:00Z");

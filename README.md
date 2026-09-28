@@ -18,6 +18,11 @@ Sprint 1 delivered one thin vertical slice through the whole stack:
 | US-06.1 | Every event shows its current status in plain language |
 | SCRUM-51 | Assign one available coordinator on submission, notify both users, and show coordinator contact details |
 
+Sprint 2 extended US-01.2 (SCRUM-1): anonymous refusals are now recorded, the
+audit write can no longer turn a 403 into a 500, and `GET /api/audit/` lets
+ConnectSphere staff read the recorded refusals back. See
+`docs/scrum-1-access-control-notes.md`.
+
 Venues, equipment, registration, change requests and broader notifications arrive in
 sprints 2 to 4. Assignment notifications are already implemented; the other Django apps are empty so that the
 repository structure matches the C4 level 3 component diagram in `docs/c4`.
@@ -93,7 +98,7 @@ staff queue shows **Unassigned — staff action needed**. Reassignment is outsid
 SCRUM-51; changing availability does not retroactively assign old requests.
 
 See [SCRUM-51 implementation and test guide](docs/scrum-51-coordinator-assignment.md)
-for acceptance-criteria traceability and the remaining team decision.
+for acceptance-criteria traceability and the confirmed implementation decisions.
 
 ## Layout
 

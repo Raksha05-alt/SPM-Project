@@ -29,7 +29,11 @@ QUEUE_EXCLUDED = (EventStatus.DRAFT, EventStatus.REJECTED)
 
 class EventRequestViewSet(ModelViewSet):
     serializer_class = EventRequestSerializer
-    permission_classes = [IsAuthenticated, HasAnyRole, CanAccessEventRequest]
+    # HasAnyRole is listed first on purpose. DRF stops at the first permission
+    # class that returns False, and HasAnyRole is the class that writes the
+    # audit row (US-01.2 AC4). With IsAuthenticated first, an anonymous request
+    # would be refused before anything recorded the attempt.
+    permission_classes = [HasAnyRole, IsAuthenticated, CanAccessEventRequest]
     allowed_roles = frozenset({Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR, Role.ATTENDEE})
 
     def get_serializer_class(self):
