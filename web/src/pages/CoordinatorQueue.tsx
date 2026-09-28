@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { fetchQueue } from "../api/events";
+import { ApprovalNote } from "../components/ApprovalNote";
 import { StatusBadge } from "../components/StatusBadge";
 
 export function CoordinatorQueue() {
@@ -43,7 +44,11 @@ export function CoordinatorQueue() {
             <tbody className="divide-y divide-slate-200">
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="px-4 py-3 font-medium text-navy-700">{row.name}</td>
+                  <td className="px-4 py-3 font-medium text-navy-700">
+                    <Link to={`/coordinator/events/${row.id}`} className="hover:underline">
+                      {row.name}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3">{row.organisation_name}</td>
                   <td className="px-4 py-3">
                     {row.preferred_start
@@ -62,6 +67,7 @@ export function CoordinatorQueue() {
                       label={row.status_label}
                       title={row.status_description}
                     />
+                    <ApprovalNote approvedBy={row.approved_by_name} approvedAt={row.approved_at} />
                   </td>
                   <td className="px-4 py-3">
                     {row.coordinator_name ?? (row.assignment_requires_attention

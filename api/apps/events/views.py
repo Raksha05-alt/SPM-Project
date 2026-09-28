@@ -21,10 +21,18 @@ from apps.events.permissions import CanAccessEventRequest
 from apps.events.serializers import (
     AssignedEventSerializer,
     AttendeeEventSerializer,
+    ClarificationInputSerializer,
     EventQueueSerializer,
     EventRequestSerializer,
 )
-from apps.events.services import MissingMandatoryFields, submit_event
+from apps.events.services import (
+    MissingClarificationDetails,
+    MissingMandatoryFields,
+    NotAssignedCoordinator,
+    approve_event,
+    request_clarification,
+    submit_event,
+)
 
 QUEUE_EXCLUDED = (EventStatus.DRAFT, EventStatus.REJECTED)
 
@@ -45,7 +53,9 @@ class EventRequestViewSet(ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        base = EventRequest.objects.select_related("organisation", "created_by", "coordinator")
+        base = EventRequest.objects.select_related(
+            "organisation", "created_by", "coordinator", "approved_by"
+        ).prefetch_related("clarifications__requested_by")
         if user.role == Role.EVENT_ORGANISER:
             # US-02.3 / US-03.1 AC5 - a client sees only their own organisation.
             return base.filter(organisation_id=user.organisation_id)
@@ -60,7 +70,10 @@ class EventRequestViewSet(ModelViewSet):
         """Look the object up across all rows so that a cross-organisation attempt
         is refused and audited (US-01.2 AC1) rather than silently returning 404."""
         obj = (
-            EventRequest.objects.select_related("organisation", "created_by", "coordinator")
+            EventRequest.objects.select_related(
+                "organisation", "created_by", "coordinator", "approved_by"
+            )
+            .prefetch_related("clarifications__requested_by")
             .filter(pk=self.kwargs["pk"])
             .first()
         )
@@ -112,6 +125,79 @@ class EventRequestViewSet(ModelViewSet):
             return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
         return Response(self.get_serializer(event).data)
 
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        """Approve a submitted request so that venue and equipment planning can begin."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/approve/"
+        try:
+            if not request.user.is_coordinator:
+                raise NotAssignedCoordinator
+            approve_event(event, request.user)
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the assigned coordinator may approve",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can approve it."
+            ) from None
+        except InvalidTransition as exc:
+            record_denied(request.user, action=action_name, obj=event, detail=str(exc))
+            return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        except MissingMandatoryFields as exc:
+            return Response(
+                {
+                    "detail": "This request does not have enough information to approve.",
+                    "missing_fields": exc.fields,
+                },
+                status=http.HTTP_400_BAD_REQUEST,
+            )
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["post"], url_path="request-clarification")
+    def request_clarification(self, request, pk=None):
+        """Ask the client for missing or unclear information."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/request-clarification/"
+        payload = ClarificationInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            if not request.user.is_coordinator:
+                raise NotAssignedCoordinator
+            request_clarification(
+                event,
+                request.user,
+                payload.validated_data.get("message", ""),
+                payload.validated_data["fields"],
+            )
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the assigned coordinator may request clarification",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can request clarification."
+            ) from None
+        except InvalidTransition as exc:
+            record_denied(request.user, action=action_name, obj=event, detail=str(exc))
+            return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        except MissingClarificationDetails:
+            return Response(
+                {
+                    "detail": "Say what information is needed before sending the request.",
+                    "message": ["This field may not be blank."],
+                },
+                status=http.HTTP_400_BAD_REQUEST,
+            )
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
     @action(detail=False, methods=["get"])
     def queue(self, request):
         """US-04.1 - the coordinator's queue of incoming requests."""
@@ -123,12 +209,11 @@ class EventRequestViewSet(ModelViewSet):
             )
             raise PermissionDenied("Only an Event Coordinator can open the queue.")
         queryset = (
-            EventRequest.objects.select_related("organisation", "coordinator")
+            EventRequest.objects.select_related("organisation", "coordinator", "approved_by")
             .exclude(status__in=QUEUE_EXCLUDED)
             .order_by("submitted_at")  # AC2 - oldest first
         )
         return Response(EventQueueSerializer(queryset, many=True).data)
-
 
     @action(detail=False, methods=["get"])
     def mine(self, request):
@@ -141,7 +226,7 @@ class EventRequestViewSet(ModelViewSet):
             )
             raise PermissionDenied("Only an Event Coordinator has assigned events.")
         events = (
-            EventRequest.objects.select_related("organisation", "coordinator")
+            EventRequest.objects.select_related("organisation", "coordinator", "approved_by")
             .filter(coordinator=request.user)  # AC1 / AC4 - only this coordinator's
             .exclude(status=EventStatus.DRAFT)
             .order_by("submitted_at", "pk")
@@ -150,6 +235,7 @@ class EventRequestViewSet(ModelViewSet):
         # stable, so each group keeps oldest-submission-first order.
         ordered = sorted(events, key=lambda e: not COORDINATOR_NEXT_ACTIONS[e.status][1])
         return Response(AssignedEventSerializer(ordered, many=True).data)
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])

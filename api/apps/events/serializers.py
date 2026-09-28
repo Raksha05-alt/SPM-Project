@@ -2,7 +2,41 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.core.statuses import COORDINATOR_NEXT_ACTIONS, STATUS_DESCRIPTIONS, EventStatus
-from apps.events.models import EventRequest
+from apps.events.models import ClarificationRequest, EventRequest
+
+
+class ClarificationSerializer(serializers.ModelSerializer):
+    requested_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClarificationRequest
+        fields = ["id", "message", "fields", "requested_by_name", "requested_at", "resolved_at"]
+        read_only_fields = fields
+
+    def get_requested_by_name(self, obj) -> str | None:
+        return _display_name(obj.requested_by)
+
+
+class ClarificationInputSerializer(serializers.Serializer):
+    message = serializers.CharField(allow_blank=True, trim_whitespace=True, required=False)
+    fields = serializers.ListField(
+        child=serializers.ChoiceField(
+            choices=[
+                "name",
+                "purpose",
+                "description",
+                "preferred_start",
+                "preferred_end",
+                "expected_attendance",
+                "required_layout",
+                "accessibility_needs",
+                "equipment_notes",
+                "registration_required",
+            ]
+        ),
+        required=False,
+        default=list,
+    )
 
 
 class EventRequestSerializer(serializers.ModelSerializer):
@@ -16,6 +50,8 @@ class EventRequestSerializer(serializers.ModelSerializer):
     )
     missing_mandatory_fields = serializers.SerializerMethodField()
     is_editable = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
+    clarifications = ClarificationSerializer(many=True, read_only=True)
 
     class Meta:
         model = EventRequest
@@ -44,6 +80,10 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "coordinator_name",
             "coordinator_email",
             "assignment_requires_attention",
+            "approved_by",
+            "approved_by_name",
+            "approved_at",
+            "clarifications",
             "missing_mandatory_fields",
             "is_editable",
             "created_at",
@@ -58,9 +98,25 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "created_by",
             "coordinator",
             "assignment_requires_attention",
+            "approved_by",
+            "approved_at",
             "created_at",
             "updated_at",
         ]
+
+    # The approval decision is visible to internal users only.
+    INTERNAL_ONLY_FIELDS = ("approved_by", "approved_by_name", "approved_at")
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        if request is None or not request.user.is_internal:
+            for field in self.INTERNAL_ONLY_FIELDS:
+                data.pop(field, None)
+        return data
+
+    def get_approved_by_name(self, obj) -> str | None:
+        return _display_name(obj.approved_by)
 
     def get_status_description(self, obj) -> str:
         return STATUS_DESCRIPTIONS[EventStatus(obj.status)]
@@ -77,7 +133,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
         return obj.missing_mandatory_fields()
 
     def get_is_editable(self, obj) -> bool:
-        return obj.is_draft
+        return obj.status in (EventStatus.DRAFT, EventStatus.UNDER_REVIEW)
 
     # --- field level rules. Only values actually supplied are checked, so that
     # --- an incomplete draft still saves (US-03.1 AC2).
@@ -127,13 +183,23 @@ class AttendeeEventSerializer(serializers.ModelSerializer):
         return STATUS_DESCRIPTIONS[EventStatus(obj.status)]
 
 
+def _display_name(user) -> str | None:
+    if user is None:
+        return None
+    return user.get_full_name() or user.email
+
+
 class EventQueueSerializer(serializers.ModelSerializer):
-    """The narrower shape the coordinator queue needs (US-04.1 AC1)."""
+    """The narrower shape the coordinator queue needs (US-04.1 AC1).
+
+    Only coordinators reach it, so the approval decision is always included.
+    """
 
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     status_description = serializers.SerializerMethodField()
     organisation_name = serializers.CharField(source="organisation.name", read_only=True)
     coordinator_name = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = EventRequest
@@ -147,9 +213,15 @@ class EventQueueSerializer(serializers.ModelSerializer):
             "status_label",
             "status_description",
             "submitted_at",
+            "coordinator",
             "coordinator_name",
             "assignment_requires_attention",
+            "approved_by_name",
+            "approved_at",
         ]
+
+    def get_approved_by_name(self, obj) -> str | None:
+        return _display_name(obj.approved_by)
 
     def get_status_description(self, obj) -> str:
         return STATUS_DESCRIPTIONS[EventStatus(obj.status)]

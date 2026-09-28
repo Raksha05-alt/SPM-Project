@@ -46,6 +46,7 @@ class EventRequest(TimeStampedModel):
     status_changed_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
     assignment_requires_attention = models.BooleanField(default=False)
+    approved_at = models.DateTimeField(null=True, blank=True)
 
     organisation = models.ForeignKey(
         "accounts.ClientOrganisation", on_delete=models.PROTECT, related_name="event_requests"
@@ -59,6 +60,13 @@ class EventRequest(TimeStampedModel):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="coordinated_event_requests",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="approved_event_requests",
     )
 
     class Meta:
@@ -101,3 +109,27 @@ class EventStatusHistory(models.Model):
 
     def __str__(self) -> str:
         return f"{self.event_id}: {self.from_status or 'new'} -> {self.to_status}"
+
+
+class ClarificationRequest(models.Model):
+    """A coordinator's request for missing or unclear information.
+
+    Rows are kept after the client answers, so the full clarification history
+    stays with the event.
+    """
+
+    event = models.ForeignKey(EventRequest, on_delete=models.CASCADE, related_name="clarifications")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    message = models.TextField()
+    fields = models.JSONField(default=list, blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-requested_at", "-pk"]
+
+    def __str__(self) -> str:
+        state = "answered" if self.resolved_at else "open"
+        return f"Clarification on {self.event_id} ({state})"

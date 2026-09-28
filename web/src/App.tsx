@@ -5,6 +5,7 @@ import { useAuth } from "./auth/AuthContext";
 import { Layout } from "./components/Layout";
 import { CoordinatorQueue } from "./pages/CoordinatorQueue";
 import { CoordinatorMyEvents } from "./pages/CoordinatorMyEvents";
+import { CoordinatorEventDetail } from "./pages/CoordinatorEventDetail";
 import { AttendeeEvents } from "./pages/AttendeeEvents";
 import { EventRequestForm } from "./pages/EventRequestForm";
 import { LoginPage } from "./pages/LoginPage";
@@ -62,6 +63,14 @@ export default function App() {
             element={
               <RequireRole roles={["COORDINATOR"]}>
                 <CoordinatorMyEvents />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/coordinator/events/:id"
+            element={
+              <RequireRole roles={["COORDINATOR"]}>
+                <CoordinatorEventDetail />
               </RequireRole>
             }
           />

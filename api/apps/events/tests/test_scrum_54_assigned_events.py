@@ -92,9 +92,7 @@ def test_ac4_an_event_assigned_to_another_coordinator_does_not_appear(
 
 
 @pytest.mark.django_db
-def test_only_a_coordinator_can_open_the_list_and_refusals_are_audited(
-    api, organiser, attendee
-):
+def test_only_a_coordinator_can_open_the_list_and_refusals_are_audited(api, organiser, attendee):
     for user in (organiser, attendee):
         api.force_authenticate(user)
         assert api.get(MINE).status_code == 403

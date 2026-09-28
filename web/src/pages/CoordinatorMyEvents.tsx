@@ -1,12 +1,25 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { fetchMyEvents } from "../api/events";
+import { approveEvent, fetchMyEvents } from "../api/events";
+import { ApprovalNote } from "../components/ApprovalNote";
 import { StatusBadge } from "../components/StatusBadge";
+import type { EventStatus } from "../types";
+
+/** Statuses a coordinator can approve from; the API enforces the same rule. */
+const REVIEWABLE: EventStatus[] = ["SUBMITTED", "UNDER_REVIEW"];
 
 export function CoordinatorMyEvents() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["my-events"],
     queryFn: fetchMyEvents,
+  });
+  const queryClient = useQueryClient();
+  const approve = useMutation({
+    mutationFn: approveEvent,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["my-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["queue"] });
+    },
   });
 
   if (isLoading) return <p className="text-slate-500">Loading your events…</p>;
@@ -24,6 +37,12 @@ export function CoordinatorMyEvents() {
       </div>
       <p className="mb-6 text-sm text-slate-500">Events needing your action are shown first.</p>
 
+      {approve.isError && (
+        <p role="alert" className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-800">
+          {approve.error.message}
+        </p>
+      )}
+
       {/* SCRUM-54 AC3 - no assigned events is an empty state, not an error. */}
       {rows.length === 0 ? (
         <p className="rounded-md border border-dashed border-slate-300 p-8 text-center text-slate-500">
@@ -39,12 +58,19 @@ export function CoordinatorMyEvents() {
                 <th className="px-4 py-3">Preferred date</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Next action</th>
+                <th className="px-4 py-3">
+                  <span className="sr-only">Decision</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {rows.map((row) => (
                 <tr key={row.id} className={row.requires_action ? "bg-amber-50/40" : undefined}>
-                  <td className="px-4 py-3 font-medium text-navy-700">{row.name}</td>
+                  <td className="px-4 py-3 font-medium text-navy-700">
+                    <Link to={`/coordinator/events/${row.id}`} className="hover:underline">
+                      {row.name}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3">{row.organisation_name}</td>
                   <td className="px-4 py-3">
                     {row.preferred_start
@@ -57,6 +83,7 @@ export function CoordinatorMyEvents() {
                       label={row.status_label}
                       title={row.status_description}
                     />
+                    <ApprovalNote approvedBy={row.approved_by_name} approvedAt={row.approved_at} />
                   </td>
                   <td className="px-4 py-3">
                     {row.requires_action && (
@@ -65,6 +92,19 @@ export function CoordinatorMyEvents() {
                       </span>
                     )}
                     {row.next_action}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {REVIEWABLE.includes(row.status) && (
+                      <button
+                        type="button"
+                        onClick={() => approve.mutate(row.id)}
+                        disabled={approve.isPending}
+                        className="rounded-md bg-navy-700 px-3 py-1 text-sm font-medium text-white hover:bg-navy-600 disabled:opacity-50"
+                        aria-label={`Approve ${row.name}`}
+                      >
+                        Approve
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

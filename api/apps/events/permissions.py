@@ -4,6 +4,8 @@ from apps.accounts.models import Role
 from apps.core.audit import record_denied
 from apps.core.statuses import ATTENDEE_VISIBLE_STATUSES, EventStatus
 
+CLIENT_EDITABLE = frozenset({EventStatus.DRAFT, EventStatus.UNDER_REVIEW})
+
 
 class CanAccessEventRequest(BasePermission):
     """Object-level rules for an event request.
@@ -19,7 +21,7 @@ class CanAccessEventRequest(BasePermission):
 
     def has_object_permission(self, request, view, obj) -> bool:
         user = request.user
-        allowed, reason = self._evaluate(user, request, obj)
+        allowed, reason = self._evaluate(user, request, view, obj)
         if not allowed:
             record_denied(
                 user,
@@ -29,17 +31,22 @@ class CanAccessEventRequest(BasePermission):
             )
         return allowed
 
-    def _evaluate(self, user, request, obj) -> tuple[bool, str]:
+    def _evaluate(self, user, request, view, obj) -> tuple[bool, str]:
         if user.role == Role.EVENT_ORGANISER:
             if obj.organisation_id != user.organisation_id:
                 return False, "event belongs to another client organisation"
-            if request.method not in SAFE_METHODS and obj.status != EventStatus.DRAFT:
+            # A request awaiting clarification is open again for the client to
+            # correct and resubmit. Deleting stays draft-only (see the view).
+            if request.method not in SAFE_METHODS and obj.status not in CLIENT_EDITABLE:
                 return False, f"a {obj.get_status_display()} request is read-only to the client"
             return True, ""
 
         if user.role == Role.EVENT_COORDINATOR:
             if obj.status == EventStatus.DRAFT:
                 return False, "drafts are not visible to ConnectSphere"
+            if getattr(view, "action", None) in ("approve", "request_clarification"):
+                # The view refuses anyone but the assigned coordinator, and audits it.
+                return True, ""
             if request.method not in SAFE_METHODS:
                 return False, "coordinator write actions arrive in sprint 2"
             return True, ""

@@ -35,8 +35,11 @@ describe("CoordinatorQueue", () => {
         status_label: "Submitted",
         status_description: "Sent to ConnectSphere for review.",
         submitted_at: "2026-09-22T01:00:00Z",
+        coordinator: null,
         coordinator_name: null,
         assignment_requires_attention: true,
+        approved_by_name: null,
+        approved_at: null,
       },
     ]);
 

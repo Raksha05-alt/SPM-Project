@@ -2,14 +2,28 @@ from django.conf import settings
 from django.db import models
 
 
+class NotificationKind(models.TextChoices):
+    ASSIGNMENT = "ASSIGNMENT", "Coordinator assigned"
+    APPROVED = "APPROVED", "Request approved"
+    CLARIFICATION = "CLARIFICATION", "Clarification requested"
+    RESUBMITTED = "RESUBMITTED", "Request resubmitted"
+
+
+# Sent at most once per recipient and event. Clarification rounds can repeat.
+ONE_OFF_KINDS = (NotificationKind.ASSIGNMENT, NotificationKind.APPROVED)
+
+
 class Notification(models.Model):
-    """Persistent, recipient-only coordinator assignment messages."""
+    """Persistent, recipient-only messages about an event request."""
 
     recipient = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications"
     )
     event = models.ForeignKey(
         "events.EventRequest", on_delete=models.CASCADE, related_name="notifications"
+    )
+    kind = models.CharField(
+        max_length=20, choices=NotificationKind.choices, default=NotificationKind.ASSIGNMENT
     )
     message = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -18,9 +32,11 @@ class Notification(models.Model):
         ordering = ["-created_at", "-pk"]
         constraints = [
             models.UniqueConstraint(
-                fields=["recipient", "event"], name="unique_assignment_notification"
+                fields=["recipient", "event", "kind"],
+                condition=models.Q(kind__in=ONE_OFF_KINDS),
+                name="unique_notification_per_kind",
             )
         ]
 
     def __str__(self):
-        return f"Assignment notification for user {self.recipient_id}, event {self.event_id}"
+        return f"{self.get_kind_display()} notification for user {self.recipient_id}, event {self.event_id}"
