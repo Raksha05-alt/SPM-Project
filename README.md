@@ -1,7 +1,7 @@
 # ConnectSphere Event Planning and Venue Booking System
 
 IS212 Software Project Management, AY 2026-27 T1. First release, built with Scrum
-over four sprints. This repository is the Sprint 1 slice.
+over four sprints. This branch includes the Sprint 1 slice and SCRUM-51 from Sprint 2.
 
 ## What works today
 
@@ -16,9 +16,10 @@ Sprint 1 delivered one thin vertical slice through the whole stack:
 | US-03.1 | An Event Organiser saves an incomplete request as a draft |
 | US-04.1 | An Event Coordinator sees submitted requests in a queue |
 | US-06.1 | Every event shows its current status in plain language |
+| SCRUM-51 | Assign one available coordinator on submission, notify both users, and show coordinator contact details |
 
-Venues, equipment, registration, change requests and notifications arrive in
-sprints 2 to 4. Their Django apps exist but are deliberately empty, so that the
+Venues, equipment, registration, change requests and broader notifications arrive in
+sprints 2 to 4. Assignment notifications are already implemented; the other Django apps are empty so that the
 repository structure matches the C4 level 3 component diagram in `docs/c4`.
 
 ## Running it
@@ -28,6 +29,8 @@ You need Docker, Python 3.12 and Node 20.
 ```bash
 # 1. Database
 docker compose up -d
+# Copy .env.example to .env at the repository root and match POSTGRES_PORT
+# to the host port in docker-compose.yml before starting the API.
 
 # 2. API  (http://localhost:8000)
 cd api
@@ -65,8 +68,8 @@ Sign in as both organisers to see that neither can reach the other's events.
 ## Tests
 
 ```bash
-cd api  && pytest                 # 72 tests, coverage gate at 80%
-cd web  && npm run test           # 12 tests
+cd api  && pytest                 # coverage gate at 80%
+cd web  && npm run test
 cd web  && npm run e2e            # Playwright, needs api + web running
 ```
 
@@ -74,6 +77,23 @@ Backend tests are named after the acceptance criteria they verify. Open
 `api/apps/events/tests/test_us_03_1_save_draft.py` and you will find
 `test_ac1_...` through `test_ac6_...`, matching the six criteria on US-03.1 in
 the product backlog. That mapping is what feeds the traceability matrix.
+
+### Coordinator assignment (SCRUM-51)
+
+After applying migrations, submit a new completed request as an organiser. Open
+the submitted request to see the coordinator's name and email. Both users can
+open **Notifications** in the header; messages persist across sign-ins and refresh
+every 30 seconds or when the window regains focus.
+
+Availability means an active Coordinator account with **Coordinator available**
+enabled in Django admin. This is an explicit availability flag, not a workload
+or calendar calculation. To try the no-available case, disable it for all
+coordinators and submit another request. The request remains Submitted and the
+staff queue shows **Unassigned — staff action needed**. Reassignment is outside
+SCRUM-51; changing availability does not retroactively assign old requests.
+
+See [SCRUM-51 implementation and test guide](docs/scrum-51-coordinator-assignment.md)
+for acceptance-criteria traceability and the remaining team decision.
 
 ## Layout
 

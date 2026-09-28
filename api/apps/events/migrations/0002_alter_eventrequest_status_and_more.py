@@ -4,25 +4,65 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('events', '0001_initial'),
+        ("events", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='eventrequest',
-            name='status',
-            field=models.CharField(choices=[('DRAFT', 'Draft'), ('SUBMITTED', 'Submitted'), ('UNDER_REVIEW', 'Awaiting Clarification'), ('APPROVED', 'Approved'), ('PLANNING', 'Planning'), ('CONFIRMED', 'Confirmed'), ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled'), ('REJECTED', 'Rejected')], default='DRAFT', max_length=20),
+            model_name="eventrequest",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("DRAFT", "Draft"),
+                    ("SUBMITTED", "Submitted"),
+                    ("UNDER_REVIEW", "Awaiting Clarification"),
+                    ("APPROVED", "Approved"),
+                    ("PLANNING", "Planning"),
+                    ("CONFIRMED", "Confirmed"),
+                    ("COMPLETED", "Completed"),
+                    ("CANCELLED", "Cancelled"),
+                    ("REJECTED", "Rejected"),
+                ],
+                default="DRAFT",
+                max_length=20,
+            ),
         ),
         migrations.AlterField(
-            model_name='eventstatushistory',
-            name='from_status',
-            field=models.CharField(blank=True, choices=[('DRAFT', 'Draft'), ('SUBMITTED', 'Submitted'), ('UNDER_REVIEW', 'Awaiting Clarification'), ('APPROVED', 'Approved'), ('PLANNING', 'Planning'), ('CONFIRMED', 'Confirmed'), ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled'), ('REJECTED', 'Rejected')], max_length=20),
+            model_name="eventstatushistory",
+            name="from_status",
+            field=models.CharField(
+                blank=True,
+                choices=[
+                    ("DRAFT", "Draft"),
+                    ("SUBMITTED", "Submitted"),
+                    ("UNDER_REVIEW", "Awaiting Clarification"),
+                    ("APPROVED", "Approved"),
+                    ("PLANNING", "Planning"),
+                    ("CONFIRMED", "Confirmed"),
+                    ("COMPLETED", "Completed"),
+                    ("CANCELLED", "Cancelled"),
+                    ("REJECTED", "Rejected"),
+                ],
+                max_length=20,
+            ),
         ),
         migrations.AlterField(
-            model_name='eventstatushistory',
-            name='to_status',
-            field=models.CharField(choices=[('DRAFT', 'Draft'), ('SUBMITTED', 'Submitted'), ('UNDER_REVIEW', 'Awaiting Clarification'), ('APPROVED', 'Approved'), ('PLANNING', 'Planning'), ('CONFIRMED', 'Confirmed'), ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled'), ('REJECTED', 'Rejected')], max_length=20),
+            model_name="eventstatushistory",
+            name="to_status",
+            field=models.CharField(
+                choices=[
+                    ("DRAFT", "Draft"),
+                    ("SUBMITTED", "Submitted"),
+                    ("UNDER_REVIEW", "Awaiting Clarification"),
+                    ("APPROVED", "Approved"),
+                    ("PLANNING", "Planning"),
+                    ("CONFIRMED", "Confirmed"),
+                    ("COMPLETED", "Completed"),
+                    ("CANCELLED", "Cancelled"),
+                    ("REJECTED", "Rejected"),
+                ],
+                max_length=20,
+            ),
         ),
     ]

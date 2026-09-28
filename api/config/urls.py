@@ -8,4 +8,5 @@ urlpatterns = [
     path("api/health/", health, name="health"),
     path("api/auth/", include("apps.accounts.urls")),
     path("api/", include("apps.events.urls")),
+    path("api/", include("apps.notifications.urls")),
 ]

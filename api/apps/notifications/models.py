@@ -1,5 +1,26 @@
-"""EP-20. Built in sprint 4.
+from django.conf import settings
+from django.db import models
 
-The package exists from sprint 1 so that the repository structure matches the
-C4 level 3 component diagram. No models yet, deliberately.
-"""
+
+class Notification(models.Model):
+    """Persistent, recipient-only coordinator assignment messages."""
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications"
+    )
+    event = models.ForeignKey(
+        "events.EventRequest", on_delete=models.CASCADE, related_name="notifications"
+    )
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["recipient", "event"], name="unique_assignment_notification"
+            )
+        ]
+
+    def __str__(self):
+        return f"Assignment notification for user {self.recipient_id}, event {self.event_id}"

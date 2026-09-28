@@ -31,6 +31,7 @@ export function CoordinatorQueue() {
                 <th className="px-4 py-3">Attending</th>
                 <th className="px-4 py-3">Submitted</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Coordinator</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -55,6 +56,11 @@ export function CoordinatorQueue() {
                       label={row.status_label}
                       title={row.status_description}
                     />
+                  </td>
+                  <td className="px-4 py-3">
+                    {row.coordinator_name ?? (row.assignment_requires_attention
+                      ? "Unassigned — staff action needed"
+                      : "Not assigned")}
                   </td>
                 </tr>
               ))}

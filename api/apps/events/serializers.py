@@ -11,6 +11,9 @@ class EventRequestSerializer(serializers.ModelSerializer):
     organisation_name = serializers.CharField(source="organisation.name", read_only=True)
     created_by_name = serializers.SerializerMethodField()
     coordinator_name = serializers.SerializerMethodField()
+    coordinator_email = serializers.CharField(
+        source="coordinator.email", read_only=True, default=None
+    )
     missing_mandatory_fields = serializers.SerializerMethodField()
     is_editable = serializers.SerializerMethodField()
 
@@ -39,6 +42,8 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "created_by_name",
             "coordinator",
             "coordinator_name",
+            "coordinator_email",
+            "assignment_requires_attention",
             "missing_mandatory_fields",
             "is_editable",
             "created_at",
@@ -52,6 +57,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "organisation",
             "created_by",
             "coordinator",
+            "assignment_requires_attention",
             "created_at",
             "updated_at",
         ]
@@ -142,6 +148,7 @@ class EventQueueSerializer(serializers.ModelSerializer):
             "status_description",
             "submitted_at",
             "coordinator_name",
+            "assignment_requires_attention",
         ]
 
     def get_status_description(self, obj) -> str:

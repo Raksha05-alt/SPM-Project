@@ -49,6 +49,8 @@ export interface EventRequest {
   organisation_name: string;
   created_by_name: string;
   coordinator_name: string | null;
+  coordinator_email: string | null;
+  assignment_requires_attention: boolean;
   missing_mandatory_fields: string[];
   is_editable: boolean;
   created_at: string;
@@ -66,6 +68,14 @@ export interface QueueRow {
   status_description: string;
   submitted_at: string | null;
   coordinator_name: string | null;
+  assignment_requires_attention: boolean;
+}
+
+export interface AssignmentNotification {
+  id: number;
+  event: number;
+  message: string;
+  created_at: string;
 }
 
 export interface AttendeeEvent {

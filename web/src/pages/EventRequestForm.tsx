@@ -6,6 +6,7 @@ import { createDraft, getEvent, submitEvent, updateDraft } from "../api/events";
 import type { EventDraft } from "../api/events";
 import { Field, inputClass } from "../components/Field";
 import { StatusBadge } from "../components/StatusBadge";
+import { CoordinatorAssignment } from "../components/CoordinatorAssignment";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Event name",
@@ -97,6 +98,7 @@ export function EventRequestForm() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
       setBanner("Your request has been sent to ConnectSphere.");
       navigate("/organiser", { replace: true });
     },
@@ -121,6 +123,7 @@ export function EventRequestForm() {
       {existing && (
         <p className="mb-4 text-sm text-slate-600">{existing.status_description}</p>
       )}
+      {existing && !existing.is_editable && <CoordinatorAssignment event={existing} />}
 
       {banner && (
         <p role="status" className="mb-4 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900">

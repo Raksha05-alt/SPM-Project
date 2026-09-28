@@ -33,6 +33,7 @@ describe("CoordinatorQueue", () => {
         status_description: "Sent to ConnectSphere for review.",
         submitted_at: "2026-09-22T01:00:00Z",
         coordinator_name: null,
+        assignment_requires_attention: true,
       },
     ]);
 
@@ -40,5 +41,6 @@ describe("CoordinatorQueue", () => {
 
     expect(await screen.findByText("Annual Conference")).toBeInTheDocument();
     expect(screen.getByTitle("Sent to ConnectSphere for review.")).toHaveTextContent("Submitted");
+    expect(screen.getByText("Unassigned — staff action needed")).toBeInTheDocument();
   });
 });
