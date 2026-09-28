@@ -3,11 +3,12 @@
 ## Scope and branch
 
 Story: SCRUM-51, assigned to Nethren Balamurugan in Sprint 2; 5 points, Medium.
-Feature branch: `feature/SCRUM-51-coordinator-assignment`, based on `Nethren`.
+Implementation branch: `Nethren`.
 Includes Jerom's latest `7364463` access-control/audit changes. Merge conflicts
 in the README, event permissions wiring, and access-control tests were resolved
 by preserving the attendee-safe serializer/status filtering from Nethren and
-the newer anonymous-refusal auditing from Jerom. No shared branch was changed.
+the newer anonymous-refusal auditing from Jerom. The completed work is on
+`Nethren`; `main`, `Dev`, and `Jerom` were not changed.
 No other Sprint 2 implementation was assigned to Nethren when Jira was checked
 on 28 September 2026. This does not mean the rest of Sprint 2 is implemented.
 
