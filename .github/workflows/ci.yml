@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  api:
+    name: API - lint and tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: connectsphere
+          POSTGRES_USER: cs
+          POSTGRES_PASSWORD: cs_dev_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      DJANGO_SECRET_KEY: ci-only-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+      - name: Install dependencies
+        run: pip install -r api/requirements.txt
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+        working-directory: api
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run
+        working-directory: api
+      - name: Tests with coverage gate
+        run: pytest
+        working-directory: api
+
+  web:
+    name: Web - types, tests and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: web
+      - name: Type check
+        run: npm run lint
+        working-directory: web
+      - name: Unit tests
+        run: npm run test
+        working-directory: web
+      - name: Production build
+        run: npm run build
+        working-directory: web

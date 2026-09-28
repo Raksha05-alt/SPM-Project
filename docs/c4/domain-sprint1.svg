@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1030" width="1500" height="1030">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 z" fill="#5A5A5A"/></marker></defs>
+<rect width="1500" height="1030" fill="#FFFFFF"/>
+<text x="40" y="46" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="25" font-weight="bold" fill="#1F3864">Sprint 1 Domain Model</text>
+<text x="40" y="72" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#666666">Only what the seven recommended Sprint 1 stories need. Everything else is deliberately deferred.</text>
+<rect x="120" y="110" width="340" height="131" rx="6" fill="#FFFFFF" stroke="#1F3864" stroke-width="1.8"/>
+<path d="M 120 156 L 120 116 Q 120 110 126 110 L 454 110 Q 460 110 460 116 L 460 156 Z" fill="#1F3864"/>
+<text x="290.0" y="132" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">ClientOrganisation</text>
+<text x="290.0" y="149" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#D6E4F5" text-anchor="middle">US-02.3, US-03.1</text>
+<text x="132" y="176" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#1F3864" font-weight="bold">PK  id</text>
+<text x="132" y="201" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     name</text>
+<text x="132" y="226" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     contact_email</text>
+<rect x="1040" y="110" width="340" height="206" rx="6" fill="#FFFFFF" stroke="#1F3864" stroke-width="1.8"/>
+<path d="M 1040 156 L 1040 116 Q 1040 110 1046 110 L 1374 110 Q 1380 110 1380 116 L 1380 156 Z" fill="#1F3864"/>
+<text x="1210.0" y="132" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">User</text>
+<text x="1210.0" y="149" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#D6E4F5" text-anchor="middle">EP-01 · create this FIRST</text>
+<text x="1052" y="176" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#1F3864" font-weight="bold">PK  id</text>
+<text x="1052" y="201" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     email  (unique)</text>
+<text x="1052" y="226" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     password_hash</text>
+<text x="1052" y="251" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     full_name</text>
+<text x="1052" y="276" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     role  (enum, 5 values)</text>
+<text x="1052" y="301" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#1F3864" font-weight="bold">FK   organisation_id  (nullable)</text>
+<rect x="120" y="400" width="340" height="456" rx="6" fill="#FFFFFF" stroke="#1F3864" stroke-width="1.8"/>
+<path d="M 120 446 L 120 406 Q 120 400 126 400 L 454 400 Q 460 400 460 406 L 460 446 Z" fill="#1F3864"/>
+<text x="290.0" y="422" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">EventRequest</text>
+<text x="290.0" y="439" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#D6E4F5" text-anchor="middle">EP-02, EP-03, EP-04</text>
+<text x="132" y="466" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#1F3864" font-weight="bold">PK  id</text>
+<text x="132" y="491" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     name</text>
+<text x="132" y="516" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     purpose</text>
+<text x="132" y="541" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     description</text>
+<text x="132" y="566" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     preferred_start  (tz)</text>
+<text x="132" y="591" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     preferred_end  (tz)</text>
+<text x="132" y="616" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     expected_attendance  (int)</text>
+<text x="132" y="641" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     required_layout</text>
+<text x="132" y="666" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     accessibility_needs</text>
+<text x="132" y="691" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     equipment_notes</text>
+<text x="132" y="716" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     registration_required  (bool)</text>
+<text x="132" y="741" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     status  (enum)</text>
+<text x="132" y="766" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     submitted_at  (nullable)</text>
+<text x="132" y="791" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#1F3864" font-weight="bold">FK   organisation_id</text>
+<text x="132" y="816" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#1F3864" font-weight="bold">FK   created_by  -&gt; User</text>
+<text x="132" y="841" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#1F3864" font-weight="bold">FK   coordinator_id  (nullable)</text>
+<rect x="1040" y="470" width="340" height="206" rx="6" fill="#FFFFFF" stroke="#1F3864" stroke-width="1.8"/>
+<path d="M 1040 516 L 1040 476 Q 1040 470 1046 470 L 1374 470 Q 1380 470 1380 476 L 1380 516 Z" fill="#1F3864"/>
+<text x="1210.0" y="492" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">EventStatusHistory</text>
+<text x="1210.0" y="509" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#D6E4F5" text-anchor="middle">US-06.2, US-07.3</text>
+<text x="1052" y="536" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#1F3864" font-weight="bold">PK  id</text>
+<text x="1052" y="561" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#1F3864" font-weight="bold">FK   event_id</text>
+<text x="1052" y="586" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     from_status</text>
+<text x="1052" y="611" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     to_status</text>
+<text x="1052" y="636" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#1F3864" font-weight="bold">FK   changed_by  -&gt; User</text>
+<text x="1052" y="661" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#333333" font-weight="normal">     changed_at  (tz)</text>
+<line x1="460" y1="175" x2="1038" y2="175" stroke="#5A5A5A" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="695.0" y="147.5" width="110.0" height="23" rx="3" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="750" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#3A3A3A" font-weight="normal" text-anchor="middle">1 : *   employs</text>
+<polyline points="230,241 230,398" fill="none" stroke="#5A5A5A" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="246.6" y="324.5" width="90.80000000000001" height="23" rx="3" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="292" y="345" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#3A3A3A" font-weight="normal" text-anchor="middle">1 : *   owns</text>
+<polyline points="1210,316 1210,355 350,355 350,398" fill="none" stroke="#5A5A5A" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="660.2" y="329.5" width="199.60000000000002" height="23" rx="3" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="760" y="350" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#3A3A3A" font-weight="normal" text-anchor="middle">1 : *   creates / coordinates</text>
+<line x1="460" y1="560" x2="1038" y2="560" stroke="#5A5A5A" stroke-width="2" marker-end="url(#ah)"/>
+<rect x="675.8" y="525.0" width="148.4" height="38" rx="3" fill="#FFFFFF" fill-opacity="0.92"/>
+<text x="750" y="546" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#3A3A3A" font-weight="normal" text-anchor="middle">1 : *   records every</text>
+<text x="750" y="561" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#3A3A3A" font-weight="normal" text-anchor="middle">transition</text>
+<rect x="50.0" y="900" width="215" height="81" rx="6" fill="#F2F2F2" stroke="#B0B0B0" stroke-width="1.8" stroke-dasharray="7 5"/>
+<path d="M 50.0 946 L 50.0 906 Q 50.0 900 56.0 900 L 259.0 900 Q 265.0 900 265.0 906 L 265.0 946 Z" fill="#BFBFBF"/>
+<text x="157.5" y="922" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">Venue</text>
+<text x="157.5" y="939" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#D6E4F5" text-anchor="middle">Sprint 2 to 4</text>
+<text x="62.0" y="966" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#999999" font-weight="normal">…</text>
+<rect x="287.0" y="900" width="215" height="81" rx="6" fill="#F2F2F2" stroke="#B0B0B0" stroke-width="1.8" stroke-dasharray="7 5"/>
+<path d="M 287.0 946 L 287.0 906 Q 287.0 900 293.0 900 L 496.0 900 Q 502.0 900 502.0 906 L 502.0 946 Z" fill="#BFBFBF"/>
+<text x="394.5" y="922" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">VenueBooking</text>
+<text x="394.5" y="939" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#D6E4F5" text-anchor="middle">Sprint 2 to 4</text>
+<text x="299.0" y="966" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#999999" font-weight="normal">…</text>
+<rect x="524.0" y="900" width="215" height="81" rx="6" fill="#F2F2F2" stroke="#B0B0B0" stroke-width="1.8" stroke-dasharray="7 5"/>
+<path d="M 524.0 946 L 524.0 906 Q 524.0 900 530.0 900 L 733.0 900 Q 739.0 900 739.0 906 L 739.0 946 Z" fill="#BFBFBF"/>
+<text x="631.5" y="922" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">Equipment</text>
+<text x="631.5" y="939" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#D6E4F5" text-anchor="middle">Sprint 2 to 4</text>
+<text x="536.0" y="966" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#999999" font-weight="normal">…</text>
+<rect x="761.0" y="900" width="215" height="81" rx="6" fill="#F2F2F2" stroke="#B0B0B0" stroke-width="1.8" stroke-dasharray="7 5"/>
+<path d="M 761.0 946 L 761.0 906 Q 761.0 900 767.0 900 L 970.0 900 Q 976.0 900 976.0 906 L 976.0 946 Z" fill="#BFBFBF"/>
+<text x="868.5" y="922" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">EquipmentReservation</text>
+<text x="868.5" y="939" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#D6E4F5" text-anchor="middle">Sprint 2 to 4</text>
+<text x="773.0" y="966" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#999999" font-weight="normal">…</text>
+<rect x="998.0" y="900" width="215" height="81" rx="6" fill="#F2F2F2" stroke="#B0B0B0" stroke-width="1.8" stroke-dasharray="7 5"/>
+<path d="M 998.0 946 L 998.0 906 Q 998.0 900 1004.0 900 L 1207.0 900 Q 1213.0 900 1213.0 906 L 1213.0 946 Z" fill="#BFBFBF"/>
+<text x="1105.5" y="922" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">Registration</text>
+<text x="1105.5" y="939" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#D6E4F5" text-anchor="middle">Sprint 2 to 4</text>
+<text x="1010.0" y="966" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#999999" font-weight="normal">…</text>
+<rect x="1235.0" y="900" width="215" height="81" rx="6" fill="#F2F2F2" stroke="#B0B0B0" stroke-width="1.8" stroke-dasharray="7 5"/>
+<path d="M 1235.0 946 L 1235.0 906 Q 1235.0 900 1241.0 900 L 1444.0 900 Q 1450.0 900 1450.0 906 L 1450.0 946 Z" fill="#BFBFBF"/>
+<text x="1342.5" y="922" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#FFFFFF" text-anchor="middle">Notification</text>
+<text x="1342.5" y="939" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#D6E4F5" text-anchor="middle">Sprint 2 to 4</text>
+<text x="1247.0" y="966" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#999999" font-weight="normal">…</text>
+<text x="750" y="885" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13.5" fill="#888888" text-anchor="middle" font-style="italic">Modelled in later sprints — do not build these in Sprint 1</text>
+</svg>

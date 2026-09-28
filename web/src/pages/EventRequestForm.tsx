@@ -6,6 +6,7 @@ import { createDraft, getEvent, submitEvent, updateDraft } from "../api/events";
 import type { EventDraft } from "../api/events";
 import { Field, inputClass } from "../components/Field";
 import { StatusBadge } from "../components/StatusBadge";
+import { CoordinatorAssignment } from "../components/CoordinatorAssignment";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Event name",
@@ -28,12 +29,6 @@ const EMPTY: EventDraft = {
   registration_required: false,
 };
 
-function localDateTime(value: string | null | undefined) {
-  if (!value) return "";
-  const date = new Date(value);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-}
-
 export function EventRequestForm() {
   const { id } = useParams();
   const eventId = id ? Number(id) : null;
@@ -45,7 +40,7 @@ export function EventRequestForm() {
   const [banner, setBanner] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
 
-  const { data: existing, isLoading, isError } = useQuery({
+  const { data: existing } = useQuery({
     queryKey: ["events", eventId],
     queryFn: () => getEvent(eventId as number),
     enabled: eventId !== null,
@@ -56,7 +51,6 @@ export function EventRequestForm() {
   // form is seeded from the query result here instead.
   useEffect(() => {
     if (existing) setForm({ ...EMPTY, ...existing });
-    else setForm(EMPTY);
   }, [existing]);
 
   const readOnly = existing ? !existing.is_editable : false;
@@ -75,7 +69,7 @@ export function EventRequestForm() {
       }
       setFieldErrors(next);
       setMissing(error.missingFields);
-      setBanner(error.missingFields.length ? error.message : next.non_field_errors ?? (body.detail ? String(body.detail) : null));
+      setBanner(error.missingFields.length ? error.message : null);
       return;
     }
     setBanner("We could not save this request. Please try again.");
@@ -89,7 +83,7 @@ export function EventRequestForm() {
     },
     onSuccess: (saved) => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
-      setBanner("Request created.");
+      setBanner("Draft saved.");
       if (eventId === null) navigate(`/organiser/requests/${saved.id}`, { replace: true });
     },
     onError: handleApiError,
@@ -102,17 +96,14 @@ export function EventRequestForm() {
       const saved = eventId === null ? await createDraft(form) : await updateDraft(eventId, form);
       return submitEvent(saved.id);
     },
-    onSuccess: (submitted) => {
-      queryClient.setQueryData(["events", submitted.id], submitted);
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
       setBanner("Your request has been sent to ConnectSphere.");
-      navigate(`/organiser/requests/${submitted.id}`, { replace: true });
+      navigate("/organiser", { replace: true });
     },
     onError: handleApiError,
   });
-
-  if (eventId !== null && isLoading) return <p>Loading event request...</p>;
-  if (eventId !== null && isError) return <p role="alert">We could not load this event request.</p>;
 
   return (
     <div>
@@ -132,12 +123,8 @@ export function EventRequestForm() {
       {existing && (
         <p className="mb-4 text-sm text-slate-600">{existing.status_description}</p>
       )}
+      {existing && !existing.is_editable && <CoordinatorAssignment event={existing} />}
 
-      {existing?.submitted_at && (
-        <p role="status" className="mb-4 text-sm text-slate-600">
-          Submitted to ConnectSphere on {new Date(existing.submitted_at).toLocaleString("en-SG")}. This request is read-only.
-        </p>
-      )}
       {banner && (
         <p role="status" className="mb-4 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900">
           {banner}
@@ -156,7 +143,7 @@ export function EventRequestForm() {
         </div>
       )}
 
-      <fieldset disabled={readOnly || save.isPending || submit.isPending} className="rounded-lg border border-slate-200 bg-white p-6">
+      <fieldset disabled={readOnly} className="rounded-lg border border-slate-200 bg-white p-6">
         <Field label="Event name" htmlFor="name" error={fieldErrors.name}>
           <input
             id="name"
@@ -189,7 +176,7 @@ export function EventRequestForm() {
               id="preferred_start"
               type="datetime-local"
               className={inputClass}
-              value={localDateTime(form.preferred_start)}
+              value={(form.preferred_start ?? "").slice(0, 16)}
               onChange={(e) =>
                 set("preferred_start", e.target.value ? new Date(e.target.value).toISOString() : null)
               }
@@ -200,7 +187,7 @@ export function EventRequestForm() {
               id="preferred_end"
               type="datetime-local"
               className={inputClass}
-              value={localDateTime(form.preferred_end)}
+              value={(form.preferred_end ?? "").slice(0, 16)}
               onChange={(e) =>
                 set("preferred_end", e.target.value ? new Date(e.target.value).toISOString() : null)
               }
@@ -274,18 +261,18 @@ export function EventRequestForm() {
       {!readOnly && (
         <div className="mt-6 flex gap-3">
           {/* US-03.1 AC2 - saving works however incomplete the form is. */}
-          {eventId === null && <button
+          <button
             type="button"
             onClick={() => save.mutate()}
-            disabled={save.isPending || submit.isPending}
+            disabled={save.isPending}
             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
           >
-            Create request
-          </button>}
+            Save draft
+          </button>
           <button
             type="button"
             onClick={() => submit.mutate()}
-            disabled={save.isPending || submit.isPending}
+            disabled={submit.isPending}
             className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-600"
           >
             Send to ConnectSphere

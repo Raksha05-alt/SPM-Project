@@ -49,8 +49,51 @@ export interface EventRequest {
   organisation_name: string;
   created_by_name: string;
   coordinator_name: string | null;
+  coordinator_email: string | null;
+  assignment_requires_attention: boolean;
   missing_mandatory_fields: string[];
   is_editable: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface QueueRow {
+  id: number;
+  name: string;
+  organisation_name: string;
+  preferred_start: string | null;
+  expected_attendance: number | null;
+  status: EventStatus;
+  status_label: string;
+  status_description: string;
+  submitted_at: string | null;
+  coordinator_name: string | null;
+  assignment_requires_attention: boolean;
+}
+
+/** SCRUM-54 - one of the signed-in coordinator's own events. */
+export interface AssignedEventRow extends QueueRow {
+  next_action: string;
+  requires_action: boolean;
+}
+
+export interface AssignmentNotification {
+  id: number;
+  event: number;
+  message: string;
+  created_at: string;
+}
+
+export interface AttendeeEvent {
+  id: number;
+  name: string;
+  description: string;
+  preferred_start: string | null;
+  preferred_end: string | null;
+  accessibility_needs: string;
+  registration_required: boolean;
+  status: "CONFIRMED" | "COMPLETED" | "CANCELLED";
+  status_label: string;
+  status_description: string;
+  status_changed_at: string | null;
 }

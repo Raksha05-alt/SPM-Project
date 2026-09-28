@@ -2,7 +2,7 @@ from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from apps.accounts.models import Role
 from apps.core.audit import record_denied
-from apps.core.statuses import EventStatus
+from apps.core.statuses import ATTENDEE_VISIBLE_STATUSES, EventStatus
 
 
 class CanAccessEventRequest(BasePermission):
@@ -10,7 +10,8 @@ class CanAccessEventRequest(BasePermission):
 
     An Event Organiser reaches only their own organisation's requests.
     An Event Coordinator reaches anything that has been submitted, never a draft.
-    Nobody else reaches an event request at all in this release.
+    An Attendee has read-only access to confirmed or concluded events, with
+    internal planning states filtered out.
     Every refusal is written to the audit log (US-01.2 AC4).
     """
 
@@ -41,6 +42,13 @@ class CanAccessEventRequest(BasePermission):
                 return False, "drafts are not visible to ConnectSphere"
             if request.method not in SAFE_METHODS:
                 return False, "coordinator write actions arrive in sprint 2"
+            return True, ""
+
+        if user.role == Role.ATTENDEE:
+            if request.method not in SAFE_METHODS:
+                return False, "attendees have read-only access to events"
+            if obj.status not in ATTENDEE_VISIBLE_STATUSES:
+                return False, "event has not reached an attendee-visible status"
             return True, ""
 
         return False, f"role {user.role} has no access to event requests"

@@ -24,9 +24,14 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    # One app per component in the C4 level 3 diagram.
     "apps.core",
     "apps.accounts",
     "apps.events",
+    "apps.venues",
+    "apps.equipment",
+    "apps.registrations",
+    "apps.notifications",
 ]
 
 MIDDLEWARE = [

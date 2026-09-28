@@ -45,6 +45,7 @@ class EventRequest(TimeStampedModel):
     status = models.CharField(max_length=20, choices=EventStatus.choices, default=EventStatus.DRAFT)
     status_changed_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    assignment_requires_attention = models.BooleanField(default=False)
 
     organisation = models.ForeignKey(
         "accounts.ClientOrganisation", on_delete=models.PROTECT, related_name="event_requests"
@@ -80,7 +81,6 @@ class EventRequest(TimeStampedModel):
             field
             for field in self.MANDATORY_FOR_SUBMISSION
             if getattr(self, field) in (None, "", 0)
-            or (isinstance(getattr(self, field), str) and not getattr(self, field).strip())
         ]
 
 

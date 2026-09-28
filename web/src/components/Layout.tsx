@@ -1,4 +1,5 @@
 import { useAuth } from "../auth/AuthContext";
+import { Notifications } from "./Notifications";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
@@ -10,6 +11,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <span className="text-lg font-semibold text-navy-700">ConnectSphere</span>
           {user && (
             <div className="flex items-center gap-4 text-sm">
+              <Notifications key={user.id} userId={user.id} />
               <span className="text-slate-600">
                 {user.first_name} {user.last_name} · {user.role_label}
                 {user.organisation_name ? ` · ${user.organisation_name}` : ""}

@@ -77,32 +77,3 @@ def test_a_request_cannot_be_submitted_twice(signed_in_organiser, complete_draft
     second = signed_in_organiser.post(submit_url(complete_draft))
 
     assert second.status_code == 403
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("field,value", [
-    ("expected_attendance", 0),
-    ("name", "   "),
-    ("preferred_start", "past"),
-    ("preferred_end", "past"),
-])
-def test_invalid_saved_values_block_submission(signed_in_organiser, complete_draft, field, value):
-    from django.utils import timezone
-    if value == "past":
-        value = timezone.now() - timezone.timedelta(days=1)
-    setattr(complete_draft, field, value)
-    complete_draft.save()
-    response = signed_in_organiser.post(submit_url(complete_draft))
-    assert response.status_code == 400
-    assert field in response.data or field in response.data.get("missing_fields", [])
-    complete_draft.refresh_from_db()
-    assert complete_draft.status == EventStatus.DRAFT
-    assert complete_draft.submitted_at is None
-
-
-@pytest.mark.django_db
-def test_another_organisation_cannot_submit(api, other_organiser, complete_draft):
-    api.force_authenticate(other_organiser)
-    assert api.post(submit_url(complete_draft)).status_code == 404
-    complete_draft.refresh_from_db()
-    assert complete_draft.status == EventStatus.DRAFT

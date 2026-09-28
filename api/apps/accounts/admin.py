@@ -13,7 +13,9 @@ class ClientOrganisationAdmin(admin.ModelAdmin):
 @admin.register(User)
 class AppUserAdmin(UserAdmin):
     list_display = ("email", "first_name", "last_name", "role", "organisation")
-    list_filter = ("role", "is_staff")
+    list_filter = ("role", "is_staff", "coordinator_available")
     ordering = ("email",)
     search_fields = ("email", "first_name", "last_name")
-    fieldsets = UserAdmin.fieldsets + (("ConnectSphere", {"fields": ("role", "organisation")}),)
+    fieldsets = UserAdmin.fieldsets + (
+        ("ConnectSphere", {"fields": ("role", "organisation", "coordinator_available")}),
+    )
