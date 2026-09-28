@@ -5,6 +5,13 @@ from django.db import models
 class NotificationKind(models.TextChoices):
     ASSIGNMENT = "ASSIGNMENT", "Coordinator assigned"
     APPROVED = "APPROVED", "Request approved"
+    CLARIFICATION = "CLARIFICATION", "Clarification requested"
+    RESUBMITTED = "RESUBMITTED", "Request resubmitted"
+    REJECTED = "REJECTED", "Request rejected"
+
+
+# Sent at most once per recipient and event. Clarification rounds can repeat.
+ONE_OFF_KINDS = (NotificationKind.ASSIGNMENT, NotificationKind.APPROVED, NotificationKind.REJECTED)
 
 
 class Notification(models.Model):
@@ -26,7 +33,9 @@ class Notification(models.Model):
         ordering = ["-created_at", "-pk"]
         constraints = [
             models.UniqueConstraint(
-                fields=["recipient", "event", "kind"], name="unique_notification_per_kind"
+                fields=["recipient", "event", "kind"],
+                condition=models.Q(kind__in=ONE_OFF_KINDS),
+                name="unique_notification_per_kind",
             )
         ]
 

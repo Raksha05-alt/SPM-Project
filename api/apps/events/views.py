@@ -21,13 +21,19 @@ from apps.events.permissions import CanAccessEventRequest
 from apps.events.serializers import (
     AssignedEventSerializer,
     AttendeeEventSerializer,
+    ClarificationInputSerializer,
     EventQueueSerializer,
     EventRequestSerializer,
+    RejectionInputSerializer,
 )
 from apps.events.services import (
+    MissingClarificationDetails,
     MissingMandatoryFields,
+    MissingRejectionReason,
     NotAssignedCoordinator,
     approve_event,
+    reject_event,
+    request_clarification,
     submit_event,
 )
 
@@ -51,8 +57,8 @@ class EventRequestViewSet(ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         base = EventRequest.objects.select_related(
-            "organisation", "created_by", "coordinator", "approved_by"
-        )
+            "organisation", "created_by", "coordinator", "approved_by", "rejected_by"
+        ).prefetch_related("clarifications__requested_by")
         if user.role == Role.EVENT_ORGANISER:
             # US-02.3 / US-03.1 AC5 - a client sees only their own organisation.
             return base.filter(organisation_id=user.organisation_id)
@@ -68,8 +74,9 @@ class EventRequestViewSet(ModelViewSet):
         is refused and audited (US-01.2 AC1) rather than silently returning 404."""
         obj = (
             EventRequest.objects.select_related(
-                "organisation", "created_by", "coordinator", "approved_by"
+                "organisation", "created_by", "coordinator", "approved_by", "rejected_by"
             )
+            .prefetch_related("clarifications__requested_by")
             .filter(pk=self.kwargs["pk"])
             .first()
         )
@@ -148,6 +155,81 @@ class EventRequestViewSet(ModelViewSet):
                 {
                     "detail": "This request does not have enough information to approve.",
                     "missing_fields": exc.fields,
+                },
+                status=http.HTTP_400_BAD_REQUEST,
+            )
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        """Reject a request ConnectSphere cannot support, with a recorded reason."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/reject/"
+        payload = RejectionInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            if not request.user.is_coordinator:
+                raise NotAssignedCoordinator
+            reject_event(event, request.user, payload.validated_data.get("reason", ""))
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the assigned coordinator may reject",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can reject it."
+            ) from None
+        except InvalidTransition as exc:
+            record_denied(request.user, action=action_name, obj=event, detail=str(exc))
+            return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        except MissingRejectionReason:
+            return Response(
+                {
+                    "detail": "Enter a reason before rejecting this request.",
+                    "reason": ["This field may not be blank."],
+                },
+                status=http.HTTP_400_BAD_REQUEST,
+            )
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["post"], url_path="request-clarification")
+    def request_clarification(self, request, pk=None):
+        """Ask the client for missing or unclear information."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/request-clarification/"
+        payload = ClarificationInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            if not request.user.is_coordinator:
+                raise NotAssignedCoordinator
+            request_clarification(
+                event,
+                request.user,
+                payload.validated_data.get("message", ""),
+                payload.validated_data["fields"],
+            )
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the assigned coordinator may request clarification",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can request clarification."
+            ) from None
+        except InvalidTransition as exc:
+            record_denied(request.user, action=action_name, obj=event, detail=str(exc))
+            return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        except MissingClarificationDetails:
+            return Response(
+                {
+                    "detail": "Say what information is needed before sending the request.",
+                    "message": ["This field may not be blank."],
                 },
                 status=http.HTTP_400_BAD_REQUEST,
             )

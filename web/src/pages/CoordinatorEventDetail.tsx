@@ -1,10 +1,14 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { approveEvent, getEvent } from "../api/events";
+import { approveEvent, getEvent, rejectEvent, requestClarification } from "../api/events";
 import { useAuth } from "../auth/AuthContext";
 import { ApprovalNote } from "../components/ApprovalNote";
+import { CLARIFIABLE_FIELDS, ClarificationHistory } from "../components/Clarifications";
+import { inputClass } from "../components/Field";
+import { RejectionNotice } from "../components/RejectionNotice";
 import { StatusBadge } from "../components/StatusBadge";
-import type { EventStatus } from "../types";
+import type { EventRequest, EventStatus } from "../types";
 
 const LAYOUT_LABELS: Record<string, string> = {
   CLASSROOM: "Classroom",
@@ -36,24 +40,83 @@ export function CoordinatorEventDetail() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: event, isLoading, isError } = useQuery({
+  const {
+    data: event,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["event", eventId],
     queryFn: () => getEvent(eventId),
   });
 
-  const approve = useMutation({
-    mutationFn: approveEvent,
+  function onDecision(updated: EventRequest) {
+    queryClient.setQueryData(["event", eventId], updated);
+    void queryClient.invalidateQueries({ queryKey: ["my-events"] });
+    void queryClient.invalidateQueries({ queryKey: ["queue"] });
+  }
+
+  const approve = useMutation({ mutationFn: approveEvent, onSuccess: onDecision });
+
+  const [showReject, setShowReject] = useState(false);
+  const [reason, setReason] = useState("");
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const reject = useMutation({
+    mutationFn: () => rejectEvent(eventId, reason.trim()),
     onSuccess: (updated) => {
-      queryClient.setQueryData(["event", eventId], updated);
-      void queryClient.invalidateQueries({ queryKey: ["my-events"] });
-      void queryClient.invalidateQueries({ queryKey: ["queue"] });
+      onDecision(updated);
+      setShowReject(false);
+      setReason("");
     },
   });
+
+  function confirmRejection() {
+    // SCRUM-52 AC2 - the API also blocks a rejection without a reason.
+    if (!reason.trim()) {
+      setReasonError("Enter a reason for the rejection.");
+      return;
+    }
+    setReasonError(null);
+    reject.mutate();
+  }
+
+  const [showClarify, setShowClarify] = useState(false);
+  const [message, setMessage] = useState("");
+  const [fields, setFields] = useState<string[]>([]);
+  const [messageError, setMessageError] = useState<string | null>(null);
+  const clarify = useMutation({
+    mutationFn: () => requestClarification(eventId, message.trim(), fields),
+    onSuccess: (updated) => {
+      onDecision(updated);
+      setShowClarify(false);
+      setMessage("");
+      setFields([]);
+    },
+  });
+
+  function sendClarification() {
+    // SCRUM-49 AC4 - the API also refuses a request that does not say what is needed.
+    if (!message.trim()) {
+      setMessageError("Say what information is needed.");
+      return;
+    }
+    setMessageError(null);
+    clarify.mutate();
+  }
+
+  function toggleField(value: string) {
+    setFields((current) =>
+      current.includes(value) ? current.filter((f) => f !== value) : [...current, value],
+    );
+  }
 
   if (isLoading) return <p className="text-slate-500">Loading the event…</p>;
   if (isError || !event) return <p role="alert">We could not load this event.</p>;
 
-  const canApprove = event.coordinator === user?.id && REVIEWABLE.includes(event.status);
+  const isAssigned = event.coordinator === user?.id;
+  const canApprove = isAssigned && REVIEWABLE.includes(event.status);
+  const canClarify = isAssigned && event.status === "SUBMITTED";
+  const canReject = canApprove;
+  const decisionError = approve.error ?? clarify.error ?? reject.error;
 
   return (
     <div>
@@ -87,9 +150,11 @@ export function CoordinatorEventDetail() {
         </div>
       </div>
 
-      {approve.isError && (
+      <RejectionNotice event={event} />
+
+      {decisionError && (
         <p role="alert" className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-800">
-          {approve.error.message}
+          {decisionError.message}
         </p>
       )}
 
@@ -131,18 +196,140 @@ export function CoordinatorEventDetail() {
         </dl>
       </section>
 
-      {canApprove && (
-        <div className="mt-6 flex justify-end">
-          <button
-            type="button"
-            onClick={() => approve.mutate(event.id)}
-            disabled={approve.isPending}
-            className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-600 disabled:opacity-50"
-          >
-            Approve request
-          </button>
+      {showClarify && canClarify && (
+        <section
+          aria-label="Request clarification"
+          className="mt-6 rounded-lg border border-slate-200 bg-white p-6"
+        >
+          <h2 className="mb-3 text-sm font-semibold text-navy-700">Request clarification</h2>
+          <label htmlFor="clarification-message" className="mb-1 block text-sm font-medium">
+            What do you need from the client?
+          </label>
+          <textarea
+            id="clarification-message"
+            rows={3}
+            className={inputClass}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+          />
+          {messageError && (
+            <p role="alert" className="mt-1 text-xs font-medium text-rose-700">
+              {messageError}
+            </p>
+          )}
+          <fieldset className="mt-4">
+            <legend className="mb-2 text-sm font-medium">Items to review (optional)</legend>
+            <div className="grid gap-1 sm:grid-cols-2">
+              {CLARIFIABLE_FIELDS.map((f) => (
+                <label key={f.value} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={fields.includes(f.value)}
+                    onChange={() => toggleField(f.value)}
+                  />
+                  {f.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="mt-4 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setShowClarify(false)}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={sendClarification}
+              disabled={clarify.isPending}
+              className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-600 disabled:opacity-50"
+            >
+              Send to client
+            </button>
+          </div>
+        </section>
+      )}
+
+      {showReject && canReject && (
+        <section
+          aria-label="Reject request"
+          className="mt-6 rounded-lg border border-rose-200 bg-white p-6"
+        >
+          <h2 className="mb-3 text-sm font-semibold text-rose-800">Reject request</h2>
+          <label htmlFor="rejection-reason" className="mb-1 block text-sm font-medium">
+            Why can ConnectSphere not support this request?
+          </label>
+          <textarea
+            id="rejection-reason"
+            rows={3}
+            className={inputClass}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+          {reasonError && (
+            <p role="alert" className="mt-1 text-xs font-medium text-rose-700">
+              {reasonError}
+            </p>
+          )}
+          <p className="mt-2 text-xs text-slate-500">
+            The client will see this reason. A rejected request cannot be reopened.
+          </p>
+          <div className="mt-4 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setShowReject(false)}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmRejection}
+              disabled={reject.isPending}
+              className="rounded-md bg-rose-700 px-4 py-2 text-sm font-medium text-white hover:bg-rose-800 disabled:opacity-50"
+            >
+              Confirm rejection
+            </button>
+          </div>
+        </section>
+      )}
+
+      {(canApprove || canClarify) && (
+        <div className="mt-6 flex justify-end gap-3">
+          {canReject && !showReject && (
+            <button
+              type="button"
+              onClick={() => setShowReject(true)}
+              className="rounded-md border border-rose-300 bg-white px-4 py-2 text-sm font-medium text-rose-800 hover:bg-rose-50"
+            >
+              Reject request
+            </button>
+          )}
+          {canClarify && !showClarify && (
+            <button
+              type="button"
+              onClick={() => setShowClarify(true)}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              Request clarification
+            </button>
+          )}
+          {canApprove && (
+            <button
+              type="button"
+              onClick={() => approve.mutate(event.id)}
+              disabled={approve.isPending}
+              className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-600 disabled:opacity-50"
+            >
+              Approve request
+            </button>
+          )}
         </div>
       )}
+
+      <ClarificationHistory clarifications={event.clarifications ?? []} />
     </div>
   );
 }

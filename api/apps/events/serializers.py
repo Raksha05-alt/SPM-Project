@@ -2,7 +2,45 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.core.statuses import COORDINATOR_NEXT_ACTIONS, STATUS_DESCRIPTIONS, EventStatus
-from apps.events.models import EventRequest
+from apps.events.models import ClarificationRequest, EventRequest
+
+
+class ClarificationSerializer(serializers.ModelSerializer):
+    requested_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClarificationRequest
+        fields = ["id", "message", "fields", "requested_by_name", "requested_at", "resolved_at"]
+        read_only_fields = fields
+
+    def get_requested_by_name(self, obj) -> str | None:
+        return _display_name(obj.requested_by)
+
+
+class ClarificationInputSerializer(serializers.Serializer):
+    message = serializers.CharField(allow_blank=True, trim_whitespace=True, required=False)
+    fields = serializers.ListField(
+        child=serializers.ChoiceField(
+            choices=[
+                "name",
+                "purpose",
+                "description",
+                "preferred_start",
+                "preferred_end",
+                "expected_attendance",
+                "required_layout",
+                "accessibility_needs",
+                "equipment_notes",
+                "registration_required",
+            ]
+        ),
+        required=False,
+        default=list,
+    )
+
+
+class RejectionInputSerializer(serializers.Serializer):
+    reason = serializers.CharField(allow_blank=True, trim_whitespace=True, required=False)
 
 
 class EventRequestSerializer(serializers.ModelSerializer):
@@ -17,6 +55,8 @@ class EventRequestSerializer(serializers.ModelSerializer):
     missing_mandatory_fields = serializers.SerializerMethodField()
     is_editable = serializers.SerializerMethodField()
     approved_by_name = serializers.SerializerMethodField()
+    rejected_by_name = serializers.SerializerMethodField()
+    clarifications = ClarificationSerializer(many=True, read_only=True)
 
     class Meta:
         model = EventRequest
@@ -48,6 +88,11 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "approved_by",
             "approved_by_name",
             "approved_at",
+            "rejected_by",
+            "rejected_by_name",
+            "rejected_at",
+            "rejection_reason",
+            "clarifications",
             "missing_mandatory_fields",
             "is_editable",
             "created_at",
@@ -64,12 +109,21 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "assignment_requires_attention",
             "approved_by",
             "approved_at",
+            "rejected_by",
+            "rejected_at",
+            "rejection_reason",
             "created_at",
             "updated_at",
         ]
 
     # The approval decision is visible to internal users only.
-    INTERNAL_ONLY_FIELDS = ("approved_by", "approved_by_name", "approved_at")
+    INTERNAL_ONLY_FIELDS = (
+        "approved_by",
+        "approved_by_name",
+        "approved_at",
+        "rejected_by",
+        "rejected_by_name",
+    )
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -81,6 +135,9 @@ class EventRequestSerializer(serializers.ModelSerializer):
 
     def get_approved_by_name(self, obj) -> str | None:
         return _display_name(obj.approved_by)
+
+    def get_rejected_by_name(self, obj) -> str | None:
+        return _display_name(obj.rejected_by)
 
     def get_status_description(self, obj) -> str:
         return STATUS_DESCRIPTIONS[EventStatus(obj.status)]
@@ -97,7 +154,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
         return obj.missing_mandatory_fields()
 
     def get_is_editable(self, obj) -> bool:
-        return obj.is_draft
+        return obj.status in (EventStatus.DRAFT, EventStatus.UNDER_REVIEW)
 
     # --- field level rules. Only values actually supplied are checked, so that
     # --- an incomplete draft still saves (US-03.1 AC2).

@@ -41,3 +41,12 @@ export const fetchMyEvents = () => request<AssignedEventRow[]>("/api/events/mine
 
 export const approveEvent = (id: number) =>
   request<EventRequest>(`/api/events/${id}/approve/`, { method: "POST" });
+
+export const requestClarification = (id: number, message: string, fields: string[]) =>
+  request<EventRequest>(`/api/events/${id}/request-clarification/`, {
+    method: "POST",
+    body: { message, fields },
+  });
+
+export const rejectEvent = (id: number, reason: string) =>
+  request<EventRequest>(`/api/events/${id}/reject/`, { method: "POST", body: { reason } });

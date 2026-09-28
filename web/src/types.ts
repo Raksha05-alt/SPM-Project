@@ -29,6 +29,16 @@ export type EventStatus =
   | "CANCELLED"
   | "REJECTED";
 
+/** SCRUM-49 - one round of a coordinator asking the client for more information. */
+export interface Clarification {
+  id: number;
+  message: string;
+  fields: string[];
+  requested_by_name: string | null;
+  requested_at: string;
+  resolved_at: string | null;
+}
+
 export interface EventRequest {
   id: number;
   name: string;
@@ -55,6 +65,11 @@ export interface EventRequest {
   /** Approval decision - only sent to internal users. */
   approved_by_name?: string | null;
   approved_at?: string | null;
+  /** SCRUM-52 - the rejection reason and date are shown to the client too. */
+  rejection_reason: string;
+  rejected_at: string | null;
+  rejected_by_name?: string | null;
+  clarifications: Clarification[];
   missing_mandatory_fields: string[];
   is_editable: boolean;
   created_at: string;

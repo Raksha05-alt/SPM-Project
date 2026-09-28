@@ -24,7 +24,7 @@ class EventStatus(models.TextChoices):
 STATUS_DESCRIPTIONS = {
     EventStatus.DRAFT: "Still being written by the client. ConnectSphere cannot see it yet.",
     EventStatus.SUBMITTED: "Sent to ConnectSphere and waiting to be picked up by a coordinator.",
-    EventStatus.UNDER_REVIEW: "A coordinator is checking the request and may ask for more detail.",
+    EventStatus.UNDER_REVIEW: "A coordinator has asked the client for more information before continuing.",
     EventStatus.APPROVED: "ConnectSphere has agreed to plan this event.",
     EventStatus.PLANNING: "Venue, equipment and other arrangements are being made.",
     EventStatus.CONFIRMED: "All essential arrangements are in place. The event is going ahead.",

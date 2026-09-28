@@ -3,11 +3,16 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { approveEvent, getEvent } from "../api/events";
+import { approveEvent, getEvent, rejectEvent, requestClarification } from "../api/events";
 import type { EventRequest } from "../types";
 import { CoordinatorEventDetail } from "./CoordinatorEventDetail";
 
-vi.mock("../api/events", () => ({ getEvent: vi.fn(), approveEvent: vi.fn() }));
+vi.mock("../api/events", () => ({
+  getEvent: vi.fn(),
+  approveEvent: vi.fn(),
+  requestClarification: vi.fn(),
+  rejectEvent: vi.fn(),
+}));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: 2 } }) }));
 
 function event(overrides: Partial<EventRequest> = {}): EventRequest {
@@ -36,6 +41,9 @@ function event(overrides: Partial<EventRequest> = {}): EventRequest {
     assignment_requires_attention: false,
     approved_by_name: null,
     approved_at: null,
+    rejection_reason: "",
+    rejected_at: null,
+    clarifications: [],
     missing_mandatory_fields: [],
     is_editable: false,
     created_at: "2026-09-21T01:00:00Z",
@@ -100,5 +108,103 @@ describe("CoordinatorEventDetail", () => {
 
     expect(await screen.findByRole("heading", { name: "Partner Summit" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve request" })).not.toBeInTheDocument();
+  });
+
+  it("SCRUM-49 AC1: the assigned coordinator sends a clarification request", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event());
+    vi.mocked(requestClarification).mockResolvedValue(
+      event({
+        status: "UNDER_REVIEW",
+        status_label: "Awaiting Clarification",
+        clarifications: [
+          {
+            id: 1,
+            message: "How many wheelchair users?",
+            fields: ["accessibility_needs"],
+            requested_by_name: "Cora Coordinator",
+            requested_at: "2026-09-29T01:00:00Z",
+            resolved_at: null,
+          },
+        ],
+      }),
+    );
+
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Request clarification" }));
+    await userEvent.type(
+      screen.getByLabelText("What do you need from the client?"),
+      "How many wheelchair users?",
+    );
+    await userEvent.click(screen.getByLabelText("Accessibility needs"));
+    await userEvent.click(screen.getByRole("button", { name: "Send to client" }));
+
+    expect(requestClarification).toHaveBeenCalledWith(9, "How many wheelchair users?", [
+      "accessibility_needs",
+    ]);
+    expect(await screen.findByText("Clarification history")).toBeInTheDocument();
+    expect(screen.getByText(/awaiting answer/)).toBeInTheDocument();
+  });
+
+  it("SCRUM-49 AC4: a clarification request without a message is not sent", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event());
+
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Request clarification" }));
+    await userEvent.click(screen.getByRole("button", { name: "Send to client" }));
+
+    expect(screen.getByText("Say what information is needed.")).toBeInTheDocument();
+    expect(requestClarification).not.toHaveBeenCalled();
+  });
+
+  it("offers no clarification request once the event is not Submitted", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event({ status: "APPROVED", status_label: "Approved" }));
+
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Partner Summit" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Request clarification" })).not.toBeInTheDocument();
+  });
+
+  it("SCRUM-52 AC1: the assigned coordinator rejects with a reason", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event());
+    vi.mocked(rejectEvent).mockResolvedValue(
+      event({
+        status: "REJECTED",
+        status_label: "Rejected",
+        rejection_reason: "Venue unavailable for 500 people.",
+        rejected_at: "2026-09-29T03:00:00Z",
+        rejected_by_name: "Cora Coordinator",
+      }),
+    );
+
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Reject request" }));
+    await userEvent.type(
+      screen.getByLabelText("Why can ConnectSphere not support this request?"),
+      "Venue unavailable for 500 people.",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Confirm rejection" }));
+
+    expect(rejectEvent).toHaveBeenCalledWith(9, "Venue unavailable for 500 people.");
+    expect(
+      await screen.findByText("Reason: Venue unavailable for 500 people."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/by Cora Coordinator/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve request" })).not.toBeInTheDocument();
+  });
+
+  it("SCRUM-52 AC2: a rejection without a reason is blocked", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event());
+
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Reject request" }));
+    await userEvent.type(
+      screen.getByLabelText("Why can ConnectSphere not support this request?"),
+      "   ",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Confirm rejection" }));
+
+    expect(screen.getByText("Enter a reason for the rejection.")).toBeInTheDocument();
+    expect(rejectEvent).not.toHaveBeenCalled();
   });
 });
