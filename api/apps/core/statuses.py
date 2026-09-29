@@ -24,13 +24,27 @@ class EventStatus(models.TextChoices):
 STATUS_DESCRIPTIONS = {
     EventStatus.DRAFT: "Still being written by the client. ConnectSphere cannot see it yet.",
     EventStatus.SUBMITTED: "Sent to ConnectSphere and waiting to be picked up by a coordinator.",
-    EventStatus.UNDER_REVIEW: "A coordinator is checking the request and may ask for more detail.",
+    EventStatus.UNDER_REVIEW: "A coordinator has asked the client for more information before continuing.",
     EventStatus.APPROVED: "ConnectSphere has agreed to plan this event.",
     EventStatus.PLANNING: "Venue, equipment and other arrangements are being made.",
     EventStatus.CONFIRMED: "All essential arrangements are in place. The event is going ahead.",
     EventStatus.COMPLETED: "The event has taken place and has been closed.",
     EventStatus.CANCELLED: "The event will not go ahead. Any arrangements have been released.",
     EventStatus.REJECTED: "ConnectSphere is not able to support this request.",
+}
+
+# SCRUM-54 - what the assigned coordinator has to do next, and whether that
+# step is theirs to take (True) or they are waiting on someone else (False).
+COORDINATOR_NEXT_ACTIONS: dict[str, tuple[str, bool]] = {
+    EventStatus.DRAFT: ("No action - the client is still writing the request.", False),
+    EventStatus.SUBMITTED: ("Review the request and approve, reject or ask for detail.", True),
+    EventStatus.UNDER_REVIEW: ("Waiting for the client to answer your questions.", False),
+    EventStatus.APPROVED: ("Start planning the venue and equipment.", True),
+    EventStatus.PLANNING: ("Finish the arrangements and confirm the event.", True),
+    EventStatus.CONFIRMED: ("Run the event, then mark it completed.", False),
+    EventStatus.COMPLETED: ("No action - the event is closed.", False),
+    EventStatus.CANCELLED: ("No action - the event was cancelled.", False),
+    EventStatus.REJECTED: ("No action - the request was rejected.", False),
 }
 
 # US-06.1 AC4 - statuses that describe internal planning are not shown to
@@ -77,6 +91,9 @@ ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     EventStatus.CANCELLED: frozenset(),
     EventStatus.REJECTED: frozenset(),
 }
+
+# Approve a submitted request - a coordinator may approve only from these.
+REVIEWABLE_STATUSES = frozenset({EventStatus.SUBMITTED, EventStatus.UNDER_REVIEW})
 
 TERMINAL_STATUSES = frozenset({EventStatus.COMPLETED, EventStatus.CANCELLED, EventStatus.REJECTED})
 

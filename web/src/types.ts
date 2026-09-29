@@ -29,6 +29,16 @@ export type EventStatus =
   | "CANCELLED"
   | "REJECTED";
 
+/** SCRUM-49 - one round of a coordinator asking the client for more information. */
+export interface Clarification {
+  id: number;
+  message: string;
+  fields: string[];
+  requested_by_name: string | null;
+  requested_at: string;
+  resolved_at: string | null;
+}
+
 export interface EventRequest {
   id: number;
   name: string;
@@ -48,9 +58,18 @@ export interface EventRequest {
   submitted_at: string | null;
   organisation_name: string;
   created_by_name: string;
+  coordinator: number | null;
   coordinator_name: string | null;
   coordinator_email: string | null;
   assignment_requires_attention: boolean;
+  /** Approval decision - only sent to internal users. */
+  approved_by_name?: string | null;
+  approved_at?: string | null;
+  /** SCRUM-52 - the rejection reason and date are shown to the client too. */
+  rejection_reason: string;
+  rejected_at: string | null;
+  rejected_by_name?: string | null;
+  clarifications: Clarification[];
   missing_mandatory_fields: string[];
   is_editable: boolean;
   created_at: string;
@@ -67,8 +86,17 @@ export interface QueueRow {
   status_label: string;
   status_description: string;
   submitted_at: string | null;
+  coordinator: number | null;
   coordinator_name: string | null;
   assignment_requires_attention: boolean;
+  approved_by_name: string | null;
+  approved_at: string | null;
+}
+
+/** SCRUM-54 - one of the signed-in coordinator's own events. */
+export interface AssignedEventRow extends QueueRow {
+  next_action: string;
+  requires_action: boolean;
 }
 
 export interface AssignmentNotification {

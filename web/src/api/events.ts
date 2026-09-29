@@ -1,5 +1,5 @@
 import { request } from "./client";
-import type { AttendeeEvent, EventRequest, QueueRow } from "../types";
+import type { AssignedEventRow, AttendeeEvent, EventRequest, QueueRow } from "../types";
 
 export type EventDraft = Partial<
   Pick<
@@ -36,3 +36,17 @@ export const submitEvent = (id: number) =>
   request<EventRequest>(`/api/events/${id}/submit/`, { method: "POST" });
 
 export const fetchQueue = () => request<QueueRow[]>("/api/events/queue/");
+
+export const fetchMyEvents = () => request<AssignedEventRow[]>("/api/events/mine/");
+
+export const approveEvent = (id: number) =>
+  request<EventRequest>(`/api/events/${id}/approve/`, { method: "POST" });
+
+export const requestClarification = (id: number, message: string, fields: string[]) =>
+  request<EventRequest>(`/api/events/${id}/request-clarification/`, {
+    method: "POST",
+    body: { message, fields },
+  });
+
+export const rejectEvent = (id: number, reason: string) =>
+  request<EventRequest>(`/api/events/${id}/reject/`, { method: "POST", body: { reason } });

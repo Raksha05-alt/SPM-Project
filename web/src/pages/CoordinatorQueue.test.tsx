@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchQueue } from "../api/events";
 import { CoordinatorQueue } from "./CoordinatorQueue";
@@ -12,7 +13,9 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <CoordinatorQueue />
+      <MemoryRouter>
+        <CoordinatorQueue />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -32,8 +35,11 @@ describe("CoordinatorQueue", () => {
         status_label: "Submitted",
         status_description: "Sent to ConnectSphere for review.",
         submitted_at: "2026-09-22T01:00:00Z",
+        coordinator: null,
         coordinator_name: null,
         assignment_requires_attention: true,
+        approved_by_name: null,
+        approved_at: null,
       },
     ]);
 
