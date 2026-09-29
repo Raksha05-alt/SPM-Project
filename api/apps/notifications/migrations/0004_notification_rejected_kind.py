@@ -5,25 +5,38 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('events', '0006_eventrequest_rejection'),
-        ('notifications', '0003_notification_clarification_kinds'),
+        ("events", "0006_eventrequest_rejection"),
+        ("notifications", "0003_notification_clarification_kinds"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.RemoveConstraint(
-            model_name='notification',
-            name='unique_notification_per_kind',
+            model_name="notification",
+            name="unique_notification_per_kind",
         ),
         migrations.AlterField(
-            model_name='notification',
-            name='kind',
-            field=models.CharField(choices=[('ASSIGNMENT', 'Coordinator assigned'), ('APPROVED', 'Request approved'), ('CLARIFICATION', 'Clarification requested'), ('RESUBMITTED', 'Request resubmitted'), ('REJECTED', 'Request rejected')], default='ASSIGNMENT', max_length=20),
+            model_name="notification",
+            name="kind",
+            field=models.CharField(
+                choices=[
+                    ("ASSIGNMENT", "Coordinator assigned"),
+                    ("APPROVED", "Request approved"),
+                    ("CLARIFICATION", "Clarification requested"),
+                    ("RESUBMITTED", "Request resubmitted"),
+                    ("REJECTED", "Request rejected"),
+                ],
+                default="ASSIGNMENT",
+                max_length=20,
+            ),
         ),
         migrations.AddConstraint(
-            model_name='notification',
-            constraint=models.UniqueConstraint(condition=models.Q(('kind__in', ('ASSIGNMENT', 'APPROVED', 'REJECTED'))), fields=('recipient', 'event', 'kind'), name='unique_notification_per_kind'),
+            model_name="notification",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("kind__in", ("ASSIGNMENT", "APPROVED", "REJECTED"))),
+                fields=("recipient", "event", "kind"),
+                name="unique_notification_per_kind",
+            ),
         ),
     ]

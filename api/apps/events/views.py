@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import status as http
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
@@ -97,6 +98,28 @@ class EventRequestViewSet(ModelViewSet):
         if user.organisation_id is None:
             raise PermissionDenied("Your account is not linked to a client organisation.")
         serializer.save(created_by=user, organisation=user.organisation)
+
+    def perform_update(self, serializer):
+        """Serialize organiser saves with submissions and coordinator decisions."""
+        denied = None
+        with transaction.atomic():
+            # Lock only the event row, without the nullable joins in get_object.
+            locked = EventRequest.objects.select_for_update().get(pk=serializer.instance.pk)
+            try:
+                self.check_object_permissions(self.request, locked)
+            except PermissionDenied as exc:
+                # Commit the permission class's audit row before returning 403.
+                denied = exc
+            else:
+                # Validate partial updates against current values, then save the
+                # fresh instance so stale status/decision fields cannot return.
+                current = self.get_serializer(
+                    locked, data=serializer.initial_data, partial=serializer.partial
+                )
+                current.is_valid(raise_exception=True)
+                serializer.instance = current.save()
+        if denied is not None:
+            raise denied
 
     def perform_destroy(self, instance):
         # US-03.1 AC6 - a draft may be deleted; anything submitted may not.
