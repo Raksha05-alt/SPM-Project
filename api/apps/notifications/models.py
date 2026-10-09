@@ -47,6 +47,8 @@ class Notification(models.Model):
     )
     message = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    # SCRUM-82 AC2 - when the recipient opened it; unread while empty.
+    read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at", "-pk"]
