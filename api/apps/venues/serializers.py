@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from apps.events.models import RoomLayout
-from apps.venues.models import Venue
+from apps.venues.models import Venue, VenueBlock
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -122,4 +122,44 @@ class VenueSerializer(serializers.ModelSerializer):
         closes = attrs.get("closes_at", getattr(self.instance, "closes_at", None))
         if opens and closes and closes <= opens:
             raise serializers.ValidationError({"closes_at": "Closing time must be after opening."})
+        return attrs
+
+
+class VenueBlockSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+    venue_name = serializers.CharField(source="venue.name", read_only=True)
+
+    class Meta:
+        model = VenueBlock
+        fields = [
+            "id",
+            "venue",
+            "venue_name",
+            "start",
+            "end",
+            "reason",
+            "created_by_name",
+            "created_at",
+            "updated_by_name",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "venue", "created_at", "updated_at"]
+
+    def get_created_by_name(self, obj) -> str | None:
+        return _name(obj.created_by)
+
+    def get_updated_by_name(self, obj) -> str | None:
+        return _name(obj.updated_by)
+
+    def validate_reason(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Say why the venue is unavailable.")
+        return value.strip()
+
+    def validate(self, attrs):
+        start = attrs.get("start", getattr(self.instance, "start", None))
+        end = attrs.get("end", getattr(self.instance, "end", None))
+        if start and end and end <= start:
+            raise serializers.ValidationError({"end": "The block must end after it starts."})
         return attrs

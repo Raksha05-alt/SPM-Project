@@ -142,3 +142,25 @@ class VenueBooking(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.venue} for event {self.event_id} ({self.get_status_display()})"
+
+
+class VenueShortlist(models.Model):
+    """SCRUM-68 - venues a coordinator is considering for an event."""
+
+    event = models.ForeignKey(
+        "events.EventRequest", on_delete=models.CASCADE, related_name="venue_shortlist"
+    )
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name="+")
+    added_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["added_at", "pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["event", "venue"], name="unique_shortlisted_venue")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.venue} shortlisted for event {self.event_id}"
