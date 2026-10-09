@@ -60,6 +60,10 @@ class VenueSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+        # SCRUM-65 AC3.
+        extra_kwargs = {
+            "capacity": {"error_messages": {"min_value": "Capacity must be at least one person."}}
+        }
 
     def get_layout_labels(self, obj) -> list[str]:
         return [RoomLayout(value).label for value in obj.layouts if value in RoomLayout.values]
@@ -87,12 +91,6 @@ class VenueSerializer(serializers.ModelSerializer):
 
     def get_updated_by_name(self, obj) -> str | None:
         return _name(obj.updated_by)
-
-    def validate_capacity(self, value):
-        # SCRUM-65 AC3.
-        if value is None or value <= 0:
-            raise serializers.ValidationError("Capacity must be at least one person.")
-        return value
 
     def validate_layouts(self, value):
         unknown = [v for v in value if v not in RoomLayout.values]
@@ -146,17 +144,20 @@ class VenueBlockSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "venue", "created_at", "updated_at"]
+        extra_kwargs = {
+            "reason": {
+                "error_messages": {
+                    "blank": "Say why the venue is unavailable.",
+                    "required": "Say why the venue is unavailable.",
+                }
+            }
+        }
 
     def get_created_by_name(self, obj) -> str | None:
         return _name(obj.created_by)
 
     def get_updated_by_name(self, obj) -> str | None:
         return _name(obj.updated_by)
-
-    def validate_reason(self, value):
-        if not value.strip():
-            raise serializers.ValidationError("Say why the venue is unavailable.")
-        return value.strip()
 
     def validate(self, attrs):
         start = attrs.get("start", getattr(self.instance, "start", None))

@@ -64,8 +64,7 @@ def _operating_edges(venue, start, end):
 
 
 def _within_hours(venue, a, b) -> bool:
-    if venue.opens_at is None or venue.closes_at is None:
-        return False
+    """Whether [a, b) lies inside one day's opening hours. Hours must be recorded."""
     local = a.astimezone(SINGAPORE)
     closes = datetime.combine(local.date(), venue.closes_at, tzinfo=SINGAPORE)
     return (

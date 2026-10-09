@@ -130,3 +130,28 @@ def test_ac4_a_venue_change_marks_the_booking_for_review(signed_in_coordinator, 
     assert booking.review_required is True
     assert booking.review_reason == "The event's expected attendance changed."
     assert item.review_required is False
+
+
+@pytest.mark.django_db
+def test_a_new_time_with_too_little_equipment_says_so(
+    signed_in_coordinator, organiser, coordinator, setup
+):
+    from apps.core.statuses import EventStatus
+    from apps.equipment.tests.conftest import hold
+    from conftest import make_event
+
+    event, _, item, _ = setup
+    rival = make_event(organiser, status=EventStatus.CONFIRMED, coordinator=coordinator)
+    hold(rival, item.equipment_type, 4, event.preferred_start + HOUR, event.preferred_end + HOUR)
+
+    patch(
+        signed_in_coordinator,
+        event,
+        {
+            "preferred_start": iso(event.preferred_start + HOUR),
+            "preferred_end": iso(event.preferred_end + HOUR),
+        },
+    )
+
+    item.refresh_from_db()
+    assert item.review_reason == "Only 1 available in the new period; 3 reserved."
