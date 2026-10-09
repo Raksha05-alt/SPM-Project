@@ -23,3 +23,15 @@ def test_seeding_twice_does_not_duplicate_anything():
 
     assert User.objects.count() == 6
     assert EventRequest.objects.count() == 3
+
+
+@pytest.mark.django_db
+def test_seeding_adds_venues_and_equipment_once():
+    from apps.equipment.models import EquipmentType
+    from apps.venues.models import Venue
+
+    call_command("seed_demo_data")
+    call_command("seed_demo_data")
+
+    assert Venue.objects.count() == 3
+    assert EquipmentType.objects.count() == 4
