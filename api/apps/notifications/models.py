@@ -13,6 +13,10 @@ class NotificationKind(models.TextChoices):
     BOOKING_REQUESTED = "BOOKING_REQUESTED", "Venue booking requested"
     BOOKING_DECIDED = "BOOKING_DECIDED", "Venue booking decided"
     BOOKING_WITHDRAWN = "BOOKING_WITHDRAWN", "Venue booking withdrawn"
+    EQUIPMENT_REQUESTED = "EQUIPMENT_REQUESTED", "Equipment requested"
+    EQUIPMENT_CHANGED = "EQUIPMENT_CHANGED", "Equipment request changed"
+    EQUIPMENT_RESERVED = "EQUIPMENT_RESERVED", "Equipment reserved"
+    EQUIPMENT_RELEASED = "EQUIPMENT_RELEASED", "Equipment released"
 
 
 # Sent at most once per recipient and event. Clarification rounds can repeat.
