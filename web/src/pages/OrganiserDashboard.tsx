@@ -1,13 +1,52 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { listEvents } from "../api/events";
+import { listOrganiserEvents } from "../api/organiser";
+import { inputClass } from "../components/Field";
 import { StatusBadge } from "../components/StatusBadge";
+import type { EventStatus } from "../types";
+
+/** SCRUM-45 / SCRUM-57 - the statuses an organiser can narrow the list to. */
+const STATUS_OPTIONS: Array<{ value: EventStatus; label: string }> = [
+  { value: "DRAFT", label: "Draft" },
+  { value: "SUBMITTED", label: "Submitted" },
+  { value: "UNDER_REVIEW", label: "Awaiting Clarification" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "PLANNING", label: "Planning" },
+  { value: "CONFIRMED", label: "Confirmed" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "CANCELLED", label: "Cancelled" },
+  { value: "REJECTED", label: "Rejected" },
+];
 
 export function OrganiserDashboard() {
+  const [status, setStatus] = useState<EventStatus | "">("");
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["events"],
-    queryFn: listEvents,
+    queryKey: ["events", "list", status],
+    queryFn: () => listOrganiserEvents(status ? [status] : []),
+    placeholderData: keepPreviousData,
   });
+
+  const filter = (
+    <div className="mb-6 max-w-xs">
+      <label htmlFor="status-filter" className="mb-1 block text-sm font-medium text-slate-700">
+        Filter by status
+      </label>
+      <select
+        id="status-filter"
+        className={inputClass}
+        value={status}
+        onChange={(e) => setStatus(e.target.value as EventStatus | "")}
+      >
+        <option value="">All statuses</option>
+        {STATUS_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 
   if (isLoading) return <p className="text-slate-500">Loading your event requests…</p>;
   if (isError) return <p role="alert">We could not load your event requests.</p>;
@@ -28,9 +67,13 @@ export function OrganiserDashboard() {
         </Link>
       </div>
 
+      {filter}
+
       {events.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 p-8 text-center text-slate-500">
-          You have no event requests yet. Start one and save it as a draft whenever you like.
+          {status
+            ? "No event requests have this status."
+            : "You have no event requests yet. Start one and save it as a draft whenever you like."}
         </p>
       )}
 

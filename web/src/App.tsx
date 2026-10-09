@@ -10,7 +10,13 @@ import { AttendeeEvents } from "./pages/AttendeeEvents";
 import { EventRequestForm } from "./pages/EventRequestForm";
 import { LoginPage } from "./pages/LoginPage";
 import { OrganiserDashboard } from "./pages/OrganiserDashboard";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { AccountPage } from "./pages/AccountPage";
+import { MyRegistrations } from "./pages/MyRegistrations";
+import { EquipmentAvailability } from "./pages/tech/EquipmentAvailability";
+import { EquipmentRequests } from "./pages/tech/EquipmentRequests";
+import { VenueBookingInbox } from "./pages/venue/VenueBookingInbox";
+import { VenueCatalogue } from "./pages/venue/VenueCatalogue";
+import { VenueDetail } from "./pages/venue/VenueDetail";
 
 function Home() {
   const { user, loading } = useAuth();
@@ -78,7 +84,23 @@ export default function App() {
             path="/venues"
             element={
               <RequireRole roles={["VENUE_STAFF"]}>
-                <PlaceholderPage title="Venues" sprint="sprint 2" />
+                <VenueCatalogue />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/venues/bookings"
+            element={
+              <RequireRole roles={["VENUE_STAFF"]}>
+                <VenueBookingInbox />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/venues/:id"
+            element={
+              <RequireRole roles={["VENUE_STAFF"]}>
+                <VenueDetail />
               </RequireRole>
             }
           />
@@ -86,7 +108,15 @@ export default function App() {
             path="/equipment"
             element={
               <RequireRole roles={["TECH_SUPPORT"]}>
-                <PlaceholderPage title="Equipment" sprint="sprint 4" />
+                <EquipmentRequests />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/equipment/availability"
+            element={
+              <RequireRole roles={["TECH_SUPPORT"]}>
+                <EquipmentAvailability />
               </RequireRole>
             }
           />
@@ -95,6 +125,22 @@ export default function App() {
             element={
               <RequireRole roles={["ATTENDEE"]}>
                 <AttendeeEvents />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/events/mine"
+            element={
+              <RequireRole roles={["ATTENDEE"]}>
+                <MyRegistrations />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/account"
+            element={
+              <RequireRole>
+                <AccountPage />
               </RequireRole>
             }
           />

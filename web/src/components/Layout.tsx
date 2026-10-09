@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Notifications } from "./Notifications";
 
@@ -12,6 +13,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {user && (
             <div className="flex items-center gap-4 text-sm">
               <Notifications key={user.id} userId={user.id} />
+              <Link to="/account" className="text-navy-700 underline">
+                My account
+              </Link>
               <span className="text-slate-600">
                 {user.first_name} {user.last_name} · {user.role_label}
                 {user.organisation_name ? ` · ${user.organisation_name}` : ""}

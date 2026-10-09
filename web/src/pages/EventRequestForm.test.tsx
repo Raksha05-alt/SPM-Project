@@ -14,6 +14,10 @@ vi.mock("../api/events", () => ({
   submitEvent: vi.fn(),
 }));
 
+vi.mock("../components/organiser/EventFollowUp", () => ({
+  EventFollowUp: ({ event }: { event: { id: number } }) => <p>Follow-up for event {event.id}</p>,
+}));
+
 function awaitingClarification(): EventRequest {
   return {
     id: 4,
@@ -135,5 +139,22 @@ describe("EventRequestForm awaiting clarification", () => {
     expect(
       screen.queryByRole("button", { name: /Resubmit|Send to ConnectSphere/ }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("SCRUM-20 / SCRUM-56 follow-up on a submitted event", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("AC1: shows the follow-up panel once the event has been submitted", async () => {
+    vi.mocked(getEvent).mockResolvedValue({ ...awaitingClarification(), status: "PLANNING" });
+    renderPage();
+    expect(await screen.findByText("Follow-up for event 4")).toBeInTheDocument();
+  });
+
+  it("AC1: does not show the follow-up panel on a draft", async () => {
+    vi.mocked(getEvent).mockResolvedValue({ ...awaitingClarification(), status: "DRAFT" });
+    renderPage();
+    expect(await screen.findByDisplayValue("Partner Summit")).toBeInTheDocument();
+    expect(screen.queryByText(/Follow-up for event/)).not.toBeInTheDocument();
   });
 });

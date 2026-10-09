@@ -9,6 +9,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { CoordinatorAssignment } from "../components/CoordinatorAssignment";
 import { RejectionNotice } from "../components/RejectionNotice";
 import { ClarificationHistory, OpenClarification } from "../components/Clarifications";
+import { EventFollowUp } from "../components/organiser/EventFollowUp";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Event name",
@@ -294,6 +295,9 @@ export function EventRequestForm() {
       )}
 
       {existing && <ClarificationHistory clarifications={existing.clarifications ?? []} />}
+
+      {/* SCRUM-20 / 56 / 58 / 14 - follow-up on an event already sent to ConnectSphere. */}
+      {existing && existing.status !== "DRAFT" && <EventFollowUp event={existing} />}
     </div>
   );
 }
