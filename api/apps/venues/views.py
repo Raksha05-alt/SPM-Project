@@ -22,6 +22,7 @@ from apps.venues.bookings import (
     approve_booking,
     reject_booking,
     request_booking,
+    review_booking,
     withdraw_booking,
 )
 from apps.venues.matching import compare_venue, satisfies_all
@@ -31,6 +32,7 @@ from apps.venues.serializers import (
     BookingRequestSerializer,
     BookingSerializer,
     RejectBookingSerializer,
+    ReviewInputSerializer,
     VenueBlockSerializer,
     VenueSerializer,
 )
@@ -367,6 +369,7 @@ class VenueBookingViewSet(ReadOnlyModelViewSet):
             "decided_by",
             "withdrawn_by",
             "suggested_venue",
+            "reviewed_by",
         ).exclude(event__status=EventStatus.DRAFT)
         params = self.request.query_params
         if params.get("status"):
@@ -437,6 +440,21 @@ class VenueBookingViewSet(ReadOnlyModelViewSet):
             action_name,
             booking,
             lambda: reject_booking(booking, request.user, reason, data, acknowledge),
+        )
+
+    @action(detail=True, methods=["post"])
+    def review(self, request, pk=None):
+        """SCRUM-80 AC2 / AC3 - record the outcome of reviewing a flagged booking."""
+        booking = self.get_object()
+        action_name = f"POST /api/venue-bookings/{booking.pk}/review/"
+        require_venue_staff(request, action_name, booking)
+        data = ReviewInputSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return self._run(
+            request,
+            action_name,
+            booking,
+            lambda: review_booking(booking, request.user, **data.validated_data),
         )
 
     @action(detail=True, methods=["post"])

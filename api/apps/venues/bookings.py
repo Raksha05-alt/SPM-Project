@@ -38,24 +38,25 @@ def overlapping_blocks(venue, start, end):
     return venue.active_blocks().filter(start__lt=end, end__gt=start)
 
 
-def conflicts_for(booking: VenueBooking):
-    """SCRUM-69 - confirmed bookings of other events that overlap this one.
+def clashes(venue_id, start, end, *, event_id):
+    """Confirmed bookings of other events at this venue overlapping [start, end).
 
     Half-open periods: a booking that ends exactly when another starts does not
     clash. Bookings of cancelled events have been released, so they never count.
     """
     return (
         VenueBooking.objects.filter(
-            venue_id=booking.venue_id,
-            status=BookingStatus.APPROVED,
-            start__lt=booking.end,
-            end__gt=booking.start,
+            venue_id=venue_id, status=BookingStatus.APPROVED, start__lt=end, end__gt=start
         )
-        .exclude(pk=booking.pk)
-        .exclude(event_id=booking.event_id)
+        .exclude(event_id=event_id)
         .exclude(event__status=EventStatus.CANCELLED)
         .select_related("event")
     )
+
+
+def conflicts_for(booking: VenueBooking):
+    """SCRUM-69 - confirmed bookings of other events that overlap this one."""
+    return clashes(booking.venue_id, booking.start, booking.end, event_id=booking.event_id)
 
 
 def _check_bookable(event: EventRequest, user):
@@ -156,6 +157,16 @@ def approve_booking(booking: VenueBooking, user) -> VenueBooking:
         f'{booking.venue.name} is confirmed for "{event.name}" '
         f"({timezone.localtime(booking.start):%d %b %Y %H:%M}).",
     )
+    if event.status == EventStatus.CONFIRMED:
+        # SCRUM-18 AC1 - a confirmed event's venue changed.
+        from apps.events.impact import describe_for_attendees, registered_attendees
+
+        notify(
+            registered_attendees(event),
+            event,
+            NotificationKind.EVENT_CHANGED,
+            f'The venue for "{event.name}" has changed. {describe_for_attendees(event)}',
+        )
     return booking
 
 
@@ -293,3 +304,72 @@ def conflict_row(booking: VenueBooking) -> dict:
         "start": booking.start,
         "end": booking.end,
     }
+
+
+def _period(start, end) -> str:
+    return f"{timezone.localtime(start):%d %b %Y %H:%M} to {timezone.localtime(end):%d %b %Y %H:%M}"
+
+
+@transaction.atomic
+def review_booking(
+    booking: VenueBooking, user, *, accommodated: bool, note="", start=None, end=None
+):
+    """SCRUM-80 AC2 / AC3 - Venue Staff record how a flagged booking follows the change."""
+    from apps.events.impact import describe_for_attendees, registered_attendees
+    from apps.events.models import EventChangeLog
+
+    booking = _locked(booking)
+    event = booking.event
+    if not booking.review_required:
+        raise BookingRefused("This booking does not need review.")
+    note = (note or "").strip()
+    previous = _period(booking.start, booking.end)
+    if accommodated:
+        start = start or booking.review_start or booking.start
+        end = end or booking.review_end or booking.end
+        if end <= start:
+            raise BookingRefused("The revised period must end after it starts.", status=400)
+        clashing = list(clashes(booking.venue_id, start, end, event_id=booking.event_id))
+        if clashing or overlapping_blocks(booking.venue, start, end).exists():
+            raise BookingRefused(
+                "The revised period is not free at this venue.",
+                conflicts=[conflict_row(c) for c in clashing],
+            )
+        moved = (start, end) != (booking.start, booking.end)
+        booking.start, booking.end = start, end
+        booking.review_required = False
+        booking.review_start = booking.review_end = None
+        outcome = f"Revised to {_period(start, end)}." + (f" {note}" if note else "")
+    else:
+        if not note:
+            raise BookingRefused("Explain why the change cannot be accommodated.", status=400)
+        moved = False
+        outcome = f"Could not accommodate the change: {note}"
+    booking.reviewed_by = user
+    booking.reviewed_at = timezone.now()
+    booking.review_outcome = outcome
+    booking.save()
+    EventChangeLog.objects.create(
+        event=event,
+        field=f"Venue booking: {booking.venue.name}"[:60],
+        previous_value=previous,
+        new_value=outcome,
+        changed_by=user,
+        significant=True,
+    )
+    message = f'Venue Staff reviewed {booking.venue.name} for "{event.name}". {outcome}'
+    if not accommodated:
+        message += (
+            " The original booking stays in place until the client and ConnectSphere agree to "
+            "keep it, choose another option, or cancel and submit a new request."
+        )
+    notify([event.created_by, event.coordinator], event, NotificationKind.REVIEW_OUTCOME, message)
+    if moved and event.status == EventStatus.CONFIRMED:
+        # SCRUM-80 AC4 / SCRUM-18 - registered Attendees hear about the revised arrangement.
+        notify(
+            registered_attendees(event),
+            event,
+            NotificationKind.EVENT_CHANGED,
+            f'The arrangements for "{event.name}" have changed. {describe_for_attendees(event)}',
+        )
+    return booking

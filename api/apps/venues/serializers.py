@@ -219,6 +219,7 @@ class BookingSerializer(serializers.ModelSerializer):
     requested_by_name = serializers.SerializerMethodField()
     decided_by_name = serializers.SerializerMethodField()
     withdrawn_by_name = serializers.SerializerMethodField()
+    reviewed_by_name = serializers.SerializerMethodField()
     suggested_venue_name = serializers.SerializerMethodField()
     conflicts = serializers.SerializerMethodField()
 
@@ -254,6 +255,11 @@ class BookingSerializer(serializers.ModelSerializer):
             "withdrawn_at",
             "review_required",
             "review_reason",
+            "review_start",
+            "review_end",
+            "reviewed_by_name",
+            "reviewed_at",
+            "review_outcome",
             "conflicts",
             "created_at",
         ]
@@ -267,6 +273,9 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def get_withdrawn_by_name(self, obj):
         return _name(obj.withdrawn_by)
+
+    def get_reviewed_by_name(self, obj):
+        return _name(obj.reviewed_by)
 
     def get_suggested_venue_name(self, obj):
         return obj.suggested_venue.name if obj.suggested_venue else None
@@ -289,3 +298,14 @@ class RejectBookingSerializer(serializers.Serializer):
     suggested_end = serializers.DateTimeField(required=False, allow_null=True)
     suggestion_note = serializers.CharField(required=False, allow_blank=True, default="")
     acknowledge_warning = serializers.BooleanField(required=False, default=False)
+
+
+class ReviewInputSerializer(serializers.Serializer):
+    """SCRUM-80 - staff record whether an affected arrangement can follow the change."""
+
+    accommodated = serializers.BooleanField(
+        error_messages={"required": "Say whether the change can be accommodated."}
+    )
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+    start = serializers.DateTimeField(required=False, allow_null=True, default=None)
+    end = serializers.DateTimeField(required=False, allow_null=True, default=None)

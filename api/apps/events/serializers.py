@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from apps.core.statuses import COORDINATOR_NEXT_ACTIONS, STATUS_DESCRIPTIONS, EventStatus
 from apps.events.models import (
+    ChangeRequest,
     ClarificationRequest,
     CoordinatorAssignment,
     EventChangeLog,
@@ -412,3 +413,72 @@ class AssignedEventSerializer(EventQueueSerializer):
 
     def get_requires_action(self, obj) -> bool:
         return COORDINATOR_NEXT_ACTIONS[EventStatus(obj.status)][1]
+
+
+class ChangeRequestSerializer(serializers.ModelSerializer):
+    """SCRUM-20 - what the client wants changed and why, and the decision on it."""
+
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    requested_by_name = serializers.SerializerMethodField()
+    decided_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChangeRequest
+        fields = [
+            "id",
+            "event",
+            "description",
+            "reason",
+            "proposed_start",
+            "proposed_end",
+            "proposed_attendance",
+            "proposed_layout",
+            "proposed_accessibility_needs",
+            "proposed_equipment_notes",
+            "status",
+            "status_display",
+            "requested_by_name",
+            "created_at",
+            "decided_by_name",
+            "decided_at",
+            "decision_reason",
+        ]
+        read_only_fields = [
+            "id",
+            "event",
+            "status",
+            "created_at",
+            "decided_at",
+            "decision_reason",
+        ]
+        extra_kwargs = {
+            "description": {
+                "error_messages": {
+                    "required": "Describe the change you want.",
+                    "blank": "Describe the change you want.",
+                }
+            },
+            "proposed_attendance": {
+                "error_messages": {"min_value": "Expected attendance must be at least one person."}
+            },
+        }
+
+    def get_requested_by_name(self, obj) -> str | None:
+        return _display_name(obj.requested_by)
+
+    def get_decided_by_name(self, obj) -> str | None:
+        return _display_name(obj.decided_by)
+
+    def validate_proposed_attendance(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Expected attendance must be at least one person.")
+        return value
+
+    def validate_proposed_start(self, value):
+        if value is not None and value < timezone.now():
+            raise serializers.ValidationError("The new start cannot be in the past.")
+        return value
+
+
+class DecisionInputSerializer(serializers.Serializer):
+    reason = serializers.CharField(allow_blank=True, required=False, default="")

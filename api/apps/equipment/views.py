@@ -12,7 +12,11 @@ from apps.core.audit import record, record_denied
 from apps.core.permissions import HasAnyRole
 from apps.core.statuses import EventStatus
 from apps.equipment.models import EquipmentRequest, EquipmentReservation, EquipmentType
-from apps.equipment.serializers import EquipmentRequestSerializer, EquipmentTypeSerializer
+from apps.equipment.serializers import (
+    EquipmentRequestSerializer,
+    EquipmentReviewInputSerializer,
+    EquipmentTypeSerializer,
+)
 from apps.equipment.services import (
     EquipmentRefused,
     NotAllowed,
@@ -23,6 +27,7 @@ from apps.equipment.services import (
     mark_unavailable,
     release,
     reserve,
+    review_request,
     withdraw_request,
 )
 from apps.events.models import EventRequest
@@ -123,7 +128,9 @@ class EquipmentRequestViewSet(CreateModelMixin, UpdateModelMixin, ReadOnlyModelV
     def get_queryset(self):
         requests = (
             EquipmentRequest.objects.exclude(event__status=EventStatus.DRAFT)
-            .select_related("event", "equipment_type", "requested_by", "withdrawn_by")
+            .select_related(
+                "event", "equipment_type", "requested_by", "withdrawn_by", "reviewed_by"
+            )
             .prefetch_related("reservations__reserved_by", "reservations__released_by", "changes")
         )
         event_id = self.request.query_params.get("event")
@@ -194,6 +201,18 @@ class EquipmentRequestViewSet(CreateModelMixin, UpdateModelMixin, ReadOnlyModelV
             action_name,
             item,
             lambda: mark_unavailable(item, request.user, request.data.get("reason", "")),
+        )
+
+    @action(detail=True, methods=["post"])
+    def review(self, request, pk=None):
+        """SCRUM-80 AC2 / AC3 - record the outcome of reviewing flagged equipment."""
+        item = self.get_object()
+        action_name = f"POST /api/equipment-requests/{item.pk}/review/"
+        require_technical_staff(request, action_name, item)
+        data = EquipmentReviewInputSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        return self._run(
+            action_name, item, lambda: review_request(item, request.user, **data.validated_data)
         )
 
     @action(detail=True, methods=["post"])

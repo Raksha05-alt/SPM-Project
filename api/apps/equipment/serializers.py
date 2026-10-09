@@ -74,6 +74,7 @@ class EquipmentRequestSerializer(serializers.ModelSerializer):
     reserved_quantity = serializers.IntegerField(read_only=True)
     requested_by_name = serializers.SerializerMethodField()
     withdrawn_by_name = serializers.SerializerMethodField()
+    reviewed_by_name = serializers.SerializerMethodField()
     reservations = ReservationSerializer(many=True, read_only=True)
     changes = ChangeSerializer(many=True, read_only=True)
 
@@ -97,6 +98,9 @@ class EquipmentRequestSerializer(serializers.ModelSerializer):
             "unavailable_reason",
             "review_required",
             "review_reason",
+            "reviewed_by_name",
+            "reviewed_at",
+            "review_outcome",
             "reservations",
             "changes",
         ]
@@ -108,6 +112,8 @@ class EquipmentRequestSerializer(serializers.ModelSerializer):
             "unavailable_reason",
             "review_required",
             "review_reason",
+            "reviewed_at",
+            "review_outcome",
         ]
         extra_kwargs = {
             "event": {"error_messages": {"required": "Choose the event this equipment is for."}},
@@ -127,9 +133,19 @@ class EquipmentRequestSerializer(serializers.ModelSerializer):
     def get_withdrawn_by_name(self, obj):
         return _name(obj.withdrawn_by)
 
+    def get_reviewed_by_name(self, obj):
+        return _name(obj.reviewed_by)
+
     def validate(self, attrs):
         if self.instance is not None and ("event" in attrs or "equipment_type" in attrs):
             raise serializers.ValidationError(
                 "The event and equipment type cannot be changed; withdraw and request again."
             )
         return attrs
+
+
+class EquipmentReviewInputSerializer(serializers.Serializer):
+    accommodated = serializers.BooleanField(
+        error_messages={"required": "Say whether the change can be accommodated."}
+    )
+    note = serializers.CharField(required=False, allow_blank=True, default="")

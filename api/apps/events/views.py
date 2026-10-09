@@ -18,6 +18,7 @@ from apps.core.statuses import (
     describe,
 )
 from apps.events.confirmation import ArrangementsIncomplete, confirm_event
+from apps.events.impact import apply_change
 from apps.events.models import EventRequest
 from apps.events.permissions import CanAccessEventRequest
 from apps.events.serializers import (
@@ -43,7 +44,6 @@ from apps.events.services import (
     approve_event,
     cancel_event,
     complete_event,
-    log_changes,
     reassign_event,
     reject_event,
     request_clarification,
@@ -180,9 +180,20 @@ class EventRequestViewSet(ModelViewSet):
                 serializer.instance = current.save(updated_by=self.request.user)
                 if not locked.is_draft:
                     # SCRUM-60 - drafts are the client's private work in progress.
-                    log_changes(serializer.instance, before, self.request.user)
+                    # SCRUM-59 / 66 / 70 - and arrangements are re-checked.
+                    self.change_impact = apply_change(
+                        serializer.instance, before, self.request.user
+                    )
         if denied is not None:
             raise denied
+
+    def update(self, request, *args, **kwargs):
+        self.change_impact = None
+        response = super().update(request, *args, **kwargs)
+        if self.change_impact is not None:
+            # SCRUM-59 AC1 - warn which arrangements a significant change affects.
+            response.data["significant_change"] = self.change_impact
+        return response
 
     def perform_destroy(self, instance):
         # US-03.1 AC6 - a draft may be deleted; anything submitted may not.

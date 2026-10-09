@@ -73,6 +73,11 @@ class EquipmentRequest(TimeStampedModel):
     review_required = models.BooleanField(default=False)
     review_reason = models.TextField(blank=True)
     review_flagged_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_outcome = models.TextField(blank=True)
 
     class Meta:
         ordering = ["pk"]

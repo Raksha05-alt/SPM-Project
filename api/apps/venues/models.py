@@ -135,6 +135,15 @@ class VenueBooking(TimeStampedModel):
     review_required = models.BooleanField(default=False)
     review_reason = models.TextField(blank=True)
     review_flagged_at = models.DateTimeField(null=True, blank=True)
+    # SCRUM-70 AC4 - the period the event has moved to, which staff must look at.
+    review_start = models.DateTimeField(null=True, blank=True)
+    review_end = models.DateTimeField(null=True, blank=True)
+    # SCRUM-80 AC2 / AC3 - the outcome of the last staff review.
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_outcome = models.TextField(blank=True)
 
     class Meta:
         ordering = ["start", "pk"]

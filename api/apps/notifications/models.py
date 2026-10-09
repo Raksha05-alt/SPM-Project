@@ -22,6 +22,11 @@ class NotificationKind(models.TextChoices):
     UNREGISTERED = "UNREGISTERED", "Registration withdrawn"
     PLACE_AVAILABLE = "PLACE_AVAILABLE", "Place available"
     EVENT_FULL = "EVENT_FULL", "Registration full"
+    CHANGE_REQUESTED = "CHANGE_REQUESTED", "Change requested"
+    CHANGE_DECIDED = "CHANGE_DECIDED", "Change request decided"
+    EVENT_CHANGED = "EVENT_CHANGED", "Event details changed"
+    REVIEW_NEEDED = "REVIEW_NEEDED", "Arrangement needs review"
+    REVIEW_OUTCOME = "REVIEW_OUTCOME", "Arrangement reviewed"
 
 
 # Sent at most once per recipient and event. Clarification rounds can repeat.

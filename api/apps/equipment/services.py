@@ -398,3 +398,65 @@ def release_for_cancelled_event(event: EventRequest, user) -> None:
     """SCRUM-77 AC1 - a cancelled event stops holding equipment (cancellation hook)."""
     for reservation in event.equipment_reservations.filter(released_at__isnull=True):
         _release(reservation, user, "Event cancelled")
+
+
+@transaction.atomic
+def review_request(
+    request: EquipmentRequest, user, *, accommodated: bool, note=""
+) -> EquipmentRequest:
+    """SCRUM-80 AC2 / AC3 - Technical Support Staff record how flagged equipment follows a change."""
+    from apps.events.models import EventChangeLog
+
+    request = _locked(request)
+    event = request.event
+    if not request.review_required:
+        raise EquipmentRefused("This equipment request does not need review.")
+    note = (note or "").strip()
+    if accommodated:
+        EquipmentType.objects.select_for_update().get(pk=request.equipment_type_id)
+        reserved = request.reserved_quantity
+        if reserved:
+            available = available_quantity(
+                request.equipment_type,
+                event.preferred_start,
+                event.preferred_end,
+                exclude_event_id=event.pk,
+            )
+            if available < reserved:
+                raise EquipmentRefused(
+                    f"Only {available} x {request.equipment_type.name} available for the new "
+                    "period.",
+                    available_quantity=available,
+                )
+            request.active_reservations().update(
+                start=event.preferred_start, end=event.preferred_end
+            )
+        request.review_required = False
+        outcome = "Reservation moved to the event's current period." + (f" {note}" if note else "")
+    else:
+        if not note:
+            raise EquipmentRefused("Explain why the change cannot be accommodated.", status=400)
+        outcome = f"Could not accommodate the change: {note}"
+    request.reviewed_by = user
+    request.reviewed_at = timezone.now()
+    request.review_outcome = outcome
+    request.save()
+    EquipmentRequestChange.objects.create(request=request, description=outcome, changed_by=user)
+    EventChangeLog.objects.create(
+        event=event,
+        field=f"Equipment: {request.equipment_type.name}"[:60],
+        previous_value=f"{request.quantity} requested",
+        new_value=outcome,
+        changed_by=user,
+        significant=True,
+    )
+    message = (
+        f'Technical Support reviewed {request.equipment_type.name} for "{event.name}". {outcome}'
+    )
+    if not accommodated:
+        message += (
+            " The original reservation stays in place until the client and ConnectSphere agree "
+            "on the next step."
+        )
+    notify([event.created_by, event.coordinator], event, NotificationKind.REVIEW_OUTCOME, message)
+    return request

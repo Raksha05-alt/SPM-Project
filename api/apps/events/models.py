@@ -223,3 +223,60 @@ class EventChangeLog(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ImmutableRecord("Change history entries cannot be deleted.")
+
+
+class ChangeRequestStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    APPROVED = "APPROVED", "Approved"
+    REJECTED = "REJECTED", "Rejected"
+
+
+class ChangeRequest(models.Model):
+    """SCRUM-20 / SCRUM-78 - a client's request to change a submitted event.
+
+    The ``proposed_*`` fields hold the new values the client asks for; any
+    left empty stay as they are. The description says what and why in words.
+    """
+
+    event = models.ForeignKey(
+        EventRequest, on_delete=models.CASCADE, related_name="change_requests"
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    description = models.TextField()
+    reason = models.TextField(blank=True)
+    proposed_start = models.DateTimeField(null=True, blank=True)
+    proposed_end = models.DateTimeField(null=True, blank=True)
+    proposed_attendance = models.PositiveIntegerField(null=True, blank=True)
+    proposed_layout = models.CharField(max_length=20, choices=RoomLayout.choices, blank=True)
+    proposed_accessibility_needs = models.TextField(blank=True)
+    proposed_equipment_notes = models.TextField(blank=True)
+
+    status = models.CharField(
+        max_length=20, choices=ChangeRequestStatus.choices, default=ChangeRequestStatus.PENDING
+    )
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self) -> str:
+        return f"Change to event {self.event_id} ({self.get_status_display()})"
+
+    def proposed_values(self) -> dict:
+        """The event fields this request would change, with their new values."""
+        mapping = {
+            "preferred_start": self.proposed_start,
+            "preferred_end": self.proposed_end,
+            "expected_attendance": self.proposed_attendance,
+            "required_layout": self.proposed_layout,
+            "accessibility_needs": self.proposed_accessibility_needs,
+            "equipment_notes": self.proposed_equipment_notes,
+        }
+        return {field: value for field, value in mapping.items() if value not in (None, "")}
