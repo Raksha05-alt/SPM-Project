@@ -8,11 +8,17 @@ from django.utils import timezone
 from apps.accounts.models import Role, User
 from apps.core.statuses import (
     REVIEWABLE_STATUSES,
+    TERMINAL_STATUSES,
     EventStatus,
     InvalidTransition,
     validate_transition,
 )
-from apps.events.models import ClarificationRequest, EventRequest, EventStatusHistory
+from apps.events.models import (
+    ClarificationRequest,
+    CoordinatorAssignment,
+    EventRequest,
+    EventStatusHistory,
+)
 from apps.notifications.models import Notification, NotificationKind
 from apps.notifications.services import notify
 
@@ -37,6 +43,14 @@ class NotAssignedCoordinator(Exception):
 
 class NotPermitted(Exception):
     """Raised when the user's role or relationship to the event does not allow the action."""
+
+
+class InvalidReassignment(Exception):
+    """Raised when the chosen coordinator cannot take over the event."""
+
+
+class EventClosed(Exception):
+    """Raised when a planning action is attempted on a completed, cancelled or rejected event."""
 
 
 class EventNotFinished(Exception):
@@ -82,6 +96,8 @@ def submit_event(event: EventRequest, user) -> EventRequest:
     locked.coordinator = choice(candidates) if candidates else None
     locked.assignment_requires_attention = not candidates
     locked.save(update_fields=["coordinator", "assignment_requires_attention"])
+    if locked.coordinator:
+        CoordinatorAssignment.objects.create(event=locked, coordinator=locked.coordinator)
     transition_event(locked, EventStatus.SUBMITTED, user)
     if locked.coordinator:
         coordinator = locked.coordinator
@@ -260,3 +276,48 @@ def complete_event(event: EventRequest, user) -> EventRequest:
 # Other components register what has to be released when an event is
 # cancelled (venue bookings, equipment reservations, registrations).
 CANCELLATION_HOOKS: list = []
+
+
+@transaction.atomic
+def reassign_event(event: EventRequest, user, new_coordinator_id) -> EventRequest:
+    """SCRUM-53 - hand an event to another coordinator, keeping the old assignment on record."""
+    locked = EventRequest.objects.select_for_update().get(pk=event.pk)
+    if locked.status in TERMINAL_STATUSES:
+        raise EventClosed
+    new = User.objects.filter(
+        pk=new_coordinator_id, role=Role.EVENT_COORDINATOR, is_active=True
+    ).first()
+    if new is None:
+        raise InvalidReassignment("Choose an active Event Coordinator.")
+    if new.pk == locked.coordinator_id:
+        raise InvalidReassignment("This coordinator is already assigned to the event.")
+    previous = locked.coordinator
+    locked.coordinator = new
+    locked.assignment_requires_attention = False
+    locked.save(update_fields=["coordinator", "assignment_requires_attention", "updated_at"])
+    CoordinatorAssignment.objects.create(
+        event=locked, previous_coordinator=previous, coordinator=new, changed_by=user
+    )
+    name = locked.name or "Untitled event"
+    new_name = new.get_full_name() or new.email
+    notify(
+        [new],
+        locked,
+        NotificationKind.REASSIGNED,
+        f'You are now the coordinator for "{name}". Contact {locked.created_by.email}.',
+    )
+    if previous:
+        notify(
+            [previous],
+            locked,
+            NotificationKind.REASSIGNED,
+            f'"{name}" has been reassigned to {new_name}. You no longer coordinate it.',
+        )
+    notify(
+        [locked.created_by],
+        locked,
+        NotificationKind.REASSIGNED,
+        f'{new_name} ({new.email}) is now your coordinator for "{name}".',
+    )
+    event.refresh_from_db()
+    return event

@@ -9,7 +9,7 @@ CLIENT_EDITABLE = frozenset({EventStatus.DRAFT, EventStatus.UNDER_REVIEW})
 # Actions whose own rules (assigned coordinator, permitted transition) are
 # enforced and audited by the view and service rather than here.
 COORDINATOR_ACTIONS = frozenset(
-    {"approve", "reject", "request_clarification", "cancel", "complete"}
+    {"approve", "reject", "request_clarification", "cancel", "complete", "reassign"}
 )
 ORGANISER_ACTIONS = frozenset({"cancel"})
 

@@ -9,6 +9,7 @@ class NotificationKind(models.TextChoices):
     RESUBMITTED = "RESUBMITTED", "Request resubmitted"
     REJECTED = "REJECTED", "Request rejected"
     STATUS_CHANGED = "STATUS_CHANGED", "Event status changed"
+    REASSIGNED = "REASSIGNED", "Coordinator reassigned"
 
 
 # Sent at most once per recipient and event. Clarification rounds can repeat.

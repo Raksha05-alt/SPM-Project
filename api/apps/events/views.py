@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from apps.accounts.models import Role
+from apps.accounts.models import Role, User
 from apps.core.audit import record_denied
 from apps.core.permissions import HasAnyRole
 from apps.core.statuses import (
@@ -26,10 +26,13 @@ from apps.events.serializers import (
     EventQueueSerializer,
     EventRequestSerializer,
     ReasonInputSerializer,
+    ReassignInputSerializer,
     RejectionInputSerializer,
 )
 from apps.events.services import (
+    EventClosed,
     EventNotFinished,
+    InvalidReassignment,
     MissingClarificationDetails,
     MissingMandatoryFields,
     MissingRejectionReason,
@@ -38,6 +41,7 @@ from apps.events.services import (
     approve_event,
     cancel_event,
     complete_event,
+    reassign_event,
     reject_event,
     request_clarification,
     submit_event,
@@ -89,7 +93,12 @@ class EventRequestViewSet(ModelViewSet):
         user = self.request.user
         base = EventRequest.objects.select_related(
             "organisation", "created_by", "coordinator", "approved_by", "rejected_by"
-        ).prefetch_related("clarifications__requested_by")
+        ).prefetch_related(
+            "clarifications__requested_by",
+            "assignment_history__coordinator",
+            "assignment_history__previous_coordinator",
+            "assignment_history__changed_by",
+        )
         if user.role == Role.EVENT_ORGANISER:
             # US-02.3 / US-03.1 AC5 - a client sees only their own organisation.
             return base.filter(organisation_id=user.organisation_id)
@@ -107,7 +116,12 @@ class EventRequestViewSet(ModelViewSet):
             EventRequest.objects.select_related(
                 "organisation", "created_by", "coordinator", "approved_by", "rejected_by"
             )
-            .prefetch_related("clarifications__requested_by")
+            .prefetch_related(
+                "clarifications__requested_by",
+                "assignment_history__coordinator",
+                "assignment_history__previous_coordinator",
+                "assignment_history__changed_by",
+            )
             .filter(pk=self.kwargs["pk"])
             .first()
         )
@@ -344,6 +358,31 @@ class EventRequestViewSet(ModelViewSet):
         event.refresh_from_db()
         return Response(self.get_serializer(event).data)
 
+    @action(detail=True, methods=["post"])
+    def reassign(self, request, pk=None):
+        """SCRUM-53 - hand the event to another coordinator."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/reassign/"
+        if not request.user.is_coordinator:
+            record_denied(
+                request.user, action=action_name, obj=event, detail="only staff may reassign"
+            )
+            raise PermissionDenied("Only ConnectSphere coordinators can reassign an event.")
+        payload = ReassignInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            reassign_event(event, request.user, payload.validated_data["coordinator"])
+        except EventClosed:
+            detail = f"A {event.get_status_display()} event cannot be reassigned."
+            record_denied(request.user, action=action_name, obj=event, detail=detail)
+            return Response({"detail": detail}, status=http.HTTP_409_CONFLICT)
+        except InvalidReassignment as exc:
+            return Response(
+                {"detail": str(exc), "coordinator": [str(exc)]}, status=http.HTTP_400_BAD_REQUEST
+            )
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
     @action(detail=False, methods=["get"])
     def queue(self, request):
         """US-04.1 - the coordinator's queue of incoming requests."""
@@ -396,3 +435,26 @@ def event_statuses(request):
         if internal or value not in INTERNAL_STATUSES
     ]
     return Response(payload)
+
+
+@api_view(["GET"])
+@permission_classes([HasAnyRole, IsAuthenticated])
+def coordinators(request):
+    """SCRUM-53 - the coordinators an event can be reassigned to (staff only)."""
+    if not request.user.is_coordinator:
+        record_denied(request.user, action="GET /api/coordinators/", detail="staff only")
+        raise PermissionDenied("Only ConnectSphere coordinators can see this list.")
+    rows = User.objects.filter(role=Role.EVENT_COORDINATOR, is_active=True).order_by(
+        "first_name", "last_name", "email"
+    )
+    return Response(
+        [
+            {
+                "id": user.pk,
+                "name": user.get_full_name() or user.email,
+                "email": user.email,
+                "available": user.coordinator_available,
+            }
+            for user in rows
+        ]
+    )

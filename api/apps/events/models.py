@@ -143,3 +143,28 @@ class ClarificationRequest(models.Model):
     def __str__(self) -> str:
         state = "answered" if self.resolved_at else "open"
         return f"Clarification on {self.event_id} ({state})"
+
+
+class CoordinatorAssignment(models.Model):
+    """SCRUM-51 / SCRUM-53 - who has coordinated an event, kept after each change."""
+
+    event = models.ForeignKey(
+        EventRequest, on_delete=models.CASCADE, related_name="assignment_history"
+    )
+    previous_coordinator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    coordinator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    # Null when the system made the automatic assignment on submission.
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-changed_at", "-pk"]
+
+    def __str__(self) -> str:
+        return f"{self.event_id}: {self.previous_coordinator_id} -> {self.coordinator_id}"

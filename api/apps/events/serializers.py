@@ -2,7 +2,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.core.statuses import COORDINATOR_NEXT_ACTIONS, STATUS_DESCRIPTIONS, EventStatus
-from apps.events.models import ClarificationRequest, EventRequest
+from apps.events.models import ClarificationRequest, CoordinatorAssignment, EventRequest
 
 
 class ClarificationSerializer(serializers.ModelSerializer):
@@ -43,6 +43,38 @@ class RejectionInputSerializer(serializers.Serializer):
     reason = serializers.CharField(allow_blank=True, trim_whitespace=True, required=False)
 
 
+class ReassignInputSerializer(serializers.Serializer):
+    coordinator = serializers.IntegerField()
+
+
+class AssignmentHistorySerializer(serializers.ModelSerializer):
+    previous_coordinator_name = serializers.SerializerMethodField()
+    coordinator_name = serializers.SerializerMethodField()
+    changed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CoordinatorAssignment
+        fields = [
+            "id",
+            "previous_coordinator",
+            "previous_coordinator_name",
+            "coordinator",
+            "coordinator_name",
+            "changed_by_name",
+            "changed_at",
+        ]
+        read_only_fields = fields
+
+    def get_previous_coordinator_name(self, obj) -> str | None:
+        return _display_name(obj.previous_coordinator)
+
+    def get_coordinator_name(self, obj) -> str | None:
+        return _display_name(obj.coordinator)
+
+    def get_changed_by_name(self, obj) -> str:
+        return _display_name(obj.changed_by) or "Automatic assignment"
+
+
 class ReasonInputSerializer(serializers.Serializer):
     reason = serializers.CharField(allow_blank=True, trim_whitespace=True, required=False)
 
@@ -61,6 +93,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
     approved_by_name = serializers.SerializerMethodField()
     rejected_by_name = serializers.SerializerMethodField()
     clarifications = ClarificationSerializer(many=True, read_only=True)
+    assignment_history = AssignmentHistorySerializer(many=True, read_only=True)
 
     class Meta:
         model = EventRequest
@@ -98,6 +131,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "rejection_reason",
             "cancellation_reason",
             "clarifications",
+            "assignment_history",
             "missing_mandatory_fields",
             "is_editable",
             "created_at",
@@ -129,6 +163,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
         "approved_at",
         "rejected_by",
         "rejected_by_name",
+        "assignment_history",
     )
 
     def to_representation(self, instance):
