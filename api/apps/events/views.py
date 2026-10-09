@@ -17,6 +17,7 @@ from apps.core.statuses import (
     InvalidTransition,
     describe,
 )
+from apps.events.confirmation import ArrangementsIncomplete, confirm_event
 from apps.events.models import EventRequest
 from apps.events.permissions import CanAccessEventRequest
 from apps.events.serializers import (
@@ -95,7 +96,13 @@ class EventRequestViewSet(ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         base = EventRequest.objects.select_related(
-            "organisation", "created_by", "coordinator", "approved_by", "rejected_by", "updated_by"
+            "organisation",
+            "created_by",
+            "coordinator",
+            "approved_by",
+            "rejected_by",
+            "updated_by",
+            "confirmed_by",
         ).prefetch_related(
             "clarifications__requested_by",
             "assignment_history__coordinator",
@@ -337,6 +344,40 @@ class EventRequestViewSet(ModelViewSet):
         except InvalidTransition as exc:
             record_denied(request.user, action=action_name, obj=event, detail=str(exc))
             return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["post"])
+    def confirm(self, request, pk=None):
+        """SCRUM-58 - confirm an event once its essential arrangements are in place."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/confirm/"
+        try:
+            if not request.user.is_coordinator:
+                raise NotAssignedCoordinator
+            confirm_event(event, request.user)
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the assigned coordinator may confirm",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can confirm it."
+            ) from None
+        except InvalidTransition as exc:
+            record_denied(request.user, action=action_name, obj=event, detail=str(exc))
+            return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        except ArrangementsIncomplete as exc:
+            return Response(
+                {
+                    "detail": "The event cannot be confirmed until every essential "
+                    "arrangement is in place.",
+                    "missing": exc.missing,
+                },
+                status=http.HTTP_409_CONFLICT,
+            )
         event.refresh_from_db()
         return Response(self.get_serializer(event).data)
 

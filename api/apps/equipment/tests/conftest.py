@@ -10,12 +10,6 @@ from conftest import make_event
 
 
 @pytest.fixture
-def signed_in_tech(api, tech_staff):
-    api.force_authenticate(tech_staff)
-    return api
-
-
-@pytest.fixture
 def projector(db):
     return EquipmentType.objects.create(name="Projector", category="AV", total_quantity=10)
 

@@ -50,6 +50,8 @@ class EventRequest(TimeStampedModel):
     rejected_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.TextField(blank=True)
     cancellation_reason = models.TextField(blank=True)
+    # SCRUM-58 AC4 - who confirmed the event, and when.
+    confirmed_at = models.DateTimeField(null=True, blank=True)
 
     organisation = models.ForeignKey(
         "accounts.ClientOrganisation", on_delete=models.PROTECT, related_name="event_requests"
@@ -77,6 +79,13 @@ class EventRequest(TimeStampedModel):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="rejected_event_requests",
+    )
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
     )
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

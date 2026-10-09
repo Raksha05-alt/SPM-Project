@@ -230,6 +230,7 @@ def amend_request(request: EquipmentRequest, user, data: dict) -> EquipmentReque
         if reserved and reserved >= request.quantity
         else EquipmentRequestStatus.REQUESTED
     )
+    request.unavailable_reason = ""
     request.updated_by = user
     request.save()
     description = " ".join(changes)
@@ -268,6 +269,41 @@ def withdraw_request(request: EquipmentRequest, user) -> EquipmentRequest:
         request.event,
         NotificationKind.EQUIPMENT_CHANGED,
         f'{request.equipment_type.name} for "{request.event.name}": {description}',
+    )
+    return request
+
+
+@transaction.atomic
+def mark_unavailable(request: EquipmentRequest, user, reason: str) -> EquipmentRequest:
+    """SCRUM-58 AC3 - record that the equipment cannot be provided, and tell the client why."""
+    request = _locked(request)
+    reason = (reason or "").strip()
+    if not reason:
+        raise EquipmentRefused("Enter the reason the equipment is unavailable.", status=400)
+    if request.status != EquipmentRequestStatus.REQUESTED:
+        raise EquipmentRefused(
+            f"A {request.get_status_display().lower()} request cannot be marked unavailable."
+        )
+    request.status = EquipmentRequestStatus.UNAVAILABLE
+    request.unavailable_reason = reason
+    request.updated_by = user
+    request.save()
+    EquipmentRequestChange.objects.create(
+        request=request, description=f"Marked unavailable: {reason}", changed_by=user
+    )
+    event = request.event
+    notify(
+        [event.coordinator],
+        event,
+        NotificationKind.EQUIPMENT_CHANGED,
+        f'{request.equipment_type.name} for "{event.name}" is unavailable. Reason: {reason}',
+    )
+    notify(
+        [event.created_by],
+        event,
+        NotificationKind.EQUIPMENT_CHANGED,
+        f'Requested equipment for "{event.name}" is unavailable: {reason} '
+        "Your coordinator is arranging an alternative.",
     )
     return request
 
@@ -316,7 +352,8 @@ def reserve(request: EquipmentRequest, user) -> EquipmentReservation:
         reserved_by=user,
     )
     request.status = EquipmentRequestStatus.RESERVED
-    request.save(update_fields=["status", "updated_at"])
+    request.unavailable_reason = ""
+    request.save(update_fields=["status", "unavailable_reason", "updated_at"])
     notify(
         [event.coordinator],
         event,

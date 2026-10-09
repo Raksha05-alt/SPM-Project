@@ -36,6 +36,7 @@ class EquipmentType(TimeStampedModel):
 class EquipmentRequestStatus(models.TextChoices):
     REQUESTED = "REQUESTED", "Requested"
     RESERVED = "RESERVED", "Reserved"
+    UNAVAILABLE = "UNAVAILABLE", "Unavailable"
     WITHDRAWN = "WITHDRAWN", "Withdrawn"
 
 
@@ -65,6 +66,8 @@ class EquipmentRequest(TimeStampedModel):
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
     withdrawn_at = models.DateTimeField(null=True, blank=True)
+    # SCRUM-58 AC3 - Technical Support Staff record that it cannot be provided.
+    unavailable_reason = models.TextField(blank=True)
 
     # SCRUM-59 / SCRUM-80 - an arrangement staff must look at again.
     review_required = models.BooleanField(default=False)

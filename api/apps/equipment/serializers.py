@@ -94,6 +94,7 @@ class EquipmentRequestSerializer(serializers.ModelSerializer):
             "created_at",
             "withdrawn_by_name",
             "withdrawn_at",
+            "unavailable_reason",
             "review_required",
             "review_reason",
             "reservations",
@@ -104,6 +105,7 @@ class EquipmentRequestSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
             "withdrawn_at",
+            "unavailable_reason",
             "review_required",
             "review_reason",
         ]

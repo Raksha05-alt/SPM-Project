@@ -121,6 +121,8 @@ class EventRequestSerializer(serializers.ModelSerializer):
     clarifications = ClarificationSerializer(many=True, read_only=True)
     assignment_history = AssignmentHistorySerializer(many=True, read_only=True)
     updated_by_name = serializers.SerializerMethodField()
+    confirmed_by_name = serializers.SerializerMethodField()
+    confirmed_arrangements = serializers.SerializerMethodField()
 
     class Meta:
         model = EventRequest
@@ -157,6 +159,9 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "rejected_at",
             "rejection_reason",
             "cancellation_reason",
+            "confirmed_by_name",
+            "confirmed_at",
+            "confirmed_arrangements",
             "clarifications",
             "assignment_history",
             "missing_mandatory_fields",
@@ -180,6 +185,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "rejected_at",
             "rejection_reason",
             "cancellation_reason",
+            "confirmed_at",
             "created_at",
             "updated_at",
         ]
@@ -207,6 +213,17 @@ class EventRequestSerializer(serializers.ModelSerializer):
 
     def get_updated_by_name(self, obj) -> str | None:
         return _display_name(obj.updated_by)
+
+    def get_confirmed_by_name(self, obj) -> str | None:
+        return _display_name(obj.confirmed_by)
+
+    def get_confirmed_arrangements(self, obj) -> dict | None:
+        # SCRUM-58 AC5 - shown once the event is confirmed.
+        if obj.status not in (EventStatus.CONFIRMED, EventStatus.COMPLETED):
+            return None
+        from apps.events.confirmation import confirmed_arrangements
+
+        return confirmed_arrangements(obj)
 
     def get_rejected_by_name(self, obj) -> str | None:
         return _display_name(obj.rejected_by)

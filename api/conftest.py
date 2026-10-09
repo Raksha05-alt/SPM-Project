@@ -84,6 +84,12 @@ def signed_in_venue_staff(api, venue_staff):
 
 
 @pytest.fixture
+def signed_in_tech(api, tech_staff):
+    api.force_authenticate(tech_staff)
+    return api
+
+
+@pytest.fixture
 def attendee(db):
     return _make_user("attendee@example.com", Role.ATTENDEE, None, "Andy", "Attendee")
 

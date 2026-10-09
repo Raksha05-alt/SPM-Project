@@ -20,6 +20,7 @@ from apps.equipment.services import (
     availability_row,
     create_request,
     holders,
+    mark_unavailable,
     release,
     reserve,
     withdraw_request,
@@ -183,6 +184,17 @@ class EquipmentRequestViewSet(CreateModelMixin, UpdateModelMixin, ReadOnlyModelV
         action_name = f"POST /api/equipment-requests/{item.pk}/withdraw/"
         self._require_coordinator(action_name, item)
         return self._run(action_name, item, lambda: withdraw_request(item, request.user))
+
+    @action(detail=True, methods=["post"], url_path="mark-unavailable")
+    def mark_unavailable(self, request, pk=None):
+        item = self.get_object()
+        action_name = f"POST /api/equipment-requests/{item.pk}/mark-unavailable/"
+        require_technical_staff(request, action_name, item)
+        return self._run(
+            action_name,
+            item,
+            lambda: mark_unavailable(item, request.user, request.data.get("reason", "")),
+        )
 
     @action(detail=True, methods=["post"])
     def reserve(self, request, pk=None):
