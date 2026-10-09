@@ -4,6 +4,9 @@ Every test that touches the database asks for one of these rather than building
 users inline, so that adding a field to User does not break thirty tests.
 """
 
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
+
 import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -70,6 +73,17 @@ def venue_staff(db):
 
 
 @pytest.fixture
+def tech_staff(db):
+    return _make_user("tech@connectsphere.example", Role.TECHNICAL_SUPPORT, None, "Tariq", "Tech")
+
+
+@pytest.fixture
+def signed_in_venue_staff(api, venue_staff):
+    api.force_authenticate(venue_staff)
+    return api
+
+
+@pytest.fixture
 def attendee(db):
     return _make_user("attendee@example.com", Role.ATTENDEE, None, "Andy", "Attendee")
 
@@ -86,8 +100,17 @@ def signed_in_coordinator(api, coordinator):
     return api
 
 
+SINGAPORE = ZoneInfo("Asia/Singapore")
+
+
+def future_at(days: int, hour: int, minute: int = 0):
+    """A Singapore wall-clock time ``days`` from today, so tests never straddle midnight."""
+    day = timezone.now().astimezone(SINGAPORE).date() + timezone.timedelta(days=days)
+    return datetime.combine(day, time(hour, minute), tzinfo=SINGAPORE)
+
+
 def make_event(organiser, *, complete=True, status=EventStatus.DRAFT, **overrides):
-    start = timezone.now() + timezone.timedelta(days=30)
+    start = future_at(30, 10)
     data = {
         "organisation": organiser.organisation,
         "created_by": organiser,
@@ -117,3 +140,25 @@ def incomplete_draft(organiser):
 @pytest.fixture
 def submitted_event(organiser):
     return make_event(organiser, complete=True, status=EventStatus.SUBMITTED)
+
+
+def make_venue(**overrides):
+    from apps.venues.models import Venue
+
+    data = {
+        "name": "Harbour Hall",
+        "location": "Level 2, Marina Building",
+        "capacity": 150,
+        "facilities": ["Projector", "Video conferencing"],
+        "layouts": ["THEATRE", "CLASSROOM"],
+        "wheelchair_access": True,
+        "opens_at": time(0, 0),
+        "closes_at": time(23, 59),
+    }
+    data.update(overrides)
+    return Venue.objects.create(**data)
+
+
+@pytest.fixture
+def venue(db):
+    return make_venue()
