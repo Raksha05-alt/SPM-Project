@@ -42,7 +42,7 @@ test("an organiser drafts and submits a request, and the coordinator sees it", a
   await expect(page.getByRole("link", { name: eventName })).toBeVisible();
   // SCRUM-51 AC3/AC4: assignment is visible to the organiser and persists.
   await page.getByText(/Notifications \(/).click();
-  await expect(page.getByRole("list", { name: "Assignment notifications" })).toContainText(eventName);
+  await expect(page.getByRole("list", { name: "Notifications", exact: true })).toContainText(eventName);
   await page.getByText(/Notifications \(/).click();
   await page.getByRole("link", { name: eventName }).click();
   await expect(page.getByRole("region", { name: "Coordinator assignment" })).toContainText("coordinator@connectsphere.example");
@@ -54,5 +54,5 @@ test("an organiser drafts and submits a request, and the coordinator sees it", a
   await expect(page).toHaveURL(/\/coordinator$/);
   await expect(page.getByRole("cell", { name: eventName })).toBeVisible();
   await page.getByText(/Notifications \(/).click();
-  await expect(page.getByRole("list", { name: "Assignment notifications" })).toContainText(eventName);
+  await expect(page.getByRole("list", { name: "Notifications", exact: true })).toContainText(eventName);
 });
