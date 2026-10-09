@@ -336,6 +336,10 @@ TRACKED_FIELDS = (
     "accessibility_needs",
     "equipment_notes",
     "registration_required",
+    "registration_capacity",
+    "registration_opens_at",
+    "registration_closes_at",
+    "waitlist_enabled",
 )
 
 

@@ -8,6 +8,8 @@ from apps.events.models import (
     EventChangeLog,
     EventRequest,
 )
+from apps.registrations import services as registrations
+from apps.registrations.serializers import confirmed_venues
 
 
 class ClarificationSerializer(serializers.ModelSerializer):
@@ -138,6 +140,10 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "accessibility_needs",
             "equipment_notes",
             "registration_required",
+            "registration_capacity",
+            "registration_opens_at",
+            "registration_closes_at",
+            "waitlist_enabled",
             "status",
             "status_label",
             "status_description",
@@ -257,12 +263,28 @@ class EventRequestSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("The preferred start date cannot be in the past.")
         return value
 
+    def validate_registration_capacity(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Registration capacity must be at least one place.")
+        return value
+
     def validate(self, attrs):
-        start = attrs.get("preferred_start", getattr(self.instance, "preferred_start", None))
-        end = attrs.get("preferred_end", getattr(self.instance, "preferred_end", None))
+        def current(field):
+            return attrs.get(field, getattr(self.instance, field, None))
+
+        start, end = current("preferred_start"), current("preferred_end")
         if start and end and end <= start:
             raise serializers.ValidationError(
                 {"preferred_end": "The event must end after it starts."}
+            )
+        opens, closes = current("registration_opens_at"), current("registration_closes_at")
+        if opens and closes and closes <= opens:
+            raise serializers.ValidationError(
+                {"registration_closes_at": "Registration must close after it opens."}
+            )
+        if closes and end and closes > end:
+            raise serializers.ValidationError(
+                {"registration_closes_at": "Registration must close by the end of the event."}
             )
         return attrs
 
@@ -272,6 +294,11 @@ class AttendeeEventSerializer(serializers.ModelSerializer):
 
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     status_description = serializers.SerializerMethodField()
+    places_left = serializers.SerializerMethodField()
+    registration_message = serializers.SerializerMethodField()
+    waitlist_offered = serializers.SerializerMethodField()
+    my_registration = serializers.SerializerMethodField()
+    venues = serializers.SerializerMethodField()
 
     class Meta:
         model = EventRequest
@@ -283,6 +310,14 @@ class AttendeeEventSerializer(serializers.ModelSerializer):
             "preferred_end",
             "accessibility_needs",
             "registration_required",
+            "registration_capacity",
+            "registration_opens_at",
+            "registration_closes_at",
+            "places_left",
+            "registration_message",
+            "waitlist_offered",
+            "my_registration",
+            "venues",
             "status",
             "status_label",
             "status_description",
@@ -291,6 +326,27 @@ class AttendeeEventSerializer(serializers.ModelSerializer):
 
     def get_status_description(self, obj) -> str:
         return STATUS_DESCRIPTIONS[EventStatus(obj.status)]
+
+    def get_places_left(self, obj) -> int | None:
+        return registrations.places_left(obj) if obj.registration_required else None
+
+    def get_registration_message(self, obj) -> str | None:
+        # SCRUM-21 AC5 / SCRUM-81 AC2-AC3 - why registration is not open, if it is not.
+        return registrations.window_problem(obj)
+
+    def get_waitlist_offered(self, obj) -> bool:
+        return registrations.waitlist_offered(obj)
+
+    def get_my_registration(self, obj) -> dict | None:
+        # SCRUM-19 AC3 - the Attendee's own registration or waiting-list status.
+        request = self.context.get("request")
+        mine = request and registrations.existing_for(obj, request.user)
+        if not mine:
+            return None
+        return {"id": mine.pk, "status": mine.status, "status_display": mine.get_status_display()}
+
+    def get_venues(self, obj) -> list[dict]:
+        return confirmed_venues(obj)
 
 
 def _display_name(user) -> str | None:

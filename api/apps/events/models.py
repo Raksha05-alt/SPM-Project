@@ -41,6 +41,13 @@ class EventRequest(TimeStampedModel):
     accessibility_needs = models.TextField(blank=True)
     equipment_notes = models.TextField(blank=True)
     registration_required = models.BooleanField(default=False)
+    # SCRUM-81 / SCRUM-19 - how many places, when registration is open, and
+    # whether a full event keeps a waiting list. Capacity defaults to the
+    # expected attendance when left empty.
+    registration_capacity = models.PositiveIntegerField(null=True, blank=True)
+    registration_opens_at = models.DateTimeField(null=True, blank=True)
+    registration_closes_at = models.DateTimeField(null=True, blank=True)
+    waitlist_enabled = models.BooleanField(default=False)
 
     status = models.CharField(max_length=20, choices=EventStatus.choices, default=EventStatus.DRAFT)
     status_changed_at = models.DateTimeField(null=True, blank=True)

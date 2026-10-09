@@ -17,6 +17,11 @@ class NotificationKind(models.TextChoices):
     EQUIPMENT_CHANGED = "EQUIPMENT_CHANGED", "Equipment request changed"
     EQUIPMENT_RESERVED = "EQUIPMENT_RESERVED", "Equipment reserved"
     EQUIPMENT_RELEASED = "EQUIPMENT_RELEASED", "Equipment released"
+    REGISTERED = "REGISTERED", "Registration confirmed"
+    WAITLISTED = "WAITLISTED", "Added to waiting list"
+    UNREGISTERED = "UNREGISTERED", "Registration withdrawn"
+    PLACE_AVAILABLE = "PLACE_AVAILABLE", "Place available"
+    EVENT_FULL = "EVENT_FULL", "Registration full"
 
 
 # Sent at most once per recipient and event. Clarification rounds can repeat.
