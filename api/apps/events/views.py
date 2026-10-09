@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework import status as http
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
@@ -46,6 +46,26 @@ from apps.events.services import (
 QUEUE_EXCLUDED = (EventStatus.DRAFT, EventStatus.REJECTED)
 
 
+def filter_by_status(queryset, request):
+    """SCRUM-57 - ``?status=PLANNING,APPROVED`` (or the parameter repeated).
+
+    The filter only ever narrows a queryset that has already been limited to
+    what the user may see, so it cannot reveal anything new (AC3).
+    """
+    values = [
+        value.strip().upper()
+        for raw in request.query_params.getlist("status")
+        for value in raw.split(",")
+        if value.strip()
+    ]
+    if not values:
+        return queryset
+    unknown = sorted(set(values) - set(EventStatus.values))
+    if unknown:
+        raise ValidationError({"status": [f"Unknown status: {', '.join(unknown)}."]})
+    return queryset.filter(status__in=values)
+
+
 class EventRequestViewSet(ModelViewSet):
     serializer_class = EventRequestSerializer
     # HasAnyRole is listed first on purpose. DRF stops at the first permission
@@ -59,6 +79,11 @@ class EventRequestViewSet(ModelViewSet):
         if self.request.user.role == Role.ATTENDEE:
             return AttendeeEventSerializer
         return EventRequestSerializer
+
+    def filter_queryset(self, queryset):
+        if self.action == "list":
+            queryset = filter_by_status(queryset, self.request)
+        return super().filter_queryset(queryset)
 
     def get_queryset(self):
         user = self.request.user
@@ -334,6 +359,7 @@ class EventRequestViewSet(ModelViewSet):
             .exclude(status__in=QUEUE_EXCLUDED)
             .order_by("submitted_at")  # AC2 - oldest first
         )
+        queryset = filter_by_status(queryset, request)
         return Response(EventQueueSerializer(queryset, many=True).data)
 
     @action(detail=False, methods=["get"])
@@ -352,6 +378,7 @@ class EventRequestViewSet(ModelViewSet):
             .exclude(status=EventStatus.DRAFT)
             .order_by("submitted_at", "pk")
         )
+        events = filter_by_status(events, request)
         # AC2 - events needing the coordinator's action first; the sort is
         # stable, so each group keeps oldest-submission-first order.
         ordered = sorted(events, key=lambda e: not COORDINATOR_NEXT_ACTIONS[e.status][1])
