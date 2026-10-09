@@ -49,6 +49,7 @@ class EventRequest(TimeStampedModel):
     approved_at = models.DateTimeField(null=True, blank=True)
     rejected_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.TextField(blank=True)
+    cancellation_reason = models.TextField(blank=True)
 
     organisation = models.ForeignKey(
         "accounts.ClientOrganisation", on_delete=models.PROTECT, related_name="event_requests"

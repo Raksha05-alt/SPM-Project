@@ -25,14 +25,19 @@ from apps.events.serializers import (
     ClarificationInputSerializer,
     EventQueueSerializer,
     EventRequestSerializer,
+    ReasonInputSerializer,
     RejectionInputSerializer,
 )
 from apps.events.services import (
+    EventNotFinished,
     MissingClarificationDetails,
     MissingMandatoryFields,
     MissingRejectionReason,
     NotAssignedCoordinator,
+    NotPermitted,
     approve_event,
+    cancel_event,
+    complete_event,
     reject_event,
     request_clarification,
     submit_event,
@@ -255,6 +260,61 @@ class EventRequestViewSet(ModelViewSet):
                     "message": ["This field may not be blank."],
                 },
                 status=http.HTTP_400_BAD_REQUEST,
+            )
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """SCRUM-56 - cancel an event; a terminal event cannot be cancelled again."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/cancel/"
+        payload = ReasonInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            cancel_event(event, request.user, payload.validated_data.get("reason", ""))
+        except (NotAssignedCoordinator, NotPermitted):
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the client or the assigned coordinator may cancel",
+            )
+            raise PermissionDenied(
+                "Only the client or the assigned coordinator can cancel this event."
+            ) from None
+        except InvalidTransition as exc:
+            record_denied(request.user, action=action_name, obj=event, detail=str(exc))
+            return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        """SCRUM-56 - mark a confirmed event completed once it has taken place."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/complete/"
+        try:
+            if not request.user.is_coordinator:
+                raise NotAssignedCoordinator
+            complete_event(event, request.user)
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the assigned coordinator may complete",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can mark it completed."
+            ) from None
+        except InvalidTransition as exc:
+            record_denied(request.user, action=action_name, obj=event, detail=str(exc))
+            return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        except EventNotFinished:
+            return Response(
+                {"detail": "An event can only be marked completed after it has taken place."},
+                status=http.HTTP_409_CONFLICT,
             )
         event.refresh_from_db()
         return Response(self.get_serializer(event).data)

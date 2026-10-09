@@ -43,6 +43,10 @@ class RejectionInputSerializer(serializers.Serializer):
     reason = serializers.CharField(allow_blank=True, trim_whitespace=True, required=False)
 
 
+class ReasonInputSerializer(serializers.Serializer):
+    reason = serializers.CharField(allow_blank=True, trim_whitespace=True, required=False)
+
+
 class EventRequestSerializer(serializers.ModelSerializer):
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     status_description = serializers.SerializerMethodField()
@@ -92,6 +96,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "rejected_by_name",
             "rejected_at",
             "rejection_reason",
+            "cancellation_reason",
             "clarifications",
             "missing_mandatory_fields",
             "is_editable",
@@ -112,6 +117,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "rejected_by",
             "rejected_at",
             "rejection_reason",
+            "cancellation_reason",
             "created_at",
             "updated_at",
         ]

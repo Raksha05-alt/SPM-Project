@@ -14,6 +14,7 @@ from apps.core.statuses import (
 )
 from apps.events.models import ClarificationRequest, EventRequest, EventStatusHistory
 from apps.notifications.models import Notification, NotificationKind
+from apps.notifications.services import notify
 
 
 class MissingMandatoryFields(Exception):
@@ -32,6 +33,14 @@ class MissingRejectionReason(Exception):
 
 class NotAssignedCoordinator(Exception):
     """Raised when someone other than the assigned coordinator tries a coordinator decision."""
+
+
+class NotPermitted(Exception):
+    """Raised when the user's role or relationship to the event does not allow the action."""
+
+
+class EventNotFinished(Exception):
+    """Raised when an event is marked completed before it has taken place."""
 
 
 @transaction.atomic
@@ -189,3 +198,65 @@ def reject_event(event: EventRequest, user, reason: str) -> EventRequest:
     )
     event.refresh_from_db()
     return event
+
+
+def notify_status_change(event: EventRequest, previous: str, actor, extra: str = "") -> None:
+    """SCRUM-56 AC4 - tell the people affected by a status change, not the person who made it."""
+    message = (
+        f'"{event.name or "Untitled event"}" moved from {EventStatus(previous).label} '
+        f"to {EventStatus(event.status).label}."
+    )
+    if extra:
+        message = f"{message} {extra}"
+    recipients = [u for u in (event.created_by, event.coordinator) if u and u.pk != actor.pk]
+    notify(recipients, event, NotificationKind.STATUS_CHANGED, message)
+
+
+def _check_can_cancel(event: EventRequest, user) -> None:
+    if user.is_organiser:
+        if user.organisation_id != event.organisation_id:
+            raise NotPermitted
+        return
+    if user.is_coordinator:
+        if event.coordinator_id != user.pk:
+            raise NotAssignedCoordinator
+        return
+    raise NotPermitted
+
+
+@transaction.atomic
+def cancel_event(event: EventRequest, user, reason: str = "") -> EventRequest:
+    """Cancel an event that has not already ended, been cancelled or been rejected."""
+    locked = EventRequest.objects.select_for_update().get(pk=event.pk)
+    _check_can_cancel(locked, user)
+    previous = locked.status
+    transition_event(locked, EventStatus.CANCELLED, user)
+    locked.cancellation_reason = (reason or "").strip()
+    locked.save(update_fields=["cancellation_reason"])
+    for release in CANCELLATION_HOOKS:
+        release(locked, user)
+    extra = f"Reason: {locked.cancellation_reason}" if locked.cancellation_reason else ""
+    notify_status_change(locked, previous, user, extra)
+    event.refresh_from_db()
+    return event
+
+
+@transaction.atomic
+def complete_event(event: EventRequest, user) -> EventRequest:
+    """Close a confirmed event once it has taken place."""
+    locked = EventRequest.objects.select_for_update().get(pk=event.pk)
+    if locked.coordinator_id != user.pk:
+        raise NotAssignedCoordinator
+    validate_transition(locked.status, EventStatus.COMPLETED)
+    if locked.preferred_end and locked.preferred_end > timezone.now():
+        raise EventNotFinished
+    previous = locked.status
+    transition_event(locked, EventStatus.COMPLETED, user)
+    notify_status_change(locked, previous, user)
+    event.refresh_from_db()
+    return event
+
+
+# Other components register what has to be released when an event is
+# cancelled (venue bookings, equipment reservations, registrations).
+CANCELLATION_HOOKS: list = []

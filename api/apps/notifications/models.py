@@ -8,6 +8,7 @@ class NotificationKind(models.TextChoices):
     CLARIFICATION = "CLARIFICATION", "Clarification requested"
     RESUBMITTED = "RESUBMITTED", "Request resubmitted"
     REJECTED = "REJECTED", "Request rejected"
+    STATUS_CHANGED = "STATUS_CHANGED", "Event status changed"
 
 
 # Sent at most once per recipient and event. Clarification rounds can repeat.

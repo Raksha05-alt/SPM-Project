@@ -6,6 +6,13 @@ from apps.core.statuses import ATTENDEE_VISIBLE_STATUSES, EventStatus
 
 CLIENT_EDITABLE = frozenset({EventStatus.DRAFT, EventStatus.UNDER_REVIEW})
 
+# Actions whose own rules (assigned coordinator, permitted transition) are
+# enforced and audited by the view and service rather than here.
+COORDINATOR_ACTIONS = frozenset(
+    {"approve", "reject", "request_clarification", "cancel", "complete"}
+)
+ORGANISER_ACTIONS = frozenset({"cancel"})
+
 
 class CanAccessEventRequest(BasePermission):
     """Object-level rules for an event request.
@@ -35,6 +42,9 @@ class CanAccessEventRequest(BasePermission):
         if user.role == Role.EVENT_ORGANISER:
             if obj.organisation_id != user.organisation_id:
                 return False, "event belongs to another client organisation"
+            if getattr(view, "action", None) in ORGANISER_ACTIONS:
+                # The service applies the status rules and audits a refusal.
+                return True, ""
             # A request awaiting clarification is open again for the client to
             # correct and resubmit. Deleting stays draft-only (see the view).
             if request.method not in SAFE_METHODS and obj.status not in CLIENT_EDITABLE:
@@ -44,7 +54,7 @@ class CanAccessEventRequest(BasePermission):
         if user.role == Role.EVENT_COORDINATOR:
             if obj.status == EventStatus.DRAFT:
                 return False, "drafts are not visible to ConnectSphere"
-            if getattr(view, "action", None) in ("approve", "reject", "request_clarification"):
+            if getattr(view, "action", None) in COORDINATOR_ACTIONS:
                 # The view refuses anyone but the assigned coordinator, and audits it.
                 return True, ""
             if request.method not in SAFE_METHODS:
