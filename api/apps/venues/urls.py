@@ -1,11 +1,18 @@
 from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
-from apps.venues.views import ShortlistEntryView, ShortlistView, VenueBlockViewSet, VenueViewSet
+from apps.venues.views import (
+    ShortlistEntryView,
+    ShortlistView,
+    VenueBlockViewSet,
+    VenueBookingViewSet,
+    VenueViewSet,
+)
 
 router = SimpleRouter()
 router.register("venues", VenueViewSet, basename="venue")
 router.register("venue-blocks", VenueBlockViewSet, basename="venue-block")
+router.register("venue-bookings", VenueBookingViewSet, basename="venue-booking")
 
 urlpatterns = [
     path("events/<int:event_id>/shortlist/", ShortlistView.as_view(), name="venue-shortlist"),

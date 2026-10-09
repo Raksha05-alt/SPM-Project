@@ -7,7 +7,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.viewsets import ModelViewSet
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.accounts.models import Role
 from apps.core.audit import record, record_denied
@@ -15,10 +15,25 @@ from apps.core.permissions import HasAnyRole
 from apps.core.statuses import EventStatus
 from apps.events.models import EventRequest, RoomLayout
 from apps.venues.availability import OVERALL_LABELS, InvalidPeriod, overall, parse_period, segments
+from apps.venues.bookings import (
+    BookingRefused,
+    NotAllowed,
+    accept_suggestion,
+    approve_booking,
+    reject_booking,
+    request_booking,
+    withdraw_booking,
+)
 from apps.venues.matching import compare_venue, satisfies_all
-from apps.venues.models import BookingStatus, Venue, VenueBlock, VenueShortlist
+from apps.venues.models import BookingStatus, Venue, VenueBlock, VenueBooking, VenueShortlist
 from apps.venues.permissions import COORDINATOR_ONLY, INTERNAL_ROLES
-from apps.venues.serializers import VenueBlockSerializer, VenueSerializer
+from apps.venues.serializers import (
+    BookingRequestSerializer,
+    BookingSerializer,
+    RejectBookingSerializer,
+    VenueBlockSerializer,
+    VenueSerializer,
+)
 from apps.venues.suitability import assess, requirements_of, unmet
 
 
@@ -332,3 +347,117 @@ class ShortlistEntryView(APIView):
         event = coordinator_event(request, event_id, action_name, write=True)
         get_object_or_404(VenueShortlist, event=event, venue_id=venue_id).delete()
         return Response(status=http.HTTP_204_NO_CONTENT)
+
+
+BOOKING_ROLES = frozenset({Role.EVENT_COORDINATOR, Role.VENUE_STAFF})
+
+
+class VenueBookingViewSet(ReadOnlyModelViewSet):
+    """SCRUM-11 request, SCRUM-72/73 decide, SCRUM-67 withdraw, SCRUM-69 conflicts."""
+
+    serializer_class = BookingSerializer
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = BOOKING_ROLES
+
+    def get_queryset(self):
+        bookings = VenueBooking.objects.select_related(
+            "event",
+            "venue",
+            "requested_by",
+            "decided_by",
+            "withdrawn_by",
+            "suggested_venue",
+        ).exclude(event__status=EventStatus.DRAFT)
+        params = self.request.query_params
+        if params.get("status"):
+            wanted = [value for value in params["status"].split(",") if value]
+            unknown = [value for value in wanted if value not in BookingStatus.values]
+            if unknown:
+                raise ValidationError({"status": [f"Unknown status: {', '.join(unknown)}."]})
+            bookings = bookings.filter(status__in=wanted)
+        for field in ("event", "venue"):
+            value = params.get(field)
+            if value:
+                if not value.isdigit():
+                    raise ValidationError({field: ["Must be an id."]})
+                bookings = bookings.filter(**{f"{field}_id": int(value)})
+        return bookings
+
+    def _run(self, request, action_name, booking, work, success=http.HTTP_200_OK):
+        try:
+            result = work()
+        except NotAllowed:
+            record_denied(
+                request.user, action=action_name, obj=booking, detail="not the assigned coordinator"
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can do this."
+            ) from None
+        except BookingRefused as exc:
+            return Response({"detail": exc.detail, **exc.extra}, status=exc.status)
+        record(request.user, action_name, allowed=True, obj=result)
+        return Response(BookingSerializer(result).data, status=success)
+
+    def create(self, request):
+        action_name = "POST /api/venue-bookings/"
+        require_coordinator(request, action_name)
+        serializer = BookingRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        event = coordinator_event(request, data.pop("event").pk, action_name, write=True)
+        return self._run(
+            request,
+            action_name,
+            event,
+            lambda: request_booking(event, request.user, data),
+            success=http.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        booking = self.get_object()
+        action_name = f"POST /api/venue-bookings/{booking.pk}/approve/"
+        require_venue_staff(request, action_name, booking)
+        return self._run(
+            request, action_name, booking, lambda: approve_booking(booking, request.user)
+        )
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        booking = self.get_object()
+        action_name = f"POST /api/venue-bookings/{booking.pk}/reject/"
+        require_venue_staff(request, action_name, booking)
+        serializer = RejectBookingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        reason = data.pop("reason")
+        acknowledge = data.pop("acknowledge_warning")
+        return self._run(
+            request,
+            action_name,
+            booking,
+            lambda: reject_booking(booking, request.user, reason, data, acknowledge),
+        )
+
+    @action(detail=True, methods=["post"])
+    def withdraw(self, request, pk=None):
+        booking = self.get_object()
+        action_name = f"POST /api/venue-bookings/{booking.pk}/withdraw/"
+        require_coordinator(request, action_name, booking)
+        confirm = str(request.data.get("confirm", "")).lower() in ("true", "1")
+        return self._run(
+            request, action_name, booking, lambda: withdraw_booking(booking, request.user, confirm)
+        )
+
+    @action(detail=True, methods=["post"], url_path="accept-suggestion")
+    def accept_suggestion(self, request, pk=None):
+        booking = self.get_object()
+        action_name = f"POST /api/venue-bookings/{booking.pk}/accept-suggestion/"
+        require_coordinator(request, action_name, booking)
+
+        def work():
+            if booking.event.coordinator_id != request.user.pk:
+                raise NotAllowed
+            return accept_suggestion(booking, request.user)
+
+        return self._run(request, action_name, booking, work, success=http.HTTP_201_CREATED)

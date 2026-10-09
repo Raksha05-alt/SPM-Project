@@ -10,6 +10,9 @@ class NotificationKind(models.TextChoices):
     REJECTED = "REJECTED", "Request rejected"
     STATUS_CHANGED = "STATUS_CHANGED", "Event status changed"
     REASSIGNED = "REASSIGNED", "Coordinator reassigned"
+    BOOKING_REQUESTED = "BOOKING_REQUESTED", "Venue booking requested"
+    BOOKING_DECIDED = "BOOKING_DECIDED", "Venue booking decided"
+    BOOKING_WITHDRAWN = "BOOKING_WITHDRAWN", "Venue booking withdrawn"
 
 
 # Sent at most once per recipient and event. Clarification rounds can repeat.
