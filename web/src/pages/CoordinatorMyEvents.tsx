@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { approveEvent, fetchMyEvents } from "../api/events";
+import { approveEvent } from "../api/events";
+import { STATUS_LABELS, fetchMyEventsByStatus } from "../api/planning";
 import { ApprovalNote } from "../components/ApprovalNote";
 import { StatusBadge } from "../components/StatusBadge";
 import type { EventStatus } from "../types";
@@ -8,10 +10,63 @@ import type { EventStatus } from "../types";
 /** Statuses a coordinator can approve from; the API enforces the same rule. */
 const REVIEWABLE: EventStatus[] = ["SUBMITTED", "UNDER_REVIEW"];
 
+/** SCRUM-57 - the statuses an assigned event can have. */
+const FILTERS: EventStatus[] = [
+  "SUBMITTED",
+  "UNDER_REVIEW",
+  "APPROVED",
+  "PLANNING",
+  "CONFIRMED",
+  "COMPLETED",
+  "CANCELLED",
+  "REJECTED",
+];
+
+function StatusFilter({
+  options,
+  selected,
+  onChange,
+}: {
+  options: EventStatus[];
+  selected: EventStatus[];
+  onChange: (next: EventStatus[]) => void;
+}) {
+  return (
+    <fieldset className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+      <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-slate-500">
+        Filter by status
+      </legend>
+      {options.map((status) => (
+        <label key={status} className="flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={selected.includes(status)}
+            onChange={() =>
+              onChange(
+                selected.includes(status)
+                  ? selected.filter((s) => s !== status)
+                  : [...selected, status],
+              )
+            }
+          />
+          {STATUS_LABELS[status]}
+        </label>
+      ))}
+      {selected.length > 0 && (
+        <button type="button" onClick={() => onChange([])} className="text-navy-700 underline">
+          Clear filter
+        </button>
+      )}
+    </fieldset>
+  );
+}
+
 export function CoordinatorMyEvents() {
+  const [statuses, setStatuses] = useState<EventStatus[]>([]);
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["my-events"],
-    queryFn: fetchMyEvents,
+    queryKey: ["my-events", statuses],
+    queryFn: () => fetchMyEventsByStatus(statuses),
+    placeholderData: (previous) => previous,
   });
   const queryClient = useQueryClient();
   const approve = useMutation({
@@ -43,10 +98,14 @@ export function CoordinatorMyEvents() {
         </p>
       )}
 
+      <StatusFilter options={FILTERS} selected={statuses} onChange={setStatuses} />
+
       {/* SCRUM-54 AC3 - no assigned events is an empty state, not an error. */}
       {rows.length === 0 ? (
         <p className="rounded-md border border-dashed border-slate-300 p-8 text-center text-slate-500">
-          You have no assigned events right now.
+          {statuses.length
+            ? "No events match the selected statuses."
+            : "You have no assigned events right now."}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">

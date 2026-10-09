@@ -3,12 +3,17 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { approveEvent, fetchMyEvents } from "../api/events";
+import { approveEvent } from "../api/events";
+import { fetchMyEventsByStatus } from "../api/planning";
 import { ApiError } from "../api/client";
 import type { AssignedEventRow, EventRequest } from "../types";
 import { CoordinatorMyEvents } from "./CoordinatorMyEvents";
 
-vi.mock("../api/events", () => ({ fetchMyEvents: vi.fn(), approveEvent: vi.fn() }));
+vi.mock("../api/events", () => ({ approveEvent: vi.fn() }));
+vi.mock("../api/planning", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/planning")>()),
+  fetchMyEventsByStatus: vi.fn(),
+}));
 
 function row(overrides: Partial<AssignedEventRow> = {}): AssignedEventRow {
   return {
@@ -49,7 +54,7 @@ describe("CoordinatorMyEvents", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("SCRUM-54 AC1: shows each event with its status and next required action", async () => {
-    vi.mocked(fetchMyEvents).mockResolvedValue([row()]);
+    vi.mocked(fetchMyEventsByStatus).mockResolvedValue([row()]);
 
     renderPage();
 
@@ -62,7 +67,7 @@ describe("CoordinatorMyEvents", () => {
   });
 
   it("SCRUM-54 AC3: shows an empty state rather than an error", async () => {
-    vi.mocked(fetchMyEvents).mockResolvedValue([]);
+    vi.mocked(fetchMyEventsByStatus).mockResolvedValue([]);
 
     renderPage();
 
@@ -71,18 +76,18 @@ describe("CoordinatorMyEvents", () => {
   });
 
   it("Approve AC1: approving a submitted request calls the API and refreshes the list", async () => {
-    vi.mocked(fetchMyEvents).mockResolvedValue([row()]);
+    vi.mocked(fetchMyEventsByStatus).mockResolvedValue([row()]);
     vi.mocked(approveEvent).mockResolvedValue({} as EventRequest);
 
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "Approve Partner Summit" }));
 
     expect(approveEvent).toHaveBeenCalledWith(3);
-    expect(fetchMyEvents).toHaveBeenCalledTimes(2);
+    expect(fetchMyEventsByStatus).toHaveBeenCalledTimes(2);
   });
 
   it("Approve AC2: shows who approved the request and when", async () => {
-    vi.mocked(fetchMyEvents).mockResolvedValue([
+    vi.mocked(fetchMyEventsByStatus).mockResolvedValue([
       row({
         status: "APPROVED",
         status_label: "Approved",
@@ -98,7 +103,7 @@ describe("CoordinatorMyEvents", () => {
   });
 
   it("Approve AC3: offers no Approve button outside a reviewable status", async () => {
-    vi.mocked(fetchMyEvents).mockResolvedValue([
+    vi.mocked(fetchMyEventsByStatus).mockResolvedValue([
       row({ status: "PLANNING", status_label: "Planning" }),
     ]);
 
@@ -109,7 +114,7 @@ describe("CoordinatorMyEvents", () => {
   });
 
   it("Approve AC3/AC4: shows the reason when the API refuses", async () => {
-    vi.mocked(fetchMyEvents).mockResolvedValue([row()]);
+    vi.mocked(fetchMyEventsByStatus).mockResolvedValue([row()]);
     vi.mocked(approveEvent).mockRejectedValue(
       new ApiError(403, null, "Only the coordinator assigned to this event can approve it."),
     );
@@ -120,5 +125,39 @@ describe("CoordinatorMyEvents", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Only the coordinator assigned to this event can approve it.",
     );
+  });
+});
+
+describe("SCRUM-57 filter my events by status", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("AC1/AC2: requests only the chosen statuses, one or several", async () => {
+    vi.mocked(fetchMyEventsByStatus).mockImplementation(async (statuses) =>
+      statuses.length
+        ? [row({ id: 4, name: "Planning Day", status: "PLANNING", status_label: "Planning" })]
+        : [row()],
+    );
+
+    renderPage();
+    await screen.findByText("Partner Summit");
+    await userEvent.click(screen.getByLabelText("Planning"));
+
+    expect(await screen.findByText("Planning Day")).toBeInTheDocument();
+    expect(fetchMyEventsByStatus).toHaveBeenLastCalledWith(["PLANNING"]);
+
+    await userEvent.click(screen.getByLabelText("Confirmed"));
+    expect(fetchMyEventsByStatus).toHaveBeenLastCalledWith(["PLANNING", "CONFIRMED"]);
+  });
+
+  it("AC4: says when nothing matches the filter", async () => {
+    vi.mocked(fetchMyEventsByStatus).mockImplementation(async (statuses) =>
+      statuses.length ? [] : [row()],
+    );
+
+    renderPage();
+    await screen.findByText("Partner Summit");
+    await userEvent.click(screen.getByLabelText("Rejected"));
+
+    expect(await screen.findByText("No events match the selected statuses.")).toBeInTheDocument();
   });
 });

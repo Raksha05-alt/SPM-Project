@@ -1,11 +1,68 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { fetchQueue } from "../api/events";
+import { STATUS_LABELS, fetchQueueByStatus } from "../api/planning";
 import { ApprovalNote } from "../components/ApprovalNote";
 import { StatusBadge } from "../components/StatusBadge";
+import type { EventStatus } from "../types";
+
+/** SCRUM-57 - the statuses an item in the queue can have. */
+const FILTERS: EventStatus[] = [
+  "SUBMITTED",
+  "UNDER_REVIEW",
+  "APPROVED",
+  "PLANNING",
+  "CONFIRMED",
+  "COMPLETED",
+  "CANCELLED",
+];
+
+function StatusFilter({
+  options,
+  selected,
+  onChange,
+}: {
+  options: EventStatus[];
+  selected: EventStatus[];
+  onChange: (next: EventStatus[]) => void;
+}) {
+  return (
+    <fieldset className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+      <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-slate-500">
+        Filter by status
+      </legend>
+      {options.map((status) => (
+        <label key={status} className="flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={selected.includes(status)}
+            onChange={() =>
+              onChange(
+                selected.includes(status)
+                  ? selected.filter((s) => s !== status)
+                  : [...selected, status],
+              )
+            }
+          />
+          {STATUS_LABELS[status]}
+        </label>
+      ))}
+      {selected.length > 0 && (
+        <button type="button" onClick={() => onChange([])} className="text-navy-700 underline">
+          Clear filter
+        </button>
+      )}
+    </fieldset>
+  );
+}
 
 export function CoordinatorQueue() {
-  const { data, isLoading, isError } = useQuery({ queryKey: ["queue"], queryFn: fetchQueue });
+  const [statuses, setStatuses] = useState<EventStatus[]>([]);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["queue", statuses],
+    queryFn: () => fetchQueueByStatus(statuses),
+    placeholderData: (previous) => previous,
+  });
 
   if (isLoading) return <p className="text-slate-500">Loading the queue…</p>;
   if (isError) return <p role="alert">We could not load the queue.</p>;
@@ -22,10 +79,14 @@ export function CoordinatorQueue() {
       </div>
       <p className="mb-6 text-sm text-slate-500">Oldest submission first.</p>
 
+      <StatusFilter options={FILTERS} selected={statuses} onChange={setStatuses} />
+
       {/* US-04.1 AC5 - an empty queue is an empty state, not an error. */}
       {rows.length === 0 ? (
         <p className="rounded-md border border-dashed border-slate-300 p-8 text-center text-slate-500">
-          Nothing is waiting for ConnectSphere right now.
+          {statuses.length
+            ? "No events match the selected statuses."
+            : "Nothing is waiting for ConnectSphere right now."}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">

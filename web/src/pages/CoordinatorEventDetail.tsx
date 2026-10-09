@@ -6,6 +6,13 @@ import { useAuth } from "../auth/AuthContext";
 import { ApprovalNote } from "../components/ApprovalNote";
 import { CLARIFIABLE_FIELDS, ClarificationHistory } from "../components/Clarifications";
 import { inputClass } from "../components/Field";
+import { ChangeHistory } from "../components/planning/ChangeHistory";
+import { ChangeRequestsPanel } from "../components/planning/ChangeRequestsPanel";
+import { EquipmentPlanner } from "../components/planning/EquipmentPlanner";
+import { EventActions } from "../components/planning/EventActions";
+import { EventEditPanel } from "../components/planning/EventEditPanel";
+import { RegistrationsPanel } from "../components/planning/RegistrationsPanel";
+import { VenuePlanner } from "../components/planning/VenuePlanner";
 import { RejectionNotice } from "../components/RejectionNotice";
 import { StatusBadge } from "../components/StatusBadge";
 import type { EventRequest, EventStatus } from "../types";
@@ -20,6 +27,9 @@ const LAYOUT_LABELS: Record<string, string> = {
 
 /** Statuses a coordinator can approve from; the API enforces the same rule. */
 const REVIEWABLE: EventStatus[] = ["SUBMITTED", "UNDER_REVIEW"];
+
+/** Statuses in which venues, equipment and details are planned (SCRUM-61, 11, 74). */
+const PLANNABLE: EventStatus[] = ["APPROVED", "PLANNING", "CONFIRMED"];
 
 function formatDateTime(value: string | null) {
   return value ? new Date(value).toLocaleString("en-SG") : "—";
@@ -116,6 +126,7 @@ export function CoordinatorEventDetail() {
   const canApprove = isAssigned && REVIEWABLE.includes(event.status);
   const canClarify = isAssigned && event.status === "SUBMITTED";
   const canReject = canApprove;
+  const canPlan = isAssigned && PLANNABLE.includes(event.status);
   const decisionError = approve.error ?? clarify.error ?? reject.error;
 
   return (
@@ -329,7 +340,20 @@ export function CoordinatorEventDetail() {
         </div>
       )}
 
+      {isAssigned && <EventActions event={event} />}
+
       <ClarificationHistory clarifications={event.clarifications ?? []} />
+
+      {canPlan && (
+        <>
+          <EventEditPanel event={event} />
+          <VenuePlanner event={event} />
+          <EquipmentPlanner event={event} />
+        </>
+      )}
+      {isAssigned && event.registration_required && <RegistrationsPanel eventId={event.id} />}
+      <ChangeRequestsPanel eventId={event.id} canDecide={isAssigned} />
+      <ChangeHistory eventId={event.id} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { approveEvent, getEvent, rejectEvent, requestClarification } from "../api/events";
+import { fetchChangeRequests, fetchHistory } from "../api/planning";
 import type { EventRequest } from "../types";
 import { CoordinatorEventDetail } from "./CoordinatorEventDetail";
 
@@ -12,6 +13,28 @@ vi.mock("../api/events", () => ({
   approveEvent: vi.fn(),
   requestClarification: vi.fn(),
   rejectEvent: vi.fn(),
+}));
+vi.mock("../api/planning", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/planning")>()),
+  fetchHistory: vi.fn().mockResolvedValue([]),
+  fetchChangeRequests: vi.fn().mockResolvedValue([]),
+  fetchRegistrations: vi.fn().mockResolvedValue({
+    capacity: 100,
+    registered_count: 0,
+    waitlist_count: 0,
+    places_left: 100,
+    registrations: [],
+  }),
+  fetchShortlist: vi.fn().mockResolvedValue([]),
+  fetchBookings: vi.fn().mockResolvedValue([]),
+  fetchEquipmentRequests: vi.fn().mockResolvedValue([]),
+  fetchEquipmentAvailability: vi.fn().mockResolvedValue({
+    event: 9,
+    start: "",
+    end: "",
+    results: [],
+  }),
+  listEquipmentTypes: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: 2 } }) }));
 
@@ -206,5 +229,50 @@ describe("CoordinatorEventDetail", () => {
 
     expect(screen.getByText("Enter a reason for the rejection.")).toBeInTheDocument();
     expect(rejectEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("SCRUM-61 / 11 / 74 / 78 / 60 planning panels on the event page", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("shows every planning panel to the assigned coordinator during planning", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event({ status: "PLANNING", status_label: "Planning" }));
+
+    renderPage();
+
+    expect(await screen.findByRole("button", { name: "Edit event details" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Find a venue" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Venue bookings" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Equipment requests" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Registrations" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm event" })).toBeInTheDocument();
+    expect(await screen.findByText("No changes have been recorded yet.")).toBeInTheDocument();
+    expect(fetchHistory).toHaveBeenCalledWith(9);
+    expect(fetchChangeRequests).toHaveBeenCalledWith(9);
+  });
+
+  it("shows only history and change requests to a coordinator who is not assigned", async () => {
+    vi.mocked(getEvent).mockResolvedValue(
+      event({ status: "PLANNING", status_label: "Planning", coordinator: 5 }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByRole("region", { name: "Change history" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Change requests" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit event details" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Find a venue" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Registrations" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel event" })).not.toBeInTheDocument();
+  });
+
+  it("offers no venue or equipment planning before the request is approved", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event());
+
+    renderPage();
+
+    expect(await screen.findByRole("button", { name: "Approve request" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Find a venue" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Equipment requests" })).not.toBeInTheDocument();
   });
 });
