@@ -6,7 +6,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.serializers import LoginSerializer, UserSerializer
+from apps.accounts.serializers import AccountUpdateSerializer, LoginSerializer, UserSerializer
 from apps.core.audit import record, record_denied
 
 
@@ -58,5 +58,29 @@ class LogoutView(APIView):
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    # SCRUM-2 AC3 - a user may never change who they are to the system.
+    PROTECTED_FIELDS = ("role", "organisation", "is_staff", "is_superuser", "is_active")
+
     def get(self, request):
         return Response(UserSerializer(request.user).data)
+
+    def patch(self, request):
+        """SCRUM-2 - update my own contact details."""
+        user = request.user
+        attempted = [field for field in self.PROTECTED_FIELDS if field in request.data]
+        if attempted:
+            record_denied(
+                user,
+                action="PATCH /api/auth/me/",
+                obj=user,
+                detail=f"attempted to change {', '.join(attempted)}",
+            )
+            return Response(
+                {"detail": "You cannot change your own role or organisation."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = AccountUpdateSerializer(user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        record(user, action="PATCH /api/auth/me/", allowed=True, obj=user)
+        return Response(UserSerializer(user).data)

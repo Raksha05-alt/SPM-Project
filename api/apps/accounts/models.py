@@ -39,6 +39,7 @@ class ClientOrganisation(TimeStampedModel):
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=30, blank=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.ATTENDEE)
     coordinator_available = models.BooleanField(
         default=True, help_text="Available for automatic event assignment (coordinators only)."
