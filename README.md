@@ -1,31 +1,33 @@
 # ConnectSphere Event Planning and Venue Booking System
 
 IS212 Software Project Management, AY 2026-27 T1. First release, built with Scrum
-over four sprints. This branch includes the Sprint 1 slice and SCRUM-51 from Sprint 2.
+over four sprints. The `Trial_Code` branch implements every story in the Jira
+backlog for the original requirements (Week 1 briefing and Week 4 instructions).
+The Week 7 customer changes are not included yet.
 
 ## What works today
 
-Sprint 1 delivered one thin vertical slice through the whole stack:
-
-| Story | What it does |
+| Area | Stories |
 |---|---|
-| US-01.1 | Sign in and land on the view for your role |
-| US-01.2 | Access is restricted by role and by relationship to an event |
-| US-02.1 | An Event Organiser creates an event request |
-| US-02.2 | An Event Organiser submits a completed request |
-| US-03.1 | An Event Organiser saves an incomplete request as a draft |
-| US-04.1 | An Event Coordinator sees submitted requests in a queue |
-| US-06.1 | Every event shows its current status in plain language |
-| SCRUM-51 | Assign one available coordinator on submission, notify both users, and show coordinator contact details |
+| Sign-in, roles, access control, audit log, account details | US-01.1, US-01.2, SCRUM-1, SCRUM-2 |
+| Event requests: create, drafts, submit, organiser lists | US-02.1, US-02.2, US-03.1, SCRUM-45, SCRUM-48 |
+| Review: queue, approve, reject, clarification | US-04.1, SCRUM-49, SCRUM-50, SCRUM-52 |
+| Coordinators: assignment, my events, reassignment | SCRUM-51, SCRUM-53, SCRUM-54 |
+| Status: plain-language status, permitted transitions, filters, cancel, complete | US-06.1, SCRUM-55, SCRUM-56, SCRUM-57 |
+| Event information: edits during planning, change history, significant changes | SCRUM-59, SCRUM-60, SCRUM-61 |
+| Venue catalogue, layouts, facilities, blocks | SCRUM-5, SCRUM-9, SCRUM-13, SCRUM-65 |
+| Venue availability, comparison, search, suitability, shortlist | SCRUM-17, SCRUM-62, SCRUM-64, SCRUM-66, SCRUM-68, SCRUM-71 |
+| Venue bookings: request, approve or reject, suggest, withdraw, conflicts | SCRUM-11, SCRUM-67, SCRUM-69, SCRUM-70, SCRUM-72, SCRUM-73 |
+| Equipment: requests, availability, holders, reservations, release | SCRUM-12, SCRUM-16, SCRUM-74, SCRUM-75, SCRUM-76, SCRUM-77 |
+| Confirming an event | SCRUM-58 |
+| Change requests and staff review | SCRUM-20, SCRUM-78, SCRUM-80 |
+| Attendee registration, withdrawal, capacity, waiting list | SCRUM-14, SCRUM-19, SCRUM-21, SCRUM-81 |
+| Notifications | SCRUM-18, SCRUM-79, SCRUM-82 |
 
-Sprint 2 extended US-01.2 (SCRUM-1): anonymous refusals are now recorded, the
-audit write can no longer turn a 403 into a 500, and `GET /api/audit/` lets
-ConnectSphere staff read the recorded refusals back. See
-`docs/scrum-1-access-control-notes.md`.
-
-Venues, equipment, registration, change requests and broader notifications arrive in
-sprints 2 to 4. Assignment notifications are already implemented; the other Django apps are empty so that the
-repository structure matches the C4 level 3 component diagram in `docs/c4`.
+Backend tests are named after the acceptance criteria they prove
+(`test_scrum_NN_*.py`, `test_acN_...`), so each criterion can be traced to a test.
+Equipment types are maintained in the Django admin (`/admin/`); the demo seed
+creates a starter set.
 
 ## Running it
 
