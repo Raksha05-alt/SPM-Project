@@ -22,6 +22,7 @@ from apps.events.permissions import CanAccessEventRequest
 from apps.events.serializers import (
     AssignedEventSerializer,
     AttendeeEventSerializer,
+    ChangeLogSerializer,
     ClarificationInputSerializer,
     EventQueueSerializer,
     EventRequestSerializer,
@@ -41,9 +42,11 @@ from apps.events.services import (
     approve_event,
     cancel_event,
     complete_event,
+    log_changes,
     reassign_event,
     reject_event,
     request_clarification,
+    snapshot,
     submit_event,
 )
 
@@ -92,7 +95,7 @@ class EventRequestViewSet(ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         base = EventRequest.objects.select_related(
-            "organisation", "created_by", "coordinator", "approved_by", "rejected_by"
+            "organisation", "created_by", "coordinator", "approved_by", "rejected_by", "updated_by"
         ).prefetch_related(
             "clarifications__requested_by",
             "assignment_history__coordinator",
@@ -114,7 +117,12 @@ class EventRequestViewSet(ModelViewSet):
         is refused and audited (US-01.2 AC1) rather than silently returning 404."""
         obj = (
             EventRequest.objects.select_related(
-                "organisation", "created_by", "coordinator", "approved_by", "rejected_by"
+                "organisation",
+                "created_by",
+                "coordinator",
+                "approved_by",
+                "rejected_by",
+                "updated_by",
             )
             .prefetch_related(
                 "clarifications__requested_by",
@@ -161,7 +169,11 @@ class EventRequestViewSet(ModelViewSet):
                     locked, data=serializer.initial_data, partial=serializer.partial
                 )
                 current.is_valid(raise_exception=True)
-                serializer.instance = current.save()
+                before = snapshot(locked)
+                serializer.instance = current.save(updated_by=self.request.user)
+                if not locked.is_draft:
+                    # SCRUM-60 - drafts are the client's private work in progress.
+                    log_changes(serializer.instance, before, self.request.user)
         if denied is not None:
             raise denied
 
@@ -357,6 +369,21 @@ class EventRequestViewSet(ModelViewSet):
             )
         event.refresh_from_db()
         return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["get"])
+    def history(self, request, pk=None):
+        """SCRUM-60 - field-level change history, internal staff only, newest first."""
+        event = self.get_object()
+        if not request.user.is_internal:
+            record_denied(
+                request.user,
+                action=f"GET /api/events/{event.pk}/history/",
+                obj=event,
+                detail="change history is internal planning information",
+            )
+            raise PermissionDenied("Change history is restricted to ConnectSphere staff.")
+        entries = event.change_log.select_related("changed_by")
+        return Response(ChangeLogSerializer(entries, many=True).data)
 
     @action(detail=True, methods=["post"])
     def reassign(self, request, pk=None):

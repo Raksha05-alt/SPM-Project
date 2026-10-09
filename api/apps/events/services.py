@@ -16,6 +16,7 @@ from apps.core.statuses import (
 from apps.events.models import (
     ClarificationRequest,
     CoordinatorAssignment,
+    EventChangeLog,
     EventRequest,
     EventStatusHistory,
 )
@@ -321,3 +322,51 @@ def reassign_event(event: EventRequest, user, new_coordinator_id) -> EventReques
     )
     event.refresh_from_db()
     return event
+
+
+# SCRUM-60 / SCRUM-61 - the event information whose changes are kept on record.
+TRACKED_FIELDS = (
+    "name",
+    "purpose",
+    "description",
+    "preferred_start",
+    "preferred_end",
+    "expected_attendance",
+    "required_layout",
+    "accessibility_needs",
+    "equipment_notes",
+    "registration_required",
+)
+
+
+def snapshot(event: EventRequest) -> dict:
+    return {field: getattr(event, field) for field in TRACKED_FIELDS}
+
+
+def _as_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def log_changes(event: EventRequest, before: dict, user, significant=frozenset()) -> list[str]:
+    """Write one change-history row per field that actually changed; return those fields."""
+    changed = [field for field, old in before.items() if getattr(event, field) != old]
+    EventChangeLog.objects.bulk_create(
+        [
+            EventChangeLog(
+                event=event,
+                field=field,
+                previous_value=_as_text(before[field]),
+                new_value=_as_text(getattr(event, field)),
+                changed_by=user,
+                significant=field in significant,
+            )
+            for field in changed
+        ]
+    )
+    return changed

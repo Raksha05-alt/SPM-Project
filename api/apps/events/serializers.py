@@ -2,7 +2,12 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.core.statuses import COORDINATOR_NEXT_ACTIONS, STATUS_DESCRIPTIONS, EventStatus
-from apps.events.models import ClarificationRequest, CoordinatorAssignment, EventRequest
+from apps.events.models import (
+    ClarificationRequest,
+    CoordinatorAssignment,
+    EventChangeLog,
+    EventRequest,
+)
 
 
 class ClarificationSerializer(serializers.ModelSerializer):
@@ -75,6 +80,27 @@ class AssignmentHistorySerializer(serializers.ModelSerializer):
         return _display_name(obj.changed_by) or "Automatic assignment"
 
 
+class ChangeLogSerializer(serializers.ModelSerializer):
+    changed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EventChangeLog
+        fields = [
+            "id",
+            "field",
+            "previous_value",
+            "new_value",
+            "changed_by",
+            "changed_by_name",
+            "changed_at",
+            "significant",
+        ]
+        read_only_fields = fields
+
+    def get_changed_by_name(self, obj) -> str | None:
+        return _display_name(obj.changed_by)
+
+
 class ReasonInputSerializer(serializers.Serializer):
     reason = serializers.CharField(allow_blank=True, trim_whitespace=True, required=False)
 
@@ -94,6 +120,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
     rejected_by_name = serializers.SerializerMethodField()
     clarifications = ClarificationSerializer(many=True, read_only=True)
     assignment_history = AssignmentHistorySerializer(many=True, read_only=True)
+    updated_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = EventRequest
@@ -134,6 +161,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "assignment_history",
             "missing_mandatory_fields",
             "is_editable",
+            "updated_by_name",
             "created_at",
             "updated_at",
         ]
@@ -176,6 +204,9 @@ class EventRequestSerializer(serializers.ModelSerializer):
 
     def get_approved_by_name(self, obj) -> str | None:
         return _display_name(obj.approved_by)
+
+    def get_updated_by_name(self, obj) -> str | None:
+        return _display_name(obj.updated_by)
 
     def get_rejected_by_name(self, obj) -> str | None:
         return _display_name(obj.rejected_by)

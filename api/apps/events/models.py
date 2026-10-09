@@ -78,6 +78,13 @@ class EventRequest(TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="rejected_event_requests",
     )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -168,3 +175,35 @@ class CoordinatorAssignment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.event_id}: {self.previous_coordinator_id} -> {self.coordinator_id}"
+
+
+class ImmutableRecord(Exception):
+    """Raised when code tries to edit or delete a history row."""
+
+
+class EventChangeLog(models.Model):
+    """SCRUM-60 - one row per changed field. Rows are evidence, so they never change."""
+
+    event = models.ForeignKey(EventRequest, on_delete=models.CASCADE, related_name="change_log")
+    field = models.CharField(max_length=60)
+    previous_value = models.TextField(blank=True)
+    new_value = models.TextField(blank=True)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    changed_at = models.DateTimeField(auto_now_add=True)
+    significant = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-changed_at", "-pk"]
+
+    def __str__(self) -> str:
+        return f"{self.event_id}.{self.field}: {self.previous_value!r} -> {self.new_value!r}"
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise ImmutableRecord("Change history entries cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ImmutableRecord("Change history entries cannot be deleted.")

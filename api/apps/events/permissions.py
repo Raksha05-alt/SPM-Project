@@ -2,7 +2,7 @@ from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from apps.accounts.models import Role
 from apps.core.audit import record_denied
-from apps.core.statuses import ATTENDEE_VISIBLE_STATUSES, EventStatus
+from apps.core.statuses import ATTENDEE_VISIBLE_STATUSES, TERMINAL_STATUSES, EventStatus
 
 CLIENT_EDITABLE = frozenset({EventStatus.DRAFT, EventStatus.UNDER_REVIEW})
 
@@ -57,8 +57,15 @@ class CanAccessEventRequest(BasePermission):
             if getattr(view, "action", None) in COORDINATOR_ACTIONS:
                 # The view refuses anyone but the assigned coordinator, and audits it.
                 return True, ""
+            if getattr(view, "action", None) in ("update", "partial_update"):
+                # SCRUM-61 AC2 / AC3.
+                if obj.coordinator_id != user.pk:
+                    return False, "only the assigned coordinator may edit this event"
+                if obj.status in TERMINAL_STATUSES:
+                    return False, f"a {obj.get_status_display()} event can no longer be edited"
+                return True, ""
             if request.method not in SAFE_METHODS:
-                return False, "coordinator write actions arrive in sprint 2"
+                return False, "coordinators cannot perform this action"
             return True, ""
 
         if user.role == Role.ATTENDEE:
