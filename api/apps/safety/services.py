@@ -28,10 +28,6 @@ def current_check(event: EventRequest) -> SafetyCheck | None:
     return event.safety_checks.filter(status__in=CURRENT_STATUSES).first()
 
 
-def is_approved(event: EventRequest) -> bool:
-    return event.safety_checks.filter(status=SafetyStatus.APPROVED).exists()
-
-
 def _when(moment) -> str:
     return f"{timezone.localtime(moment):%d %b %Y %H:%M}" if moment else "not set"
 

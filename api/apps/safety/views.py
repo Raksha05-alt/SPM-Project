@@ -57,11 +57,6 @@ class SafetyCheckViewSet(ReadOnlyModelViewSet):
     def decide(self, request, pk=None):
         check = self.get_object()
         action_name = f"POST /api/safety-checks/{check.pk}/decide/"
-        if not request.user.is_safety_officer:
-            record_denied(
-                request.user, action=action_name, obj=check, detail="safety officers only"
-            )
-            raise PermissionDenied("Only a Safety Officer can decide a safety check.")
         payload = SafetyDecisionInputSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         try:
@@ -72,6 +67,10 @@ class SafetyCheckViewSet(ReadOnlyModelViewSet):
                 payload.validated_data["comment"],
             )
         except NotPermitted:
+            # The service owns the rule; the view records the refusal.
+            record_denied(
+                request.user, action=action_name, obj=check, detail="safety officers only"
+            )
             raise PermissionDenied("Only a Safety Officer can decide a safety check.") from None
         except SafetyRefused as exc:
             return refused(exc)

@@ -281,7 +281,7 @@ def confirm_hold(booking: VenueBooking, user) -> VenueBooking:
     if booking.status != BookingStatus.HELD:
         raise BookingRefused("Only a tentative hold can be confirmed.")
     if booking.hold_expired:
-        _expire(booking)
+        # ``process_holds`` records the expiry; here we only refuse.
         raise BookingRefused(
             "This hold has expired and the venue has been released. Request the venue again."
         )

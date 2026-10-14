@@ -209,6 +209,8 @@ def add_clarification_comment(event: EventRequest, user, message: str, clarifica
     message = (message or "").strip()
     if not message:
         raise EmptyComment
+    # Re-read under the lock: a Lead may have reassigned the event meanwhile.
+    event = EventRequest.objects.select_for_update().get(pk=event.pk)
     if user.is_organiser:
         if user.organisation_id != event.organisation_id:
             raise NotPermitted

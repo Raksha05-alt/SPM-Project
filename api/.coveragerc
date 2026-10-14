@@ -1,0 +1,11 @@
+# Measure production code only. Before Week 7 the figure included test files
+# and migrations, which overstated coverage (docs/venue-test-plan.md).
+[run]
+source = apps
+omit =
+    */tests/*
+    */migrations/*
+
+[report]
+show_missing = True
+skip_covered = True
