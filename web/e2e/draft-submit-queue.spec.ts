@@ -7,17 +7,30 @@ import { expect, test } from "@playwright/test";
  *   python manage.py seed_demo_data
  */
 
-const ORGANISER = { email: "organiser@acme.example", password: "connectsphere-demo" };
-const COORDINATOR = { email: "coordinator@connectsphere.example", password: "connectsphere-demo" };
+const ORGANISER = {
+  email: "organiser@acme.example",
+  password: "connectsphere-demo",
+};
+const COORDINATOR = {
+  email: "coordinator@connectsphere.example",
+  password: "connectsphere-demo",
+};
+const LEAD = {
+  email: "lead@connectsphere.example",
+  password: "connectsphere-demo",
+};
 
 async function signIn(page, who: { email: string; password: string }) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(who.email);
   await page.getByLabel("Password").fill(who.password);
   await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).not.toHaveURL(/\/login$/);
 }
 
-test("an organiser drafts and submits a request, and the coordinator sees it", async ({ page }) => {
+test("an organiser submits a request, a Lead assigns it and the coordinator sees it", async ({
+  page,
+}) => {
   const eventName = `Playwright Conference ${Date.now()}`;
 
   await signIn(page, ORGANISER);
@@ -40,19 +53,40 @@ test("an organiser drafts and submits a request, and the coordinator sees it", a
 
   await expect(page).toHaveURL(/\/organiser$/);
   await expect(page.getByRole("link", { name: eventName })).toBeVisible();
-  // SCRUM-51 AC3/AC4: assignment is visible to the organiser and persists.
-  await page.getByText(/Notifications \(/).click();
-  await expect(page.getByRole("list", { name: "Notifications", exact: true })).toContainText(eventName);
-  await page.getByText(/Notifications \(/).click();
+  // Week 7 change 5: nobody is assigned automatically; the request waits for a Lead.
   await page.getByRole("link", { name: eventName }).click();
-  await expect(page.getByRole("region", { name: "Coordinator assignment" })).toContainText("coordinator@connectsphere.example");
-  await expect(page.getByRole("link", { name: "coordinator@connectsphere.example" })).toHaveAttribute("href", "mailto:coordinator@connectsphere.example");
+  await expect(
+    page.getByRole("region", { name: "Coordinator assignment" }),
+  ).toContainText("Coordinator Lead will assign");
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await signIn(page, LEAD);
+  await expect(page).toHaveURL(/\/lead$/);
+  const choose = page.getByLabel(`Coordinator for ${eventName}`);
+  const cora = await choose
+    .locator("option", { hasText: "Cora Coordinator" })
+    .getAttribute("value");
+  await choose.selectOption(cora!);
+  await page.getByRole("button", { name: `Assign ${eventName}` }).click();
+  await expect(page.getByRole("link", { name: eventName })).toBeHidden();
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await signIn(page, ORGANISER);
+  await page.getByRole("link", { name: eventName }).click();
+  await expect(
+    page.getByRole("region", { name: "Coordinator assignment" }),
+  ).toContainText("coordinator@connectsphere.example");
+  await expect(
+    page.getByRole("link", { name: "coordinator@connectsphere.example" }),
+  ).toHaveAttribute("href", "mailto:coordinator@connectsphere.example");
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await signIn(page, COORDINATOR);
 
   await expect(page).toHaveURL(/\/coordinator$/);
-  await expect(page.getByRole("cell", { name: eventName })).toBeVisible();
+  await expect(page.getByRole("link", { name: eventName })).toBeVisible();
   await page.getByText(/Notifications \(/).click();
-  await expect(page.getByRole("list", { name: "Notifications", exact: true })).toContainText(eventName);
+  await expect(
+    page.getByRole("list", { name: "Notifications", exact: true }),
+  ).toContainText(eventName);
 });
