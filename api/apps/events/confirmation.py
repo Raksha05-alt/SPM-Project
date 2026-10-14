@@ -1,4 +1,11 @@
-"""SCRUM-58 - confirm an event once its essential arrangements are in place."""
+"""SCRUM-58 - confirm an event once its essential arrangements are in place.
+
+Week 7 changes: every venue booking of the event is decided independently and
+must be approved (change 3); a tentative hold is not a booking until the
+coordinator confirms it (change 4); a venue that became unavailable must be
+replaced or dropped (change 2); and the Safety Officer must have approved the
+current arrangements (change 6).
+"""
 
 from django.db import transaction
 from django.utils import timezone
@@ -22,35 +29,44 @@ def _when(moment) -> str:
     return f"{timezone.localtime(moment):%d %b %Y %H:%M}"
 
 
-def missing_arrangements(event: EventRequest) -> list[dict]:
-    """SCRUM-58 AC2 - every essential arrangement that is missing, unavailable or undecided."""
+def _name(booking) -> str:
+    if booking.session_name:
+        return f"{booking.venue.name} ({booking.session_name})"
+    return booking.venue.name
+
+
+def _venue_label(row: dict) -> str:
+    return f"{row['venue']} ({row['session']})" if row["session"] else row["venue"]
+
+
+def arrangement_gaps(event: EventRequest) -> list[dict]:
+    """The venue and technical arrangements that are missing, unavailable or undecided."""
     missing = []
     bookings = list(event.venue_bookings.select_related("venue"))
     approved = [b for b in bookings if b.status == BookingStatus.APPROVED]
     if not approved:
-        pending = [b for b in bookings if b.status == BookingStatus.PENDING]
-        if pending:
-            for booking in pending:
-                missing.append(
-                    {
-                        "arrangement": "Venue",
-                        "detail": f"The request for {booking.venue.name} is awaiting a decision "
-                        "from Venue Staff.",
-                    }
+        missing.append({"arrangement": "Venue", "detail": "No venue booking has been approved."})
+    for booking in bookings:
+        if booking.status == BookingStatus.PENDING:
+            detail = f"The request for {_name(booking)} is awaiting a decision from Venue Staff."
+        elif booking.status == BookingStatus.HELD:
+            if booking.hold_expired:
+                detail = f"The hold on {_name(booking)} has expired."
+            else:
+                detail = (
+                    f"{_name(booking)} is only tentatively held until "
+                    f"{_when(booking.hold_expires_at)}. Confirm the hold."
                 )
+        elif booking.status == BookingStatus.DISRUPTED and booking.replaced_by_id is None:
+            detail = (
+                f"{_name(booking)} became unavailable ({booking.disruption_reason}). Request a "
+                "replacement venue or withdraw the booking."
+            )
+        elif booking.status == BookingStatus.APPROVED and booking.review_required:
+            detail = f"The booking for {_name(booking)} needs review: {booking.review_reason}"
         else:
-            missing.append(
-                {"arrangement": "Venue", "detail": "No venue booking has been approved."}
-            )
-    for booking in approved:
-        if booking.review_required:
-            missing.append(
-                {
-                    "arrangement": "Venue",
-                    "detail": f"The booking for {booking.venue.name} needs review: "
-                    f"{booking.review_reason}",
-                }
-            )
+            continue
+        missing.append({"arrangement": "Venue", "detail": detail})
     requests = event.equipment_requests.exclude(
         status=EquipmentRequestStatus.WITHDRAWN
     ).select_related("equipment_type")
@@ -71,11 +87,64 @@ def missing_arrangements(event: EventRequest) -> list[dict]:
     return missing
 
 
+def _safety_gap(event: EventRequest) -> dict | None:
+    from apps.safety.models import SafetyStatus
+
+    latest = event.safety_checks.first()
+    if latest is not None and latest.status == SafetyStatus.APPROVED:
+        return None
+    if latest is None or latest.status == SafetyStatus.SUPERSEDED:
+        detail = "The operational safety check has not been requested."
+    elif latest.status == SafetyStatus.PENDING:
+        detail = "The operational safety check is awaiting the Safety Officer."
+    else:
+        detail = (
+            f"The Safety Officer {latest.get_status_display().lower()}: {latest.comment} "
+            "Revise the arrangements and request a new check."
+        )
+    return {"arrangement": "Safety", "detail": detail}
+
+
+def missing_arrangements(event: EventRequest) -> list[dict]:
+    """SCRUM-58 AC2 - everything that still stands between the event and confirmation."""
+    missing = arrangement_gaps(event)
+    safety = _safety_gap(event)
+    if safety:
+        missing.append(safety)
+    return missing
+
+
+def readiness(event: EventRequest) -> dict:
+    """The coordinator's checklist: arrangements, safety, and what can be done next."""
+    from apps.safety.serializers import SafetyCheckSummarySerializer
+    from apps.venues.bookings import process_holds
+
+    process_holds()
+    gaps = arrangement_gaps(event)
+    latest = event.safety_checks.first()
+    missing = list(gaps)
+    safety = _safety_gap(event)
+    if safety:
+        missing.append(safety)
+    from apps.safety.services import current_check
+
+    planning = event.status == EventStatus.PLANNING
+    return {
+        "status": event.status,
+        "arrangements": gaps,
+        "safety_check": SafetyCheckSummarySerializer(latest).data if latest else None,
+        "can_request_safety_check": planning and not gaps and current_check(event) is None,
+        "can_confirm": planning and not missing,
+        "missing": missing,
+    }
+
+
 def confirmed_arrangements(event: EventRequest) -> dict:
     """SCRUM-58 AC5 - what the client can rely on once the event is confirmed."""
     venues = [
         {
             "venue": b.venue.name,
+            "session": b.session_name,
             "location": b.venue.location,
             "start": b.start,
             "end": b.end,
@@ -93,7 +162,14 @@ def confirmed_arrangements(event: EventRequest) -> dict:
 
 @transaction.atomic
 def confirm_event(event: EventRequest, user) -> EventRequest:
-    """SCRUM-58 AC1 / AC4 / AC5 and SCRUM-79 AC4."""
+    """SCRUM-58 AC1 / AC4 / AC5 and SCRUM-79 AC4.
+
+    Week 7 clarification - the coordinator marks the event confirmed once they
+    see every approval is in place, including the Safety Officer's.
+    """
+    from apps.venues.bookings import process_holds
+
+    process_holds()
     locked = EventRequest.objects.select_for_update().get(pk=event.pk)
     if locked.coordinator_id != user.pk:
         raise NotAssignedCoordinator
@@ -108,7 +184,7 @@ def confirm_event(event: EventRequest, user) -> EventRequest:
 
     plan = confirmed_arrangements(locked)
     summary = "; ".join(
-        [f"{v['venue']} from {_when(v['start'])} to {_when(v['end'])}" for v in plan["venues"]]
+        [f"{_venue_label(v)} from {_when(v['start'])} to {_when(v['end'])}" for v in plan["venues"]]
         + [f"{e['quantity']} x {e['equipment']}" for e in plan["equipment"]]
     )
     notify_status_change(locked, EventStatus.PLANNING, user, f"Arrangements: {summary}.")

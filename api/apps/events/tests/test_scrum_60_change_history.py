@@ -72,15 +72,16 @@ def test_ac1_unchanged_fields_are_not_recorded(signed_in_coordinator, planning_e
 
 
 @pytest.mark.django_db
-def test_ac1_a_client_correction_after_clarification_is_recorded(
-    signed_in_organiser, organiser, coordinator
+def test_ac1_a_correction_after_clarification_is_recorded(
+    signed_in_coordinator, organiser, coordinator
 ):
+    # Week 9 clarification - the coordinator makes the client's corrections.
     event = make_event(organiser, status=EventStatus.UNDER_REVIEW, coordinator=coordinator)
 
-    signed_in_organiser.patch(f"/api/events/{event.pk}/", {"purpose": "Clarified"}, format="json")
+    signed_in_coordinator.patch(f"/api/events/{event.pk}/", {"purpose": "Clarified"}, format="json")
 
     entry = EventChangeLog.objects.get(event=event)
-    assert entry.changed_by == organiser
+    assert entry.changed_by == coordinator
 
 
 @pytest.mark.django_db

@@ -5,24 +5,37 @@ from apps.core.models import TimeStampedModel
 
 
 class Role(models.TextChoices):
-    """The five roles named in the customer briefing. Nothing else exists."""
+    """The five roles of the customer briefing, plus the two internal roles added
+    by the Week 7 customer changes (Event Coordinator Lead, Safety Officer)."""
 
     EVENT_ORGANISER = "ORGANISER", "Event Organiser"
     EVENT_COORDINATOR = "COORDINATOR", "Event Coordinator"
+    COORDINATOR_LEAD = "COORDINATOR_LEAD", "Event Coordinator Lead"
+    SAFETY_OFFICER = "SAFETY_OFFICER", "Safety Officer"
     VENUE_STAFF = "VENUE_STAFF", "Venue Staff"
     TECHNICAL_SUPPORT = "TECH_SUPPORT", "Technical Support Staff"
     ATTENDEE = "ATTENDEE", "Attendee"
 
 
-INTERNAL_ROLES = frozenset({Role.EVENT_COORDINATOR, Role.VENUE_STAFF, Role.TECHNICAL_SUPPORT})
+INTERNAL_ROLES = frozenset(
+    {
+        Role.EVENT_COORDINATOR,
+        Role.COORDINATOR_LEAD,
+        Role.VENUE_STAFF,
+        Role.TECHNICAL_SUPPORT,
+        Role.SAFETY_OFFICER,
+    }
+)
 
 # US-01.1 AC1/AC2 - where each role lands after signing in.
 LANDING_PATHS = {
     Role.EVENT_ORGANISER: "/organiser",
     Role.EVENT_COORDINATOR: "/coordinator",
+    Role.COORDINATOR_LEAD: "/lead",
     Role.VENUE_STAFF: "/venues",
     Role.TECHNICAL_SUPPORT: "/equipment",
     Role.ATTENDEE: "/events",
+    Role.SAFETY_OFFICER: "/safety",
 }
 
 
@@ -42,7 +55,8 @@ class User(AbstractUser):
     phone = models.CharField(max_length=30, blank=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.ATTENDEE)
     coordinator_available = models.BooleanField(
-        default=True, help_text="Available for automatic event assignment (coordinators only)."
+        default=True,
+        help_text="Shown to Event Coordinator Leads when they choose who to assign (coordinators only).",
     )
     organisation = models.ForeignKey(
         ClientOrganisation,
@@ -75,3 +89,11 @@ class User(AbstractUser):
     @property
     def is_coordinator(self) -> bool:
         return self.role == Role.EVENT_COORDINATOR
+
+    @property
+    def is_lead(self) -> bool:
+        return self.role == Role.COORDINATOR_LEAD
+
+    @property
+    def is_safety_officer(self) -> bool:
+        return self.role == Role.SAFETY_OFFICER

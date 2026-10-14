@@ -1,9 +1,14 @@
-"""SCRUM-18 (US-20.2) - registered attendees are told when a confirmed event changes."""
+"""SCRUM-18 (US-20.2) - registered attendees are told when a confirmed event changes.
+
+Week 7: the change arrives through an approved change request, after which the
+event is back in planning; attendees hear both that the time changed and that
+the arrangements are being revised.
+"""
 
 import pytest
 
 from apps.core.statuses import EventStatus
-from apps.events.tests.change_helpers import HOUR, confirmed_event, iso
+from apps.events.tests.change_helpers import HOUR, approve_change, confirmed_event, iso
 from apps.notifications.models import Notification, NotificationKind
 from apps.registrations.models import RegistrationStatus
 from apps.registrations.tests.conftest import enrol, make_attendee
@@ -18,6 +23,21 @@ def setup(organiser, coordinator):
 
 
 def move(client, event):
+    return approve_change(
+        client,
+        event,
+        {
+            "preferred_start": iso(event.preferred_start + HOUR),
+            "preferred_end": iso(event.preferred_end + HOUR),
+        },
+    )
+
+
+def time_notice(attendee):
+    return Notification.objects.get(recipient=attendee, message__contains="date or time")
+
+
+def move_directly(client, event):
     return client.patch(
         f"/api/events/{event.pk}/",
         {
@@ -34,8 +54,7 @@ def test_ac1_a_new_date_or_time_notifies_registered_attendees(signed_in_coordina
 
     move(signed_in_coordinator, event)
 
-    note = Notification.objects.get(recipient=attendee)
-    assert note.kind == NotificationKind.EVENT_CHANGED
+    assert time_notice(attendee).kind == NotificationKind.EVENT_CHANGED
 
 
 @pytest.mark.django_db
@@ -44,7 +63,8 @@ def test_ac1_a_new_venue_notifies_registered_attendees(api, venue_staff, setup):
     second = book(event, make_venue(name="Riverside Room"), status=BookingStatus.PENDING)
     api.force_authenticate(venue_staff)
 
-    api.post(f"/api/venue-bookings/{second.pk}/approve/")
+    response = api.post(f"/api/venue-bookings/{second.pk}/approve/")
+    assert response.status_code == 200, response.data
 
     note = Notification.objects.get(recipient=attendee)
     assert "The venue for" in note.message and "Riverside Room" in note.message
@@ -57,7 +77,7 @@ def test_ac2_the_notice_shows_the_updated_details(signed_in_coordinator, setup):
     move(signed_in_coordinator, event)
 
     event.refresh_from_db()
-    message = Notification.objects.get(recipient=attendee).message
+    message = time_notice(attendee).message
     assert "It now runs from" in message
     assert "at Harbour Hall" in message
 
@@ -114,6 +134,6 @@ def test_a_planning_event_changing_time_sends_no_attendee_notice(
     attendee = make_attendee("early@example.com")
     enrol(event, attendee)
 
-    move(signed_in_coordinator, event)
+    move_directly(signed_in_coordinator, event)
 
     assert not Notification.objects.filter(recipient=attendee).exists()

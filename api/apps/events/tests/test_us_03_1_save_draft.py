@@ -61,9 +61,10 @@ def test_ac3_reopening_a_draft_shows_every_value_unchanged(signed_in_organiser):
 
 @pytest.mark.django_db
 def test_ac4_a_draft_never_appears_in_the_coordinator_queue(
-    signed_in_coordinator, complete_draft, submitted_event
+    signed_in_lead, complete_draft, submitted_event
 ):
-    response = signed_in_coordinator.get(f"{EVENTS}queue/")
+    # Week 7 change 5 - the queue of submitted requests is the Lead's.
+    response = signed_in_lead.get(f"{EVENTS}queue/")
 
     assert response.status_code == 200
     ids = [row["id"] for row in response.data]

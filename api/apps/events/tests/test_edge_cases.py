@@ -17,7 +17,12 @@ EVENTS = "/api/events/"
 
 
 @pytest.mark.django_db
-def test_a_coordinator_can_open_a_submitted_request(signed_in_coordinator, submitted_event):
+def test_a_coordinator_can_open_a_submitted_request_assigned_to_them(
+    signed_in_coordinator, submitted_event, coordinator
+):
+    submitted_event.coordinator = coordinator
+    submitted_event.save(update_fields=["coordinator"])
+
     response = signed_in_coordinator.get(f"{EVENTS}{submitted_event.pk}/")
 
     assert response.status_code == 200
@@ -45,13 +50,16 @@ def test_a_coordinator_cannot_edit_a_request_in_this_release(
 
 
 @pytest.mark.django_db
-def test_a_coordinator_sees_submitted_requests_in_the_main_list(
-    signed_in_coordinator, complete_draft, submitted_event
+def test_a_coordinator_sees_their_assigned_requests_in_the_main_list(
+    signed_in_coordinator, complete_draft, submitted_event, organiser, coordinator
 ):
+    mine = make_event(organiser, status=EventStatus.SUBMITTED, coordinator=coordinator)
+
     response = signed_in_coordinator.get(EVENTS)
 
     ids = [row["id"] for row in response.data]
-    assert submitted_event.pk in ids
+    assert ids == [mine.pk]
+    assert submitted_event.pk not in ids  # unassigned - Week 7 change 5
     assert complete_draft.pk not in ids
 
 
@@ -96,19 +104,18 @@ def test_a_role_with_no_event_access_gets_an_empty_queryset(api, venue_staff, su
 
 
 @pytest.mark.django_db
-def test_an_unassigned_request_reports_no_coordinator(
-    signed_in_coordinator, submitted_event, coordinator
-):
-    unassigned = signed_in_coordinator.get(f"{EVENTS}{submitted_event.pk}/")
+def test_an_unassigned_request_reports_no_coordinator(signed_in_lead, submitted_event, coordinator):
+    unassigned = signed_in_lead.get(f"{EVENTS}{submitted_event.pk}/")
     assert unassigned.data["coordinator_name"] is None
+    assert signed_in_lead.get(f"{EVENTS}queue/").data[0]["coordinator_name"] is None
 
     submitted_event.coordinator = coordinator
     submitted_event.save(update_fields=["coordinator"])
 
-    assigned = signed_in_coordinator.get(f"{EVENTS}{submitted_event.pk}/")
+    assigned = signed_in_lead.get(f"{EVENTS}{submitted_event.pk}/")
     assert assigned.data["coordinator_name"] == "Cora Coordinator"
-    queue_row = signed_in_coordinator.get(f"{EVENTS}queue/").data[0]
-    assert queue_row["coordinator_name"] == "Cora Coordinator"
+    row = signed_in_lead.get(f"{EVENTS}assignments/").data[0]
+    assert row["coordinator_name"] == "Cora Coordinator"
 
 
 @pytest.mark.django_db

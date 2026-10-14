@@ -133,6 +133,10 @@ class EquipmentRequestViewSet(CreateModelMixin, UpdateModelMixin, ReadOnlyModelV
             )
             .prefetch_related("reservations__reserved_by", "reservations__released_by", "changes")
         )
+        if self.request.user.is_coordinator and self.action == "list":
+            # Week 7 change 5 - a coordinator lists only their own events' requests;
+            # acting on another's is refused and audited by the service.
+            requests = requests.filter(event__coordinator=self.request.user)
         event_id = self.request.query_params.get("event")
         if event_id:
             if not event_id.isdigit():

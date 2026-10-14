@@ -44,7 +44,6 @@ def test_ac1_the_assigned_coordinator_saves_new_values_that_everyone_with_access
         EventStatus.UNDER_REVIEW,
         EventStatus.APPROVED,
         EventStatus.PLANNING,
-        EventStatus.CONFIRMED,
     ],
 )
 def test_ac1_the_coordinator_can_edit_in_every_open_planning_status(
@@ -55,6 +54,20 @@ def test_ac1_the_coordinator_can_edit_in_every_open_planning_status(
     response = edit(signed_in_coordinator, event, {"purpose": "Updated purpose"})
 
     assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_ac1_a_confirmed_event_is_changed_through_a_change_request(
+    signed_in_coordinator, organiser, coordinator
+):
+    # Week 9 clarification - "once an event is Confirmed, information fields
+    # cannot be changed directly".
+    event = make_event(organiser, status=EventStatus.CONFIRMED, coordinator=coordinator)
+
+    response = edit(signed_in_coordinator, event, {"purpose": "Updated purpose"})
+
+    assert response.status_code == 403
+    assert "change request" in response.data["detail"]
 
 
 @pytest.mark.django_db

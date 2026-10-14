@@ -55,13 +55,20 @@ def test_ac1_the_status_parameter_can_also_be_repeated(signed_in_coordinator, mi
 
 @pytest.mark.django_db
 def test_ac1_my_assigned_events_and_the_queue_can_be_filtered_too(
-    signed_in_coordinator, mixed_events
+    signed_in_coordinator, mixed_events, lead, organiser
 ):
     mine = signed_in_coordinator.get(f"{EVENTS}mine/", {"status": "CONFIRMED"})
-    queue = signed_in_coordinator.get(f"{EVENTS}queue/", {"status": "SUBMITTED"})
-
     assert ids(mine) == {mixed_events[EventStatus.CONFIRMED].pk}
-    assert ids(queue) == {mixed_events[EventStatus.SUBMITTED].pk}
+
+    # Week 7 change 5 - the queue and the assignment overview belong to Leads.
+    signed_in_coordinator.force_authenticate(lead)
+    waiting = make_event(organiser, status=EventStatus.SUBMITTED, name="Waiting")
+    make_event(organiser, status=EventStatus.UNDER_REVIEW, name="Asked")
+    queue = signed_in_coordinator.get(f"{EVENTS}queue/", {"status": "SUBMITTED"})
+    overview = signed_in_coordinator.get(f"{EVENTS}assignments/", {"status": "PLANNING"})
+
+    assert ids(queue) == {waiting.pk}
+    assert ids(overview) == {mixed_events[EventStatus.PLANNING].pk}
 
 
 @pytest.mark.django_db

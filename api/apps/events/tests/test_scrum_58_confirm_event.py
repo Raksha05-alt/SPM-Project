@@ -1,4 +1,10 @@
-"""SCRUM-58 (US-06.4) - confirm an event after essential arrangements are complete."""
+"""SCRUM-58 (US-06.4) - confirm an event after essential arrangements are complete.
+
+Week 7: every venue booking must be approved (change 3), a hold must be confirmed
+first (change 4), and the Safety Officer must have approved the arrangements
+(change 6). Those rules have their own tests in ``test_cr_*``; here the safety
+approval is given directly where a test is about something else.
+"""
 
 import pytest
 
@@ -8,6 +14,7 @@ from apps.equipment.models import EquipmentRequestStatus, EquipmentType
 from apps.equipment.tests.conftest import hold, make_request
 from apps.events.models import EventStatusHistory
 from apps.notifications.models import Notification
+from apps.safety.tests.helpers import approve_safety
 from apps.venues.models import BookingStatus
 from apps.venues.tests.helpers import book, make_user
 from conftest import make_event, make_venue
@@ -38,6 +45,7 @@ def test_ac1_an_event_with_approved_venue_and_reserved_equipment_can_be_confirme
 ):
     book(event, hall)
     hold(event, projector, 3)
+    approve_safety(event)
 
     response = signed_in_coordinator.post(url(event))
 
@@ -50,6 +58,7 @@ def test_ac1_an_event_needing_no_equipment_is_confirmed_with_its_venue(
     signed_in_coordinator, event, hall
 ):
     book(event, hall)
+    approve_safety(event)
 
     assert signed_in_coordinator.post(url(event)).status_code == 200
 
@@ -60,7 +69,8 @@ def test_ac2_no_venue_blocks_confirmation(signed_in_coordinator, event):
 
     assert response.status_code == 409
     assert response.data["missing"] == [
-        {"arrangement": "Venue", "detail": "No venue booking has been approved."}
+        {"arrangement": "Venue", "detail": "No venue booking has been approved."},
+        {"arrangement": "Safety", "detail": "The operational safety check has not been requested."},
     ]
     event.refresh_from_db()
     assert event.status == EventStatus.PLANNING
@@ -81,9 +91,11 @@ def test_ac2_each_missing_arrangement_is_listed(signed_in_coordinator, event, ha
 
     assert response.status_code == 409
     assert [m["detail"] for m in response.data["missing"]] == [
+        "No venue booking has been approved.",
         "The request for Harbour Hall is awaiting a decision from Venue Staff.",
         "4 x Projector is awaiting reservation by Technical Support Staff (0 of 4 reserved).",
         "2 x Microphone is unavailable: Broken",
+        "The operational safety check has not been requested.",
     ]
 
 
@@ -102,6 +114,7 @@ def test_ac2_arrangements_needing_review_block_confirmation(
     assert [m["detail"] for m in response.data["missing"]] == [
         "The booking for Harbour Hall needs review: Attendance exceeds capacity",
         "2 x Projector needs review: Date changed",
+        "The operational safety check has not been requested.",
     ]
 
 
@@ -187,6 +200,7 @@ def test_ac4_confirming_records_the_coordinator_and_time(
     signed_in_coordinator, coordinator, event, hall
 ):
     book(event, hall)
+    approve_safety(event)
 
     response = signed_in_coordinator.post(url(event))
 
@@ -205,6 +219,7 @@ def test_ac5_the_client_sees_the_confirmed_arrangements_and_is_notified(
 ):
     book(event, hall)
     hold(event, projector, 3)
+    approve_safety(event)
     api.force_authenticate(coordinator)
     api.post(url(event))
     api.force_authenticate(organiser)
@@ -233,6 +248,7 @@ def test_venue_and_technical_staff_involved_are_notified(
 ):
     book(event, hall, decided_by=venue_staff)
     hold(event, projector, 1, reserved_by=tech_staff)
+    approve_safety(event)
 
     signed_in_coordinator.post(url(event))
 

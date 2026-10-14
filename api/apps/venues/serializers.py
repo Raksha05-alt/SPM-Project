@@ -1,8 +1,14 @@
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.events.models import RoomLayout
-from apps.venues.models import BookingStatus, Venue, VenueBlock, VenueBooking
+from apps.venues.models import (
+    BookingStatus,
+    LayoutType,
+    Venue,
+    VenueBlock,
+    VenueBooking,
+    layout_label,
+)
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -52,6 +58,9 @@ class VenueSerializer(serializers.ModelSerializer):
             "closes_at",
             "operating_days",
             "operating_hours",
+            "setup_minutes",
+            "turnaround_minutes",
+            "safety_notes",
             "is_active",
             "operational_status",
             "missing_information",
@@ -66,7 +75,8 @@ class VenueSerializer(serializers.ModelSerializer):
         }
 
     def get_layout_labels(self, obj) -> list[str]:
-        return [RoomLayout(value).label for value in obj.layouts if value in RoomLayout.values]
+        names = dict(LayoutType.objects.values_list("code", "name"))
+        return [names.get(value, value) for value in obj.layouts]
 
     def get_operating_hours(self, obj) -> str | None:
         return describe_hours(obj)
@@ -93,13 +103,25 @@ class VenueSerializer(serializers.ModelSerializer):
         return _name(obj.updated_by)
 
     def validate_layouts(self, value):
-        unknown = [v for v in value if v not in RoomLayout.values]
+        """Week 7 clarification - layouts come from the Venue Staff's catalogue."""
+        known = list(
+            LayoutType.objects.filter(is_active=True).order_by("pk").values_list("code", "name")
+        )
+        codes = [code for code, _ in known]
+        unknown = [v for v in value if v not in codes]
         if unknown:
             raise serializers.ValidationError(
                 f"Unknown layout: {', '.join(map(str, unknown))}. "
-                f"Choose from {', '.join(RoomLayout.labels)}."
+                f"Choose from {', '.join(name for _, name in known)}."
             )
-        return sorted(set(value), key=RoomLayout.values.index)
+        return sorted(set(value), key=codes.index)
+
+    def validate_setup_minutes(self, value):
+        if value > 24 * 60:
+            raise serializers.ValidationError("Setup time cannot be longer than a day.")
+        return value
+
+    validate_turnaround_minutes = validate_setup_minutes
 
     def validate_facilities(self, value):
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
@@ -124,7 +146,26 @@ class VenueSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class LayoutTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LayoutType
+        fields = ["id", "code", "name", "description", "is_active"]
+        extra_kwargs = {
+            "code": {"error_messages": {"required": "Enter a short code, for example U_SHAPE."}},
+            "name": {"error_messages": {"required": "Enter the layout name."}},
+        }
+
+    def validate_code(self, value):
+        value = value.strip().upper()
+        if self.instance is not None and value != self.instance.code:
+            raise serializers.ValidationError(
+                "A layout's code cannot change; rename it or add a new layout."
+            )
+        return value
+
+
 class VenueBlockSerializer(serializers.ModelSerializer):
+    category_label = serializers.CharField(source="get_category_display", read_only=True)
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
     venue_name = serializers.CharField(source="venue.name", read_only=True)
@@ -137,6 +178,8 @@ class VenueBlockSerializer(serializers.ModelSerializer):
             "venue_name",
             "start",
             "end",
+            "category",
+            "category_label",
             "reason",
             "created_by_name",
             "created_at",
@@ -178,6 +221,7 @@ class BookingRequestSerializer(serializers.ModelSerializer):
             "start",
             "end",
             "attendance",
+            "session_name",
             "layout",
             "facilities",
             "accessibility_needs",
@@ -198,6 +242,11 @@ class BookingRequestSerializer(serializers.ModelSerializer):
 
     validate_facilities = VenueSerializer.validate_facilities
 
+    def validate_layout(self, value):
+        if value and not LayoutType.objects.filter(code=value, is_active=True).exists():
+            raise serializers.ValidationError(f"Unknown room layout: {value}.")
+        return value
+
     def validate_start(self, value):
         if value <= timezone.now():
             raise serializers.ValidationError("The booking must start in the future.")
@@ -216,7 +265,15 @@ class BookingSerializer(serializers.ModelSerializer):
     event_status = serializers.CharField(source="event.status", read_only=True)
     venue_name = serializers.CharField(source="venue.name", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
-    layout_label = serializers.CharField(source="get_layout_display", read_only=True)
+    layout_label = serializers.SerializerMethodField()
+    occupied_from = serializers.DateTimeField(source="occupied_start", read_only=True)
+    occupied_until = serializers.DateTimeField(source="occupied_end", read_only=True)
+    setup_minutes = serializers.IntegerField(source="venue.setup_minutes", read_only=True)
+    turnaround_minutes = serializers.IntegerField(source="venue.turnaround_minutes", read_only=True)
+    coordinator_name = serializers.SerializerMethodField()
+    hold_set_by_name = serializers.SerializerMethodField()
+    hold_expired = serializers.BooleanField(read_only=True)
+    buffer_warnings = serializers.SerializerMethodField()
     requested_by_name = serializers.SerializerMethodField()
     decided_by_name = serializers.SerializerMethodField()
     withdrawn_by_name = serializers.SerializerMethodField()
@@ -235,6 +292,11 @@ class BookingSerializer(serializers.ModelSerializer):
             "venue_name",
             "start",
             "end",
+            "occupied_from",
+            "occupied_until",
+            "setup_minutes",
+            "turnaround_minutes",
+            "session_name",
             "attendance",
             "layout",
             "layout_label",
@@ -243,6 +305,15 @@ class BookingSerializer(serializers.ModelSerializer):
             "notes",
             "status",
             "status_display",
+            "coordinator_name",
+            "hold_expires_at",
+            "hold_set_by_name",
+            "hold_expired",
+            "hold_confirmed_at",
+            "expired_at",
+            "disrupted_at",
+            "disruption_reason",
+            "buffer_warnings",
             "requested_by_name",
             "decided_by_name",
             "decided_at",
@@ -269,6 +340,20 @@ class BookingSerializer(serializers.ModelSerializer):
     def get_requested_by_name(self, obj):
         return _name(obj.requested_by)
 
+    def get_buffer_warnings(self, obj) -> list[str]:
+        from apps.venues.suitability import buffer_warnings
+
+        return buffer_warnings(obj)
+
+    def get_layout_label(self, obj) -> str:
+        return layout_label(obj.layout)
+
+    def get_coordinator_name(self, obj):
+        return _name(obj.event.coordinator)
+
+    def get_hold_set_by_name(self, obj):
+        return _name(obj.hold_set_by)
+
     def get_decided_by_name(self, obj):
         return _name(obj.decided_by)
 
@@ -288,6 +373,34 @@ class BookingSerializer(serializers.ModelSerializer):
         from apps.venues.bookings import conflict_row, conflicts_for
 
         return [conflict_row(c) for c in conflicts_for(obj)]
+
+
+class ApproveBookingSerializer(serializers.Serializer):
+    """Week 7 change 4 - give ``hold_until`` to approve as a tentative hold."""
+
+    hold_until = serializers.DateTimeField(required=False, allow_null=True, default=None)
+
+
+class HoldInputSerializer(serializers.Serializer):
+    hold_until = serializers.DateTimeField(
+        error_messages={
+            "required": "Enter when the hold expires.",
+            "null": "Enter when the hold expires.",
+        }
+    )
+
+
+class ReplacementInputSerializer(serializers.Serializer):
+    """Week 7 change 2 - what changes for the replacement; the rest is copied."""
+
+    venue = serializers.PrimaryKeyRelatedField(
+        queryset=Venue.objects.all(), error_messages={"required": "Choose the replacement venue."}
+    )
+    start = serializers.DateTimeField(required=False, allow_null=True)
+    end = serializers.DateTimeField(required=False, allow_null=True)
+    attendance = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    layout = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
 
 
 class RejectBookingSerializer(serializers.Serializer):

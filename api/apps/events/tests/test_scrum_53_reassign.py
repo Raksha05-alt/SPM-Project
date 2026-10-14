@@ -1,4 +1,9 @@
-"""SCRUM-53 (US-05.2) - reassign an event to a different coordinator."""
+"""SCRUM-53 (US-05.2) - reassign an event to a different coordinator.
+
+Week 7 change 5: reassignment is now done by an Event Coordinator Lead, not by the
+coordinators themselves ("it is now manually assigned by the lead"). The criteria
+are unchanged; the actor is.
+"""
 
 import pytest
 
@@ -35,9 +40,9 @@ def assigned_event(organiser, coordinator):
 
 @pytest.mark.django_db
 def test_ac1_the_new_coordinator_becomes_responsible_and_everyone_is_notified(
-    signed_in_coordinator, organiser, coordinator, second_coordinator, assigned_event
+    signed_in_lead, organiser, coordinator, second_coordinator, assigned_event
 ):
-    response = reassign(signed_in_coordinator, assigned_event, second_coordinator)
+    response = reassign(signed_in_lead, assigned_event, second_coordinator)
 
     assert response.status_code == 200
     assert response.data["coordinator"] == second_coordinator.pk
@@ -52,11 +57,11 @@ def test_ac1_the_new_coordinator_becomes_responsible_and_everyone_is_notified(
 
 @pytest.mark.django_db
 def test_ac1_an_unassigned_flagged_event_can_be_given_a_coordinator(
-    signed_in_coordinator, organiser, coordinator
+    signed_in_lead, organiser, coordinator
 ):
     event = make_event(organiser, status=EventStatus.SUBMITTED, assignment_requires_attention=True)
 
-    response = reassign(signed_in_coordinator, event, coordinator)
+    response = reassign(signed_in_lead, event, coordinator)
 
     assert response.status_code == 200
     event.refresh_from_db()
@@ -67,29 +72,28 @@ def test_ac1_an_unassigned_flagged_event_can_be_given_a_coordinator(
 
 @pytest.mark.django_db
 def test_ac2_the_previous_assignment_is_kept_with_who_changed_it_and_when(
-    signed_in_coordinator, coordinator, second_coordinator, assigned_event
+    signed_in_lead, lead, coordinator, second_coordinator, assigned_event
 ):
-    reassign(signed_in_coordinator, assigned_event, second_coordinator)
+    reassign(signed_in_lead, assigned_event, second_coordinator)
 
     entry = CoordinatorAssignment.objects.get(event=assigned_event)
     assert entry.previous_coordinator == coordinator
     assert entry.coordinator == second_coordinator
-    assert entry.changed_by == coordinator
+    assert entry.changed_by == lead
     assert entry.changed_at is not None
-    detail = signed_in_coordinator.get(f"/api/events/{assigned_event.pk}/")
+    detail = signed_in_lead.get(f"/api/events/{assigned_event.pk}/")
     assert detail.data["assignment_history"][0]["previous_coordinator_name"] == "Cora Coordinator"
-    assert detail.data["assignment_history"][0]["changed_by_name"] == "Cora Coordinator"
+    assert detail.data["assignment_history"][0]["changed_by_name"] == "Leah Lead"
 
 
 @pytest.mark.django_db
-def test_ac2_the_automatic_assignment_on_submission_is_also_recorded(
+def test_ac2_submission_records_no_assignment_until_a_lead_assigns(
     signed_in_organiser, coordinator, complete_draft
 ):
+    # Week 7 change 5 - there is no automatic assignment to record any more.
     signed_in_organiser.post(f"/api/events/{complete_draft.pk}/submit/")
 
-    entry = CoordinatorAssignment.objects.get(event=complete_draft)
-    assert entry.coordinator == coordinator
-    assert entry.changed_by is None
+    assert not CoordinatorAssignment.objects.filter(event=complete_draft).exists()
 
 
 @pytest.mark.django_db
@@ -97,25 +101,26 @@ def test_ac2_the_automatic_assignment_on_submission_is_also_recorded(
     "status", [EventStatus.COMPLETED, EventStatus.CANCELLED, EventStatus.REJECTED]
 )
 def test_ac3_a_closed_event_cannot_be_reassigned(
-    signed_in_coordinator, organiser, coordinator, second_coordinator, status
+    signed_in_lead, lead, organiser, coordinator, second_coordinator, status
 ):
     event = make_event(organiser, status=status, coordinator=coordinator)
 
-    response = reassign(signed_in_coordinator, event, second_coordinator)
+    response = reassign(signed_in_lead, event, second_coordinator)
 
     assert response.status_code == 409
     event.refresh_from_db()
     assert event.coordinator == coordinator
-    assert AuditLog.objects.filter(actor=coordinator, allowed=False).exists()
+    assert AuditLog.objects.filter(actor=lead, allowed=False).exists()
 
 
 @pytest.mark.django_db
 def test_ac4_the_previous_coordinator_loses_coordinator_actions(
-    api, coordinator, second_coordinator, organiser
+    api, lead, coordinator, second_coordinator, organiser
 ):
     event = make_event(organiser, status=EventStatus.SUBMITTED, coordinator=coordinator)
-    api.force_authenticate(coordinator)
+    api.force_authenticate(lead)
     reassign(api, event, second_coordinator)
+    api.force_authenticate(coordinator)
 
     response = api.post(f"/api/events/{event.pk}/approve/")
 
@@ -126,18 +131,18 @@ def test_ac4_the_previous_coordinator_loses_coordinator_actions(
 
 @pytest.mark.django_db
 def test_reassigning_to_the_current_coordinator_is_refused(
-    signed_in_coordinator, coordinator, assigned_event
+    signed_in_lead, coordinator, assigned_event
 ):
-    response = reassign(signed_in_coordinator, assigned_event, coordinator)
+    response = reassign(signed_in_lead, assigned_event, coordinator)
 
     assert response.status_code == 400
 
 
 @pytest.mark.django_db
 def test_reassigning_to_someone_who_is_not_a_coordinator_is_refused(
-    signed_in_coordinator, venue_staff, assigned_event
+    signed_in_lead, venue_staff, assigned_event
 ):
-    response = reassign(signed_in_coordinator, assigned_event, venue_staff)
+    response = reassign(signed_in_lead, assigned_event, venue_staff)
 
     assert response.status_code == 400
     assert "coordinator" in response.data
@@ -153,10 +158,10 @@ def test_an_organiser_cannot_reassign_their_event(
 
 
 @pytest.mark.django_db
-def test_the_coordinator_list_shows_active_coordinators_to_staff_only(
-    api, coordinator, second_coordinator, organiser
+def test_the_coordinator_list_shows_active_coordinators_to_leads_only(
+    api, lead, coordinator, second_coordinator, organiser
 ):
-    api.force_authenticate(coordinator)
+    api.force_authenticate(lead)
     staff_view = api.get("/api/coordinators/")
     api.force_authenticate(organiser)
     client_view = api.get("/api/coordinators/")
@@ -167,13 +172,26 @@ def test_the_coordinator_list_shows_active_coordinators_to_staff_only(
         second_coordinator.email,
     }
     assert client_view.status_code == 403
+    api.force_authenticate(coordinator)
+    assert api.get("/api/coordinators/").status_code == 403
+
+
+@pytest.mark.django_db
+def test_a_coordinator_can_no_longer_reassign(api, coordinator, second_coordinator, assigned_event):
+    api.force_authenticate(coordinator)
+
+    response = reassign(api, assigned_event, second_coordinator)
+
+    assert response.status_code == 403
+    assigned_event.refresh_from_db()
+    assert assigned_event.coordinator == coordinator
 
 
 @pytest.mark.django_db
 def test_assignment_history_is_hidden_from_the_client(
-    signed_in_coordinator, api, organiser, second_coordinator, assigned_event
+    signed_in_lead, api, organiser, second_coordinator, assigned_event
 ):
-    reassign(signed_in_coordinator, assigned_event, second_coordinator)
+    reassign(signed_in_lead, assigned_event, second_coordinator)
     api.force_authenticate(organiser)
 
     response = api.get(f"/api/events/{assigned_event.pk}/")

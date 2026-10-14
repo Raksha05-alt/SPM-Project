@@ -1,11 +1,17 @@
-"""SCRUM-49 - Request clarification or amendment from the Event Organiser."""
+"""SCRUM-49 - Request clarification or amendment from the Event Organiser.
+
+Updated for the Week 9 clarification answers: the conversation itself happens
+offline, so the system records it as notes for tracking, and "organisers cannot
+directly edit after submission; all edits must be requested through the
+Coordinator". The coordinator edits on the client's behalf and resumes review.
+"""
 
 import pytest
 
 from apps.accounts.models import Role, User
 from apps.core.models import AuditLog
 from apps.core.statuses import EventStatus
-from apps.events.models import ClarificationRequest, EventStatusHistory
+from apps.events.models import ClarificationComment, ClarificationRequest, EventStatusHistory
 from apps.notifications.models import Notification, NotificationKind
 from conftest import PASSWORD, make_event
 
@@ -83,24 +89,44 @@ def test_ac1_the_organiser_sees_what_is_needed(api, organiser, awaiting_clarific
     assert data["clarifications"][0]["requested_by_name"] == "Cora Coordinator"
 
 
+def comment_url(event):
+    return f"/api/events/{event.pk}/comment/"
+
+
 @pytest.mark.django_db
-def test_ac2_the_organiser_can_edit_the_request_and_resubmit(
+def test_ac2_the_organiser_can_no_longer_edit_a_submitted_request(
     api, organiser, awaiting_clarification
 ):
     api.force_authenticate(organiser)
-    assert api.get(detail_url(awaiting_clarification)).data["is_editable"] is True
+    assert api.get(detail_url(awaiting_clarification)).data["is_editable"] is False
 
-    edited = api.patch(
+    response = api.patch(
+        detail_url(awaiting_clarification),
+        {"accessibility_needs": "Six wheelchair users"},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    assert "coordinator" in response.data["detail"]
+    awaiting_clarification.refresh_from_db()
+    assert awaiting_clarification.accessibility_needs == ""
+    assert api.post(submit_url(awaiting_clarification)).status_code == 403
+
+
+@pytest.mark.django_db
+def test_ac2_the_coordinator_edits_the_request_on_the_clients_behalf(
+    signed_in_coordinator, awaiting_clarification
+):
+    assert signed_in_coordinator.get(detail_url(awaiting_clarification)).data["is_editable"]
+
+    edited = signed_in_coordinator.patch(
         detail_url(awaiting_clarification),
         {"accessibility_needs": "Six wheelchair users; step-free access needed."},
         format="json",
     )
+
     assert edited.status_code == 200
     assert edited.data["accessibility_needs"] == "Six wheelchair users; step-free access needed."
-
-    resubmitted = api.post(submit_url(awaiting_clarification))
-    assert resubmitted.status_code == 200
-    assert resubmitted.data["status"] == EventStatus.SUBMITTED
 
 
 @pytest.mark.django_db
@@ -113,13 +139,12 @@ def test_ac2_the_organiser_still_cannot_delete_a_request_awaiting_clarification(
 
 
 @pytest.mark.django_db
-def test_ac2_a_resubmission_still_needs_the_mandatory_fields(
-    api, organiser, awaiting_clarification
+def test_ac2_approval_still_needs_the_mandatory_fields(
+    signed_in_coordinator, awaiting_clarification
 ):
-    api.force_authenticate(organiser)
-    api.patch(detail_url(awaiting_clarification), {"purpose": ""}, format="json")
+    signed_in_coordinator.patch(detail_url(awaiting_clarification), {"purpose": ""}, format="json")
 
-    response = api.post(submit_url(awaiting_clarification))
+    response = signed_in_coordinator.post(f"/api/events/{awaiting_clarification.pk}/approve/")
 
     assert response.status_code == 400
     assert response.data["missing_fields"] == ["purpose"]
@@ -128,18 +153,80 @@ def test_ac2_a_resubmission_still_needs_the_mandatory_fields(
 
 
 @pytest.mark.django_db
-def test_ac3_a_resubmitted_request_returns_to_the_queue_with_its_history(
-    api, signed_in_coordinator, organiser, coordinator, awaiting_clarification
+def test_ac2_both_parties_record_the_offline_conversation(
+    api, organiser, coordinator, awaiting_clarification
+):
+    api.force_authenticate(organiser)
+    answer = api.post(
+        comment_url(awaiting_clarification),
+        {"message": "Six attendees use wheelchairs (agreed by phone)."},
+        format="json",
+    )
+    api.force_authenticate(coordinator)
+    reply = api.post(
+        comment_url(awaiting_clarification),
+        {"message": "Noted; I have updated the accessibility needs."},
+        format="json",
+    )
+
+    assert answer.status_code == reply.status_code == 201
+    assert answer.data["author_role"] == "Event Organiser"
+    thread = api.get(detail_url(awaiting_clarification)).data["clarifications"][0]["comments"]
+    assert [c["message"] for c in thread] == [
+        "Six attendees use wheelchairs (agreed by phone).",
+        "Noted; I have updated the accessibility needs.",
+    ]
+    assert Notification.objects.filter(
+        recipient=coordinator, kind=NotificationKind.CLARIFY_COMMENT
+    ).exists()
+    assert Notification.objects.filter(
+        recipient=organiser, kind=NotificationKind.CLARIFY_COMMENT
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_ac2_an_empty_note_is_refused(api, organiser, awaiting_clarification):
+    api.force_authenticate(organiser)
+
+    response = api.post(comment_url(awaiting_clarification), {"message": "  "}, format="json")
+
+    assert response.status_code == 400
+    assert not ClarificationComment.objects.exists()
+
+
+@pytest.mark.django_db
+def test_ac2_only_the_client_and_assigned_coordinator_can_comment(
+    api, other_organiser, other_coordinator, awaiting_clarification
+):
+    for outsider in (other_organiser, other_coordinator):
+        api.force_authenticate(outsider)
+        response = api.post(comment_url(awaiting_clarification), {"message": "Hi"}, format="json")
+        assert response.status_code == 403
+    assert not ClarificationComment.objects.exists()
+
+
+@pytest.mark.django_db
+def test_ac2_a_note_needs_a_clarification_to_belong_to(api, organiser, my_submitted_event):
+    api.force_authenticate(organiser)
+
+    response = api.post(comment_url(my_submitted_event), {"message": "Hello"}, format="json")
+
+    assert response.status_code == 409
+
+
+@pytest.mark.django_db
+def test_ac3_resuming_review_keeps_the_coordinator_and_history(
+    signed_in_coordinator, organiser, coordinator, awaiting_clarification
 ):
     original_submitted_at = awaiting_clarification.submitted_at
-    api.force_authenticate(organiser)
-    api.post(submit_url(awaiting_clarification))
 
+    response = signed_in_coordinator.post(f"/api/events/{awaiting_clarification.pk}/resume-review/")
+
+    assert response.status_code == 200
     awaiting_clarification.refresh_from_db()
     assert awaiting_clarification.status == EventStatus.SUBMITTED
     assert awaiting_clarification.coordinator == coordinator
     assert awaiting_clarification.submitted_at == original_submitted_at
-
     clarification = ClarificationRequest.objects.get(event=awaiting_clarification)
     assert clarification.resolved_at is not None
     assert list(
@@ -148,36 +235,68 @@ def test_ac3_a_resubmitted_request_returns_to_the_queue_with_its_history(
         .values_list("to_status", flat=True)
     ) == [EventStatus.UNDER_REVIEW, EventStatus.SUBMITTED]
     assert Notification.objects.filter(
-        recipient=coordinator, event=awaiting_clarification, kind=NotificationKind.RESUBMITTED
+        recipient=organiser, event=awaiting_clarification, kind=NotificationKind.RESUBMITTED
     ).exists()
+    mine = signed_in_coordinator.get("/api/events/mine/").data
+    assert next(r for r in mine if r["id"] == awaiting_clarification.pk)["status"] == "SUBMITTED"
 
-    api.force_authenticate(coordinator)
-    queue = api.get("/api/events/queue/").data
-    row = next(r for r in queue if r["id"] == awaiting_clarification.pk)
-    assert row["status"] == EventStatus.SUBMITTED
-    detail = api.get(detail_url(awaiting_clarification)).data
-    assert detail["clarifications"][0]["resolved_at"] is not None
+
+@pytest.mark.django_db
+def test_ac3_approving_from_awaiting_clarification_resolves_the_question(
+    signed_in_coordinator, awaiting_clarification
+):
+    response = signed_in_coordinator.post(f"/api/events/{awaiting_clarification.pk}/approve/")
+
+    assert response.status_code == 200
+    assert ClarificationRequest.objects.get(event=awaiting_clarification).resolved_at
+
+
+@pytest.mark.django_db
+def test_ac3_only_the_assigned_coordinator_resumes_review(
+    api, organiser, other_coordinator, awaiting_clarification
+):
+    for who in (organiser, other_coordinator):
+        api.force_authenticate(who)
+        assert (
+            api.post(f"/api/events/{awaiting_clarification.pk}/resume-review/").status_code == 403
+        )
+
+
+@pytest.mark.django_db
+def test_ac3_review_can_only_resume_from_awaiting_clarification(
+    signed_in_coordinator, my_submitted_event
+):
+    response = signed_in_coordinator.post(f"/api/events/{my_submitted_event.pk}/resume-review/")
+
+    assert response.status_code == 409
 
 
 @pytest.mark.django_db
 def test_ac3_several_clarification_rounds_are_all_kept(
     api, organiser, coordinator, awaiting_clarification
 ):
-    api.force_authenticate(organiser)
-    api.post(submit_url(awaiting_clarification))
     api.force_authenticate(coordinator)
+    api.post(f"/api/events/{awaiting_clarification.pk}/resume-review/")
     second = api.post(
         clarify_url(awaiting_clarification), {"message": "Which projector model?"}, format="json"
     )
+    third = api.post(
+        clarify_url(awaiting_clarification), {"message": "And the catering?"}, format="json"
+    )
 
-    assert second.status_code == 200
-    messages = [c["message"] for c in second.data["clarifications"]]
-    assert messages == ["Which projector model?", "How many attendees need wheelchair access?"]
+    assert second.status_code == third.status_code == 200
+    messages = [c["message"] for c in third.data["clarifications"]]
+    assert messages == [
+        "And the catering?",
+        "Which projector model?",
+        "How many attendees need wheelchair access?",
+    ]
+    assert third.data["status"] == EventStatus.UNDER_REVIEW
     assert (
         Notification.objects.filter(
             recipient=organiser, event=awaiting_clarification, kind=NotificationKind.CLARIFICATION
         ).count()
-        == 2
+        == 3
     )
 
 
@@ -210,7 +329,7 @@ def test_an_unknown_field_name_is_rejected(signed_in_coordinator, my_submitted_e
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     "status",
-    [EventStatus.UNDER_REVIEW, EventStatus.APPROVED, EventStatus.CONFIRMED, EventStatus.REJECTED],
+    [EventStatus.APPROVED, EventStatus.CONFIRMED, EventStatus.REJECTED],
 )
 def test_clarification_can_only_be_requested_on_a_submitted_request(
     signed_in_coordinator, organiser, coordinator, status

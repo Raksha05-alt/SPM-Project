@@ -122,7 +122,8 @@ def test_only_the_assigned_coordinator_changes_the_shortlist(api, event, venue):
 
     assert added.status_code == 403
     assert removed.status_code == 403
-    assert api.get(url(event)).status_code == 200
+    # Week 7 change 5 - another coordinator cannot even read it.
+    assert api.get(url(event)).status_code == 403
 
 
 @pytest.mark.django_db

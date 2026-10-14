@@ -18,6 +18,16 @@ from apps.events.models import EventRequest
 PASSWORD = "Sprint1-Test-Passw0rd"
 
 
+@pytest.fixture(autouse=True)
+def _fast_password_hashing(settings):
+    """Tests create many users; the production hasher is deliberately slow.
+
+    Hashing strength is not what these tests verify, so a fast hasher keeps the
+    suite quick without changing any behaviour under test.
+    """
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+
 def _make_user(email, role, organisation=None, first="Test", last="User"):
     return User.objects.create_user(
         username=email,
@@ -65,6 +75,37 @@ def coordinator(db):
     return _make_user(
         "coordinator@connectsphere.example", Role.EVENT_COORDINATOR, None, "Cora", "Coordinator"
     )
+
+
+@pytest.fixture
+def lead(db):
+    """Week 7 change 5 - an Event Coordinator Lead."""
+    return _make_user("lead@connectsphere.example", Role.COORDINATOR_LEAD, None, "Leah", "Lead")
+
+
+@pytest.fixture
+def second_coordinator(db):
+    return _make_user(
+        "coordinator2@connectsphere.example", Role.EVENT_COORDINATOR, None, "Colin", "Second"
+    )
+
+
+@pytest.fixture
+def safety_officer(db):
+    """Week 7 change 6 - a Safety Officer."""
+    return _make_user("safety@connectsphere.example", Role.SAFETY_OFFICER, None, "Sam", "Safety")
+
+
+@pytest.fixture
+def signed_in_lead(api, lead):
+    api.force_authenticate(lead)
+    return api
+
+
+@pytest.fixture
+def signed_in_safety(api, safety_officer):
+    api.force_authenticate(safety_officer)
+    return api
 
 
 @pytest.fixture

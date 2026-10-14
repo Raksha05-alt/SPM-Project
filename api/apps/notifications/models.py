@@ -27,6 +27,14 @@ class NotificationKind(models.TextChoices):
     EVENT_CHANGED = "EVENT_CHANGED", "Event details changed"
     REVIEW_NEEDED = "REVIEW_NEEDED", "Arrangement needs review"
     REVIEW_OUTCOME = "REVIEW_OUTCOME", "Arrangement reviewed"
+    # Week 7 customer changes.
+    SUBMITTED = "SUBMITTED", "Request submitted"
+    CLARIFY_COMMENT = "CLARIFY_COMMENT", "Clarification note recorded"
+    HOLD_EXPIRING = "HOLD_EXPIRING", "Venue hold expiring"
+    HOLD_EXPIRED = "HOLD_EXPIRED", "Venue hold expired"
+    VENUE_UNAVAILABLE = "VENUE_UNAVAILABLE", "Venue unavailable"
+    SAFETY_REQUESTED = "SAFETY_REQUESTED", "Safety check requested"
+    SAFETY_DECIDED = "SAFETY_DECIDED", "Safety check decided"
 
 
 # Sent at most once per recipient and event. Clarification rounds can repeat.

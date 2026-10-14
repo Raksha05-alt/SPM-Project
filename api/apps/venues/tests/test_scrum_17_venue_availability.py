@@ -56,7 +56,9 @@ def test_ac2_each_period_shows_available_tentative_confirmed_or_blocked(
         ("AVAILABLE", future_at(3, 9), future_at(3, 10)),
         ("CONFIRMED", future_at(3, 10), future_at(3, 11)),
         ("AVAILABLE", future_at(3, 11), future_at(3, 12)),
-        ("TENTATIVE", future_at(3, 12), future_at(3, 13)),
+        # Week 7 clarification - a pending request is shown but does not hold the
+        # venue; a tentative hold does (see test_cr_04_tentative_holds.py).
+        ("REQUESTED", future_at(3, 12), future_at(3, 13)),
         ("AVAILABLE", future_at(3, 13), future_at(3, 14)),
         ("BLOCKED", future_at(3, 14), future_at(3, 15)),
         ("AVAILABLE", future_at(3, 15), future_at(3, 16)),

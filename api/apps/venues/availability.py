@@ -1,25 +1,28 @@
 """SCRUM-17 / SCRUM-62 - what a venue's diary looks like over a period.
 
 A period is cut at every point where something changes (opening and closing
-time, the edges of a block or booking) and each piece gets one status. The
-strongest reason wins: out of service or outside operating hours, then a
-block, then a confirmed booking, then a tentative hold (a booking request
-still waiting for Venue Staff).
+time, the edges of a block, a booking or its setup and turnaround) and each
+piece gets one status. The strongest reason wins: out of service or outside
+operating hours, then a block, then a confirmed booking (with its setup and
+turnaround, Week 7 change 1), then a tentative hold that has not expired (Week 7
+change 4). A pending request is shown but does not make the venue unavailable.
 """
 
 from datetime import datetime, timedelta
 from itertools import pairwise
 
 from django.db import models
+from django.utils import timezone
 
 from apps.venues.matching import SINGAPORE
-from apps.venues.models import BookingStatus
+from apps.venues.models import BookingStatus, holding_filter
 
 MAX_RANGE = timedelta(days=31)
 
 
 class Slot(models.TextChoices):
     AVAILABLE = "AVAILABLE", "Available"
+    REQUESTED = "REQUESTED", "Requested (not yet reserved)"
     TENTATIVE = "TENTATIVE", "Tentatively held"
     CONFIRMED = "CONFIRMED", "Confirmed booking"
     BLOCKED = "BLOCKED", "Blocked"
@@ -72,23 +75,57 @@ def _within_hours(venue, a, b) -> bool:
     )
 
 
+def _occupancy(venue, start, end):
+    """Everything that occupies part of the period, as (start, end, slot, detail, event, rank).
+
+    A lower rank wins when two items cover the same moment.
+    """
+    now = timezone.now()
+    items = [
+        (b.start, b.end, Slot.BLOCKED, b.reason, None, 0)
+        for b in venue.active_blocks().filter(start__lt=end, end__gt=start)
+    ]
+    setup, turnaround = venue.setup, venue.turnaround
+    holding = venue.bookings.filter(
+        holding_filter(now),
+        start__lt=end + setup + turnaround,
+        end__gt=start - setup - turnaround,
+    ).select_related("event")
+    for b in holding:
+        confirmed = b.status == BookingStatus.APPROVED
+        slot = Slot.CONFIRMED if confirmed else Slot.TENTATIVE
+        if confirmed:
+            detail = "Confirmed booking"
+        else:
+            detail = f"Tentative hold until {timezone.localtime(b.hold_expires_at):%d %b %H:%M}"
+        if b.session_name:
+            detail = f"{detail} - {b.session_name}"
+        core = 1 if confirmed else 3
+        items.append((b.start, b.end, slot, detail, b.event, core))
+        if setup:
+            items.append((b.start - setup, b.start, slot, "Setup", b.event, core + 1))
+        if turnaround:
+            items.append((b.end, b.end + turnaround, slot, "Turnaround", b.event, core + 1))
+    requested = venue.bookings.filter(
+        status=BookingStatus.PENDING, start__lt=end, end__gt=start
+    ).select_related("event")
+    for b in requested:
+        items.append(
+            (b.start, b.end, Slot.REQUESTED, "Booking request awaiting Venue Staff", b.event, 5)
+        )
+    return [item for item in items if item[0] < end and item[1] > start]
+
+
 def segments(venue, start, end) -> list[dict]:
     """The venue's status over ``start``-``end``, as consecutive labelled pieces."""
-    blocks = list(venue.active_blocks().filter(start__lt=end, end__gt=start))
-    bookings = list(
-        venue.bookings.filter(
-            status__in=(BookingStatus.PENDING, BookingStatus.APPROVED),
-            start__lt=end,
-            end__gt=start,
-        ).select_related("event")
-    )
+    items = _occupancy(venue, start, end)
     points = {start, end, *_operating_edges(venue, start, end)}
-    for item in [*blocks, *bookings]:
-        points.update(p for p in (item.start, item.end) if start < p < end)
+    for item in items:
+        points.update(p for p in item[:2] if start < p < end)
 
     pieces = []
     for a, b in pairwise(sorted(points)):
-        piece = _classify(venue, a, b, blocks, bookings)
+        piece = _classify(venue, a, b, items)
         previous = pieces[-1] if pieces else None
         if previous and (previous["status"], previous["detail"], previous["event"]) == (
             piece["status"],
@@ -101,7 +138,7 @@ def segments(venue, start, end) -> list[dict]:
     return pieces
 
 
-def _classify(venue, a, b, blocks, bookings) -> dict:
+def _classify(venue, a, b, items) -> dict:
     def result(slot, detail="", event=None):
         return {
             "status": slot.value,
@@ -115,23 +152,27 @@ def _classify(venue, a, b, blocks, bookings) -> dict:
         return result(Slot.UNAVAILABLE, "Venue is out of service")
     if venue.opens_at is None or venue.closes_at is None:
         return result(Slot.UNAVAILABLE, "Operating hours have not been recorded")
+    covering = sorted(
+        (item for item in items if item[0] < b and item[1] > a), key=lambda item: item[5]
+    )
+    if covering:
+        _, _, slot, detail, event, _ = covering[0]
+        if slot in (Slot.BLOCKED, Slot.CONFIRMED, Slot.TENTATIVE):
+            return result(slot, detail, event)
     if not _within_hours(venue, a, b):
         return result(Slot.UNAVAILABLE, "Outside operating hours")
-    for block in blocks:
-        if block.start < b and block.end > a:
-            return result(Slot.BLOCKED, block.reason)
-    held = [booking for booking in bookings if booking.start < b and booking.end > a]
-    for booking in held:
-        if booking.status == BookingStatus.APPROVED:
-            return result(Slot.CONFIRMED, "Confirmed booking", booking.event)
-    if held:
-        return result(Slot.TENTATIVE, "Booking request awaiting Venue Staff", held[0].event)
+    if covering:
+        _, _, slot, detail, event, _ = covering[0]
+        return result(slot, detail, event)
     return result(Slot.AVAILABLE)
 
 
 def overall(pieces) -> str:
     """SCRUM-62 - one word for the whole period."""
-    statuses = {piece["status"] for piece in pieces}
+    # A pending request does not reserve the venue (Week 7 clarification).
+    statuses = {
+        Slot.AVAILABLE if piece["status"] == Slot.REQUESTED else piece["status"] for piece in pieces
+    }
     if statuses == {Slot.AVAILABLE}:
         return "AVAILABLE"
     if statuses == {Slot.BLOCKED}:

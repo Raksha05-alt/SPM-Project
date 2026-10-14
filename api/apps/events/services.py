@@ -1,7 +1,5 @@
 """Behaviour that is not the business of a serializer or a view."""
 
-from secrets import choice
-
 from django.db import transaction
 from django.utils import timezone
 
@@ -14,6 +12,7 @@ from apps.core.statuses import (
     validate_transition,
 )
 from apps.events.models import (
+    ClarificationComment,
     ClarificationRequest,
     CoordinatorAssignment,
     EventChangeLog,
@@ -77,46 +76,43 @@ def transition_event(event: EventRequest, target: str, user) -> EventRequest:
     return event
 
 
+def leads():
+    """Week 7 change 5 - every active Event Coordinator Lead sees the unassigned queue."""
+    return User.objects.filter(role=Role.COORDINATOR_LEAD, is_active=True)
+
+
 @transaction.atomic
 def submit_event(event: EventRequest, user) -> EventRequest:
-    """Submit and assign atomically; repeated/concurrent submissions cannot reassign."""
-    # Lock only the event row, not the nullable coordinator join used by the view.
+    """Submit a draft into the unassigned queue (Week 7 change 5).
+
+    Requests are no longer assigned automatically. They wait, flagged, until an
+    Event Coordinator Lead assigns a coordinator. The row lock keeps a repeated
+    or concurrent submission from creating a second status change.
+    """
     locked = EventRequest.objects.select_for_update().get(pk=event.pk)
-    if locked.status == EventStatus.UNDER_REVIEW:
-        return _resubmit_after_clarification(locked, event, user)
     if not locked.is_draft:
         raise InvalidTransition(locked.status, EventStatus.SUBMITTED)
     missing = locked.missing_mandatory_fields()
     if missing:
         raise MissingMandatoryFields(missing)
-    candidates = list(
-        User.objects.filter(
-            role=Role.EVENT_COORDINATOR, is_active=True, coordinator_available=True
-        ).order_by("pk")
-    )
-    locked.coordinator = choice(candidates) if candidates else None
-    locked.assignment_requires_attention = not candidates
+    locked.coordinator = None
+    locked.assignment_requires_attention = True
     locked.save(update_fields=["coordinator", "assignment_requires_attention"])
-    if locked.coordinator:
-        CoordinatorAssignment.objects.create(event=locked, coordinator=locked.coordinator)
     transition_event(locked, EventStatus.SUBMITTED, user)
-    if locked.coordinator:
-        coordinator = locked.coordinator
-        name = coordinator.get_full_name() or coordinator.email
-        Notification.objects.bulk_create(
-            [
-                Notification(
-                    recipient=user,
-                    event=locked,
-                    message=f'{name} ({coordinator.email}) is your coordinator for "{locked.name}".',
-                ),
-                Notification(
-                    recipient=coordinator,
-                    event=locked,
-                    message=f'You have been assigned to "{locked.name}". Contact {user.email}.',
-                ),
-            ]
-        )
+    name = locked.name
+    notify(
+        [user],
+        locked,
+        NotificationKind.SUBMITTED,
+        f'"{name}" has been submitted. A ConnectSphere Event Coordinator Lead will assign '
+        "your coordinator.",
+    )
+    notify(
+        leads(),
+        locked,
+        NotificationKind.SUBMITTED,
+        f'New request "{name}" from {locked.organisation.name} is waiting to be assigned.',
+    )
     event.refresh_from_db()
     return event
 
@@ -133,6 +129,7 @@ def approve_event(event: EventRequest, user) -> EventRequest:
     if missing:
         raise MissingMandatoryFields(missing)
     transition_event(locked, EventStatus.APPROVED, user)
+    _resolve_open_clarifications(locked)
     locked.approved_by = user
     locked.approved_at = locked.status_changed_at
     locked.save(update_fields=["approved_by", "approved_at"])
@@ -152,12 +149,15 @@ def request_clarification(event: EventRequest, user, message: str, fields=()) ->
     locked = EventRequest.objects.select_for_update().get(pk=event.pk)
     if locked.coordinator_id != user.pk:
         raise NotAssignedCoordinator
-    if locked.status != EventStatus.SUBMITTED:
+    if locked.status not in REVIEWABLE_STATUSES:
         raise InvalidTransition(locked.status, EventStatus.UNDER_REVIEW)
     message = (message or "").strip()
     if not message:
         raise MissingClarificationDetails
-    transition_event(locked, EventStatus.UNDER_REVIEW, user)
+    if locked.status == EventStatus.SUBMITTED:
+        # A further question while already awaiting clarification adds a round
+        # to the record without another status change.
+        transition_event(locked, EventStatus.UNDER_REVIEW, user)
     ClarificationRequest.objects.create(
         event=locked, requested_by=user, message=message, fields=list(fields)
     )
@@ -171,24 +171,74 @@ def request_clarification(event: EventRequest, user, message: str, fields=()) ->
     return event
 
 
-def _resubmit_after_clarification(locked: EventRequest, event: EventRequest, user) -> EventRequest:
-    """Send an answered request back to review, keeping its coordinator and history."""
-    missing = locked.missing_mandatory_fields()
-    if missing:
-        raise MissingMandatoryFields(missing)
+def _resolve_open_clarifications(event: EventRequest) -> None:
+    event.clarifications.filter(resolved_at__isnull=True).update(resolved_at=timezone.now())
+
+
+@transaction.atomic
+def resume_review(event: EventRequest, user) -> EventRequest:
+    """The coordinator records that the client has answered (offline) and resumes review."""
+    locked = EventRequest.objects.select_for_update().get(pk=event.pk)
+    if locked.coordinator_id != user.pk:
+        raise NotAssignedCoordinator
+    if locked.status != EventStatus.UNDER_REVIEW:
+        raise InvalidTransition(locked.status, EventStatus.SUBMITTED)
     transition_event(locked, EventStatus.SUBMITTED, user)
-    locked.clarifications.filter(resolved_at__isnull=True).update(
-        resolved_at=locked.status_changed_at
+    _resolve_open_clarifications(locked)
+    notify(
+        [locked.created_by],
+        locked,
+        NotificationKind.RESUBMITTED,
+        f'Your coordinator has recorded your answers and resumed reviewing "{locked.name}".',
     )
-    if locked.coordinator:
-        Notification.objects.create(
-            recipient=locked.coordinator,
-            event=locked,
-            kind=NotificationKind.RESUBMITTED,
-            message=f'"{locked.name}" has been updated and resubmitted for review.',
-        )
     event.refresh_from_db()
     return event
+
+
+class EmptyComment(Exception):
+    """Raised when a clarification comment has no text."""
+
+
+@transaction.atomic
+def add_clarification_comment(event: EventRequest, user, message: str, clarification_id=None):
+    """Week 7 clarification - record what was said offline about a clarification.
+
+    The client (their own organisation) and the assigned coordinator may both
+    write. The other party is notified so that the record is not missed.
+    """
+    message = (message or "").strip()
+    if not message:
+        raise EmptyComment
+    if user.is_organiser:
+        if user.organisation_id != event.organisation_id:
+            raise NotPermitted
+    elif user.is_coordinator:
+        if event.coordinator_id != user.pk:
+            raise NotAssignedCoordinator
+    else:
+        raise NotPermitted
+    rounds = event.clarifications.all()
+    clarification = (
+        rounds.filter(pk=clarification_id).first() if clarification_id else rounds.first()
+    )
+    if clarification is None:
+        raise ClarificationNotFound
+    comment = ClarificationComment.objects.create(
+        clarification=clarification, author=user, message=message
+    )
+    other = event.coordinator if user.is_organiser else event.created_by
+    who = user.get_full_name() or user.email
+    notify(
+        [other],
+        event,
+        NotificationKind.CLARIFY_COMMENT,
+        f'{who} recorded a clarification note on "{event.name}": {message}',
+    )
+    return comment
+
+
+class ClarificationNotFound(Exception):
+    """Raised when the event has no clarification round to comment on."""
 
 
 @transaction.atomic
@@ -280,9 +330,18 @@ CANCELLATION_HOOKS: list = []
 
 
 @transaction.atomic
-def reassign_event(event: EventRequest, user, new_coordinator_id) -> EventRequest:
-    """SCRUM-53 - hand an event to another coordinator, keeping the old assignment on record."""
+def assign_coordinator(event: EventRequest, user, new_coordinator_id) -> EventRequest:
+    """Week 7 change 5 - an Event Coordinator Lead assigns or reassigns an event.
+
+    Every assignment is kept on record (SCRUM-53). The Lead who made it becomes
+    the event's supervising Lead. The new coordinator, any previous coordinator
+    and the client are told.
+    """
+    if not user.is_lead:
+        raise NotPermitted
     locked = EventRequest.objects.select_for_update().get(pk=event.pk)
+    if locked.status == EventStatus.DRAFT:
+        raise NotPermitted
     if locked.status in TERMINAL_STATUSES:
         raise EventClosed
     new = User.objects.filter(
@@ -293,18 +352,30 @@ def reassign_event(event: EventRequest, user, new_coordinator_id) -> EventReques
     if new.pk == locked.coordinator_id:
         raise InvalidReassignment("This coordinator is already assigned to the event.")
     previous = locked.coordinator
+    first_assignment = previous is None and not locked.assignment_history.exists()
     locked.coordinator = new
+    locked.assigned_by = user
+    locked.assigned_at = timezone.now()
     locked.assignment_requires_attention = False
-    locked.save(update_fields=["coordinator", "assignment_requires_attention", "updated_at"])
+    locked.save(
+        update_fields=[
+            "coordinator",
+            "assigned_by",
+            "assigned_at",
+            "assignment_requires_attention",
+            "updated_at",
+        ]
+    )
     CoordinatorAssignment.objects.create(
         event=locked, previous_coordinator=previous, coordinator=new, changed_by=user
     )
     name = locked.name or "Untitled event"
     new_name = new.get_full_name() or new.email
+    kind = NotificationKind.ASSIGNMENT if first_assignment else NotificationKind.REASSIGNED
     notify(
         [new],
         locked,
-        NotificationKind.REASSIGNED,
+        kind,
         f'You are now the coordinator for "{name}". Contact {locked.created_by.email}.',
     )
     if previous:
@@ -317,11 +388,50 @@ def reassign_event(event: EventRequest, user, new_coordinator_id) -> EventReques
     notify(
         [locked.created_by],
         locked,
-        NotificationKind.REASSIGNED,
+        kind,
         f'{new_name} ({new.email}) is now your coordinator for "{name}".',
     )
     event.refresh_from_db()
     return event
+
+
+# Kept so that existing callers and tests read naturally.
+reassign_event = assign_coordinator
+
+
+def reopen_planning(event: EventRequest, user, reason: str) -> bool:
+    """Week 7 changes 2, 3 and 6 - a confirmed event whose arrangements change goes
+    back to Planning, so every approval is obtained again before it is re-confirmed.
+
+    Returns True when the event was re-opened. Call inside a transaction.
+    """
+    if event.status != EventStatus.CONFIRMED:
+        return False
+    transition_event(event, EventStatus.PLANNING, user)
+    message = (
+        f'"{event.name}" is back in planning: {reason} It will be confirmed again once '
+        "every arrangement and the safety check are approved."
+    )
+    recipients = [event.created_by, event.coordinator, event.assigned_by]
+    notify(
+        [u for u in recipients if u and u.pk != getattr(user, "pk", None)],
+        event,
+        NotificationKind.STATUS_CHANGED,
+        message,
+    )
+    from apps.registrations.models import RegistrationStatus
+
+    attendees = [
+        r.attendee for r in event.registrations.filter(status=RegistrationStatus.REGISTERED)
+    ]
+    notify(
+        attendees,
+        event,
+        NotificationKind.EVENT_CHANGED,
+        f'The arrangements for "{event.name}" are being revised. We will tell you the '
+        "confirmed details.",
+    )
+    return True
 
 
 # SCRUM-60 / SCRUM-61 - the event information whose changes are kept on record.

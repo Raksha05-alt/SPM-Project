@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Count, Q
 from rest_framework import status as http
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -13,19 +14,23 @@ from apps.core.statuses import (
     ATTENDEE_VISIBLE_STATUSES,
     COORDINATOR_NEXT_ACTIONS,
     INTERNAL_STATUSES,
+    TERMINAL_STATUSES,
     EventStatus,
     InvalidTransition,
     describe,
 )
-from apps.events.confirmation import ArrangementsIncomplete, confirm_event
+from apps.events.confirmation import ArrangementsIncomplete, confirm_event, readiness
 from apps.events.impact import apply_change
 from apps.events.models import EventRequest
 from apps.events.permissions import CanAccessEventRequest
 from apps.events.serializers import (
     AssignedEventSerializer,
+    AssignmentOverviewSerializer,
     AttendeeEventSerializer,
     ChangeLogSerializer,
+    ClarificationCommentSerializer,
     ClarificationInputSerializer,
+    CommentInputSerializer,
     EventQueueSerializer,
     EventRequestSerializer,
     ReasonInputSerializer,
@@ -33,6 +38,8 @@ from apps.events.serializers import (
     RejectionInputSerializer,
 )
 from apps.events.services import (
+    ClarificationNotFound,
+    EmptyComment,
     EventClosed,
     EventNotFinished,
     InvalidReassignment,
@@ -41,12 +48,14 @@ from apps.events.services import (
     MissingRejectionReason,
     NotAssignedCoordinator,
     NotPermitted,
+    add_clarification_comment,
     approve_event,
+    assign_coordinator,
     cancel_event,
     complete_event,
-    reassign_event,
     reject_event,
     request_clarification,
+    resume_review,
     snapshot,
     submit_event,
 )
@@ -81,7 +90,15 @@ class EventRequestViewSet(ModelViewSet):
     # audit row (US-01.2 AC4). With IsAuthenticated first, an anonymous request
     # would be refused before anything recorded the attempt.
     permission_classes = [HasAnyRole, IsAuthenticated, CanAccessEventRequest]
-    allowed_roles = frozenset({Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR, Role.ATTENDEE})
+    allowed_roles = frozenset(
+        {
+            Role.EVENT_ORGANISER,
+            Role.EVENT_COORDINATOR,
+            Role.COORDINATOR_LEAD,
+            Role.SAFETY_OFFICER,
+            Role.ATTENDEE,
+        }
+    )
 
     def get_serializer_class(self):
         if self.request.user.role == Role.ATTENDEE:
@@ -103,7 +120,9 @@ class EventRequestViewSet(ModelViewSet):
             "rejected_by",
             "updated_by",
             "confirmed_by",
+            "assigned_by",
         ).prefetch_related(
+            "clarifications__comments__author",
             "clarifications__requested_by",
             "assignment_history__coordinator",
             "assignment_history__previous_coordinator",
@@ -113,8 +132,14 @@ class EventRequestViewSet(ModelViewSet):
             # US-02.3 / US-03.1 AC5 - a client sees only their own organisation.
             return base.filter(organisation_id=user.organisation_id)
         if user.role == Role.EVENT_COORDINATOR:
-            # US-03.1 AC4 - drafts never reach ConnectSphere.
+            # US-03.1 AC4 - drafts never reach ConnectSphere. Week 7 change 5 -
+            # a coordinator sees only the events assigned to them.
+            return base.exclude(status=EventStatus.DRAFT).filter(coordinator=user)
+        if user.role == Role.COORDINATOR_LEAD:
+            # Week 7 change 5 - Leads see every assigned and unassigned request.
             return base.exclude(status=EventStatus.DRAFT)
+        if user.role == Role.SAFETY_OFFICER:
+            return base.filter(safety_checks__isnull=False).distinct()
         if user.role == Role.ATTENDEE:
             return base.filter(status__in=ATTENDEE_VISIBLE_STATUSES)
         return base.none()
@@ -130,12 +155,14 @@ class EventRequestViewSet(ModelViewSet):
                 "approved_by",
                 "rejected_by",
                 "updated_by",
+                "assigned_by",
             )
             .prefetch_related(
                 "clarifications__requested_by",
                 "assignment_history__coordinator",
                 "assignment_history__previous_coordinator",
                 "assignment_history__changed_by",
+                "clarifications__comments__author",
             )
             .filter(pk=self.kwargs["pk"])
             .first()
@@ -438,19 +465,19 @@ class EventRequestViewSet(ModelViewSet):
         return Response(ChangeLogSerializer(entries, many=True).data)
 
     @action(detail=True, methods=["post"])
-    def reassign(self, request, pk=None):
-        """SCRUM-53 - hand the event to another coordinator."""
+    def assign(self, request, pk=None):
+        """Week 7 change 5 - a Lead assigns (or reassigns) the event's coordinator."""
         event = self.get_object()
-        action_name = f"POST /api/events/{event.pk}/reassign/"
-        if not request.user.is_coordinator:
+        action_name = f"POST {request.path}"
+        if not request.user.is_lead:
             record_denied(
-                request.user, action=action_name, obj=event, detail="only staff may reassign"
+                request.user, action=action_name, obj=event, detail="only leads may assign"
             )
-            raise PermissionDenied("Only ConnectSphere coordinators can reassign an event.")
+            raise PermissionDenied("Only an Event Coordinator Lead can assign coordinators.")
         payload = ReassignInputSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         try:
-            reassign_event(event, request.user, payload.validated_data["coordinator"])
+            assign_coordinator(event, request.user, payload.validated_data["coordinator"])
         except EventClosed:
             detail = f"A {event.get_status_display()} event cannot be reassigned."
             record_denied(request.user, action=action_name, obj=event, detail=detail)
@@ -462,19 +489,105 @@ class EventRequestViewSet(ModelViewSet):
         event.refresh_from_db()
         return Response(self.get_serializer(event).data)
 
+    @action(detail=True, methods=["post"])
+    def reassign(self, request, pk=None):
+        """SCRUM-53 - reassignment is the same Lead action as assignment."""
+        return self.assign(request, pk)
+
+    @action(detail=True, methods=["post"], url_path="resume-review")
+    def resume_review(self, request, pk=None):
+        """The coordinator records the client's offline answers and resumes review."""
+        event = self.get_object()
+        try:
+            resume_review(event, request.user)
+        except NotAssignedCoordinator:
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can do this."
+            ) from None
+        except InvalidTransition as exc:
+            return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["post"])
+    def comment(self, request, pk=None):
+        """Week 7 clarification - record an offline clarification exchange."""
+        event = self.get_object()
+        payload = CommentInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            comment = add_clarification_comment(
+                event,
+                request.user,
+                payload.validated_data.get("message", ""),
+                payload.validated_data.get("clarification"),
+            )
+        except EmptyComment:
+            return Response(
+                {"detail": "Write the note before saving it.", "message": ["Required."]},
+                status=http.HTTP_400_BAD_REQUEST,
+            )
+        except ClarificationNotFound:
+            return Response(
+                {"detail": "There is no clarification on this event to comment on."},
+                status=http.HTTP_409_CONFLICT,
+            )
+        except (NotAssignedCoordinator, NotPermitted):
+            record_denied(
+                request.user, action=f"POST {request.path}", obj=event, detail="not a party"
+            )
+            raise PermissionDenied(
+                "Only the client and the assigned coordinator can comment."
+            ) from None
+        return Response(ClarificationCommentSerializer(comment).data, status=http.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def readiness(self, request, pk=None):
+        """Week 7 changes 3, 4 and 6 - what still stands between the event and confirmation."""
+        event = self.get_object()
+        if not request.user.is_internal:
+            raise PermissionDenied("Readiness is internal planning information.")
+        return Response(readiness(event))
+
+    @action(detail=False, methods=["get"])
+    def assignments(self, request):
+        """Week 7 change 5 - every coordinator assignment and active event, for Leads.
+
+        ``?supervised=mine`` narrows to the assignments the signed-in Lead made.
+        """
+        if not request.user.is_lead:
+            record_denied(request.user, action="GET /api/events/assignments/", detail="leads only")
+            raise PermissionDenied("Only an Event Coordinator Lead can see all assignments.")
+        events = (
+            EventRequest.objects.select_related("organisation", "coordinator", "assigned_by")
+            .exclude(status=EventStatus.DRAFT)
+            .exclude(status__in=TERMINAL_STATUSES)
+            .filter(coordinator__isnull=False)
+            .order_by("coordinator__first_name", "submitted_at", "pk")
+        )
+        if request.query_params.get("supervised") == "mine":
+            events = events.filter(assigned_by=request.user)
+        events = filter_by_status(events, request)
+        return Response(AssignmentOverviewSerializer(events, many=True).data)
+
     @action(detail=False, methods=["get"])
     def queue(self, request):
-        """US-04.1 - the coordinator's queue of incoming requests."""
-        if not request.user.is_coordinator:
+        """US-04.1 / Week 7 change 5 - the unassigned queue, for Event Coordinator Leads.
+
+        Submitted requests wait here, oldest first, until a Lead assigns them.
+        """
+        if not request.user.is_lead:
             record_denied(
                 request.user,
                 action="GET /api/events/queue/",
-                detail="queue is restricted to Event Coordinators",
+                detail="queue is restricted to Event Coordinator Leads",
             )
-            raise PermissionDenied("Only an Event Coordinator can open the queue.")
+            raise PermissionDenied("Only an Event Coordinator Lead can open the queue.")
         queryset = (
             EventRequest.objects.select_related("organisation", "coordinator", "approved_by")
             .exclude(status__in=QUEUE_EXCLUDED)
+            .exclude(status__in=TERMINAL_STATUSES)
+            .filter(coordinator__isnull=True)
             .order_by("submitted_at")  # AC2 - oldest first
         )
         queryset = filter_by_status(queryset, request)
@@ -519,12 +632,18 @@ def event_statuses(request):
 @api_view(["GET"])
 @permission_classes([HasAnyRole, IsAuthenticated])
 def coordinators(request):
-    """SCRUM-53 - the coordinators an event can be reassigned to (staff only)."""
-    if not request.user.is_coordinator:
-        record_denied(request.user, action="GET /api/coordinators/", detail="staff only")
-        raise PermissionDenied("Only ConnectSphere coordinators can see this list.")
-    rows = User.objects.filter(role=Role.EVENT_COORDINATOR, is_active=True).order_by(
-        "first_name", "last_name", "email"
+    """Week 7 change 5 - the coordinators a Lead can assign, with their current workload."""
+    if not request.user.is_lead:
+        record_denied(request.user, action="GET /api/coordinators/", detail="leads only")
+        raise PermissionDenied("Only an Event Coordinator Lead can see this list.")
+    active = Count(
+        "coordinated_event_requests",
+        filter=~Q(coordinated_event_requests__status__in=TERMINAL_STATUSES),
+    )
+    rows = (
+        User.objects.filter(role=Role.EVENT_COORDINATOR, is_active=True)
+        .annotate(active_events=active)
+        .order_by("first_name", "last_name", "email")
     )
     return Response(
         [
@@ -533,6 +652,7 @@ def coordinators(request):
                 "name": user.get_full_name() or user.email,
                 "email": user.email,
                 "available": user.coordinator_available,
+                "active_events": user.active_events,
             }
             for user in rows
         ]

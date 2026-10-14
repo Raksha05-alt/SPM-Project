@@ -21,6 +21,9 @@ PEOPLE = [
     ("organiser@acme.example", Role.EVENT_ORGANISER, "Ada", "Organiser", "Acme Pte Ltd"),
     ("organiser@globex.example", Role.EVENT_ORGANISER, "Otto", "Other", "Globex LLP"),
     ("coordinator@connectsphere.example", Role.EVENT_COORDINATOR, "Cora", "Coordinator", None),
+    ("coordinator2@connectsphere.example", Role.EVENT_COORDINATOR, "Colin", "Second", None),
+    ("lead@connectsphere.example", Role.COORDINATOR_LEAD, "Leah", "Lead", None),
+    ("safety@connectsphere.example", Role.SAFETY_OFFICER, "Sam", "Safety", None),
     ("venue@connectsphere.example", Role.VENUE_STAFF, "Vera", "Venue", None),
     ("tech@connectsphere.example", Role.TECHNICAL_SUPPORT, "Tariq", "Tech", None),
     ("attendee@example.com", Role.ATTENDEE, "Andy", "Attendee", None),
@@ -35,6 +38,7 @@ VENUES = [
         ["THEATRE", "BANQUET", "EXHIBITION"],
         ["Projector", "PA system", "Stage"],
         True,
+        (30, 45, "Four fire exits; assembly point at the front plaza. Stage load limit 500 kg."),
     ),
     (
         "Riverside Room",
@@ -43,6 +47,7 @@ VENUES = [
         ["CLASSROOM", "BOARDROOM", "THEATRE"],
         ["Projector", "Video conferencing", "Whiteboard"],
         True,
+        (15, 30, "Two exits via the level 3 lobby. No open flames."),
     ),
     (
         "Garden Studio",
@@ -51,6 +56,7 @@ VENUES = [
         ["BOARDROOM", "CLASSROOM"],
         ["Television screen"],
         False,
+        (15, 15, "Single exit to the garden; steps at the entrance, no ramp."),
     ),
 ]
 
@@ -90,10 +96,14 @@ class Command(BaseCommand):
                 user.save(update_fields=["password"])
             users[email] = user
 
-        for name, location, capacity, layouts, facilities, step_free in VENUES:
+        for name, location, capacity, layouts, facilities, step_free, extra in VENUES:
+            setup, turnaround, safety_notes = extra
             Venue.objects.get_or_create(
                 name=name,
                 defaults={
+                    "setup_minutes": setup,
+                    "turnaround_minutes": turnaround,
+                    "safety_notes": safety_notes,
                     "location": location,
                     "capacity": capacity,
                     "layouts": layouts,
@@ -137,6 +147,9 @@ class Command(BaseCommand):
                 },
             )
             if created and status != EventStatus.DRAFT:
+                # Week 7 change 5 - submitted requests wait for a Lead to assign them.
+                event.assignment_requires_attention = True
+                event.save(update_fields=["assignment_requires_attention"])
                 EventStatusHistory.objects.create(
                     event=event,
                     from_status=EventStatus.DRAFT,

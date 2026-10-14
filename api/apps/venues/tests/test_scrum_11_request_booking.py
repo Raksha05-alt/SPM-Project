@@ -175,17 +175,30 @@ def test_ac4_the_first_request_moves_an_approved_event_into_planning(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("status", [EventStatus.PLANNING, EventStatus.CONFIRMED])
-def test_ac4_later_requests_leave_the_event_status_alone(
-    signed_in_coordinator, organiser, coordinator, venue, status
+def test_ac4_later_requests_leave_a_planning_event_alone(
+    signed_in_coordinator, organiser, coordinator, venue
 ):
-    event = make_event(organiser, status=status, coordinator=coordinator)
+    event = make_event(organiser, status=EventStatus.PLANNING, coordinator=coordinator)
 
     response = signed_in_coordinator.post(URL, booking_payload(event, venue), format="json")
 
     assert response.status_code == 201
     event.refresh_from_db()
-    assert event.status == status
+    assert event.status == EventStatus.PLANNING
+
+
+@pytest.mark.django_db
+def test_ac4_a_venue_added_to_a_confirmed_event_sends_it_back_to_planning(
+    signed_in_coordinator, organiser, coordinator, venue
+):
+    # Week 7 clarification - a new venue goes through every approval again.
+    event = make_event(organiser, status=EventStatus.CONFIRMED, coordinator=coordinator)
+
+    response = signed_in_coordinator.post(URL, booking_payload(event, venue), format="json")
+
+    assert response.status_code == 201
+    event.refresh_from_db()
+    assert event.status == EventStatus.PLANNING
 
 
 @pytest.mark.django_db

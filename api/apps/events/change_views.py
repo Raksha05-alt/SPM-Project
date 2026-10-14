@@ -17,16 +17,20 @@ from apps.events.models import ChangeRequest, ChangeRequestStatus, EventRequest
 from apps.events.serializers import ChangeRequestSerializer, DecisionInputSerializer
 from apps.events.services import NotAssignedCoordinator
 
-CHANGE_ROLES = frozenset({Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR})
+CHANGE_ROLES = frozenset({Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR, Role.COORDINATOR_LEAD})
 
 
 def check_access(request, event: EventRequest, action_name: str) -> None:
-    """The client's own organisation, or ConnectSphere coordinators for submitted events."""
+    """The client's own organisation, the assigned coordinator (Week 7 change 5), or a
+    Lead reading a submitted event."""
     user = request.user
     if user.role == Role.EVENT_ORGANISER and event.organisation_id == user.organisation_id:
         return
-    if user.role == Role.EVENT_COORDINATOR and event.status != EventStatus.DRAFT:
-        return
+    if event.status != EventStatus.DRAFT:
+        if user.role == Role.EVENT_COORDINATOR and event.coordinator_id == user.pk:
+            return
+        if user.role == Role.COORDINATOR_LEAD and request.method == "GET":
+            return
     record_denied(user, action=action_name, obj=event, detail="no access to this event")
     raise PermissionDenied("You do not have access to this event.")
 

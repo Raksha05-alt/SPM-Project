@@ -6,6 +6,10 @@ from apps.core.statuses import EventStatus
 
 
 class RoomLayout(models.TextChoices):
+    """The starter layouts. Since the Week 7 clarifications the live list is the
+    ``venues.LayoutType`` catalogue, which Venue Staff can add to, edit and delete
+    from; these values seed it (venues migration 0004) and the demo data."""
+
     CLASSROOM = "CLASSROOM", "Classroom"
     THEATRE = "THEATRE", "Theatre"
     BOARDROOM = "BOARDROOM", "Boardroom"
@@ -37,7 +41,8 @@ class EventRequest(TimeStampedModel):
     preferred_end = models.DateTimeField(null=True, blank=True)
     expected_attendance = models.PositiveIntegerField(null=True, blank=True)
 
-    required_layout = models.CharField(max_length=20, choices=RoomLayout.choices, blank=True)
+    # A ``venues.LayoutType`` code; validated by the serializer.
+    required_layout = models.CharField(max_length=20, blank=True)
     accessibility_needs = models.TextField(blank=True)
     equipment_notes = models.TextField(blank=True)
     registration_required = models.BooleanField(default=False)
@@ -52,7 +57,10 @@ class EventRequest(TimeStampedModel):
     status = models.CharField(max_length=20, choices=EventStatus.choices, default=EventStatus.DRAFT)
     status_changed_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
+    # Week 7 change 5 - a submitted request waits in the unassigned queue until
+    # an Event Coordinator Lead assigns it. True while it is waiting.
     assignment_requires_attention = models.BooleanField(default=False)
+    assigned_at = models.DateTimeField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
     rejected_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.TextField(blank=True)
@@ -72,6 +80,14 @@ class EventRequest(TimeStampedModel):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="coordinated_event_requests",
+    )
+    # Week 7 change 5 - the Lead who made the current assignment supervises it.
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="supervised_event_requests",
     )
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -168,6 +184,26 @@ class ClarificationRequest(models.Model):
         return f"Clarification on {self.event_id} ({state})"
 
 
+class ClarificationComment(models.Model):
+    """Week 7 clarification - clarification happens offline, so the client and the
+    coordinator record what was said here, for tracking. Comments are never edited."""
+
+    clarification = models.ForeignKey(
+        ClarificationRequest, on_delete=models.CASCADE, related_name="comments"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+
+    def __str__(self) -> str:
+        return f"Comment on clarification {self.clarification_id}"
+
+
 class CoordinatorAssignment(models.Model):
     """SCRUM-51 / SCRUM-53 - who has coordinated an event, kept after each change."""
 
@@ -249,7 +285,7 @@ class ChangeRequest(models.Model):
     proposed_start = models.DateTimeField(null=True, blank=True)
     proposed_end = models.DateTimeField(null=True, blank=True)
     proposed_attendance = models.PositiveIntegerField(null=True, blank=True)
-    proposed_layout = models.CharField(max_length=20, choices=RoomLayout.choices, blank=True)
+    proposed_layout = models.CharField(max_length=20, blank=True)
     proposed_accessibility_needs = models.TextField(blank=True)
     proposed_equipment_notes = models.TextField(blank=True)
 

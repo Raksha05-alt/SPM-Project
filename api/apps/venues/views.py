@@ -13,25 +13,44 @@ from apps.accounts.models import Role
 from apps.core.audit import record, record_denied
 from apps.core.permissions import HasAnyRole
 from apps.core.statuses import EventStatus
-from apps.events.models import EventRequest, RoomLayout
+from apps.events.models import EventRequest
 from apps.venues.availability import OVERALL_LABELS, InvalidPeriod, overall, parse_period, segments
 from apps.venues.bookings import (
     BookingRefused,
     NotAllowed,
     accept_suggestion,
     approve_booking,
+    confirm_hold,
+    disrupt_bookings,
+    flag_buffer_conflicts,
+    process_holds,
     reject_booking,
     request_booking,
+    request_replacement,
     review_booking,
+    update_hold,
     withdraw_booking,
 )
 from apps.venues.matching import compare_venue, satisfies_all
-from apps.venues.models import BookingStatus, Venue, VenueBlock, VenueBooking, VenueShortlist
+from apps.venues.models import (
+    BookingStatus,
+    LayoutType,
+    Venue,
+    VenueBlock,
+    VenueBooking,
+    VenueShortlist,
+    layout_label,
+)
+from apps.venues.occupancy import exclusion_windows
 from apps.venues.permissions import COORDINATOR_ONLY, INTERNAL_ROLES
 from apps.venues.serializers import (
+    ApproveBookingSerializer,
     BookingRequestSerializer,
     BookingSerializer,
+    HoldInputSerializer,
+    LayoutTypeSerializer,
     RejectBookingSerializer,
+    ReplacementInputSerializer,
     ReviewInputSerializer,
     VenueBlockSerializer,
     VenueSerializer,
@@ -59,21 +78,20 @@ def period_from(request):
 
 
 def occupied_periods(venue, *, exclude_event_id=None):
-    """Periods in which the venue cannot be offered: active blocks and confirmed bookings."""
-    bookings = venue.bookings.filter(status=BookingStatus.APPROVED)
-    if exclude_event_id:
-        bookings = bookings.exclude(event_id=exclude_event_id)
-    return [(b.start, b.end) for b in venue.active_blocks()] + [(b.start, b.end) for b in bookings]
+    """Periods in which the venue cannot be offered for an event's published time:
+    blocks, confirmed bookings and live holds, widened by setup and turnaround
+    (Week 7 changes 1 and 4)."""
+    return exclusion_windows(venue, exclude_event_id=exclude_event_id)
 
 
 def coordinator_event(request, event_id, action: str, *, write=False) -> EventRequest:
-    """An event a coordinator may plan; writes are for the assigned coordinator only."""
+    """An event the signed-in coordinator is assigned to (Week 7 change 5)."""
     require_coordinator(request, action)
     event = get_object_or_404(EventRequest, pk=event_id)
     if event.status == EventStatus.DRAFT:
         record_denied(request.user, action=action, obj=event, detail="drafts are private")
         raise PermissionDenied("Drafts are not visible to ConnectSphere.")
-    if write and event.coordinator_id != request.user.pk:
+    if event.coordinator_id != request.user.pk:
         record_denied(request.user, action=action, obj=event, detail="not the assigned coordinator")
         raise PermissionDenied("Only the coordinator assigned to this event can do this.")
     return event
@@ -86,6 +104,10 @@ class VenueViewSet(ModelViewSet):
     permission_classes = [HasAnyRole, IsAuthenticated]
     allowed_roles = INTERNAL_ROLES
     http_method_names = ["get", "post", "put", "patch", "head", "options"]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        process_holds()  # Week 7 change 4 - an expired hold never shows as held.
 
     def get_queryset(self):
         return Venue.objects.select_related("updated_by").prefetch_related("blocks")
@@ -103,7 +125,8 @@ class VenueViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         # SCRUM-5 AC4 - removing a layout that a confirmed booking relies on.
-        removed = set(venue.layouts) - set(serializer.validated_data.get("layouts", venue.layouts))
+        data = serializer.validated_data
+        removed = set(venue.layouts) - set(data.get("layouts", venue.layouts))
         affected = list(
             venue.bookings.filter(
                 status=BookingStatus.APPROVED, layout__in=removed, end__gt=timezone.now()
@@ -118,7 +141,7 @@ class VenueViewSet(ModelViewSet):
                             "id": booking.pk,
                             "event": booking.event_id,
                             "event_name": booking.event.name,
-                            "layout": RoomLayout(booking.layout).label,
+                            "layout": layout_label(booking.layout),
                             "start": booking.start,
                             "end": booking.end,
                         }
@@ -127,17 +150,42 @@ class VenueViewSet(ModelViewSet):
                 },
                 status=http.HTTP_409_CONFLICT,
             )
+        buffers_changed = any(
+            field in data and data[field] != getattr(venue, field)
+            for field in ("setup_minutes", "turnaround_minutes")
+        )
+        taken_out = venue.is_active and data.get("is_active", True) is False
+        from apps.safety.services import arrangements_changed
+
         with transaction.atomic():
-            serializer.save(updated_by=request.user)
+            venue = serializer.save(updated_by=request.user)
             for booking in affected:
                 booking.review_required = True
-                booking.review_reason = f"{venue.name} no longer supports the {RoomLayout(booking.layout).label} layout."
+                booking.review_reason = (
+                    f"{venue.name} no longer supports the {layout_label(booking.layout)} layout."
+                )
                 booking.review_flagged_at = timezone.now()
                 booking.save(
                     update_fields=["review_required", "review_reason", "review_flagged_at"]
                 )
+                arrangements_changed(booking.event, request.user, booking.review_reason)
+            disrupted = (
+                disrupt_bookings(
+                    venue, request.user, f"{venue.name} has been taken out of service."
+                )
+                if taken_out
+                else []
+            )
+            # Week 7 change 1 - identify, never remove, bookings that now clash.
+            flagged = flag_buffer_conflicts(venue, request.user) if buffers_changed else []
         record(request.user, action_name, allowed=True, obj=venue)
-        return Response(serializer.data)
+        return Response(
+            {
+                **VenueSerializer(venue).data,
+                "disrupted_bookings": [BookingSerializer(b).data for b in disrupted],
+                "flagged_bookings": [BookingSerializer(b).data for b in flagged],
+            }
+        )
 
     @action(detail=True, methods=["get", "post"])
     def blocks(self, request, pk=None):
@@ -150,9 +198,20 @@ class VenueViewSet(ModelViewSet):
         require_venue_staff(request, action_name, venue)
         serializer = VenueBlockSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        block = serializer.save(venue=venue, created_by=request.user, updated_by=request.user)
+        with transaction.atomic():
+            block = serializer.save(venue=venue, created_by=request.user, updated_by=request.user)
+            # Week 7 change 2 - bookings in the period are disrupted, events kept.
+            affected = disrupt_bookings(
+                venue, request.user, _block_reason(block), start=block.start, end=block.end
+            )
         record(request.user, action_name, allowed=True, obj=block)
-        return Response(VenueBlockSerializer(block).data, status=http.HTTP_201_CREATED)
+        return Response(
+            {
+                **VenueBlockSerializer(block).data,
+                "affected_bookings": [BookingSerializer(b).data for b in affected],
+            },
+            status=http.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=["get"])
     def availability(self, request, pk=None):
@@ -213,7 +272,7 @@ class VenueViewSet(ModelViewSet):
             criteria["attendance"] = int(attendance)
         layout = params.get("layout")
         if layout:
-            if layout not in RoomLayout.values:
+            if not LayoutType.objects.filter(code=layout).exists():
                 raise ValidationError({"layout": [f"Unknown layout: {layout}."]})
             criteria["layout"] = layout
         facilities = [f.strip() for f in params.get("facilities", "").split(",") if f.strip()]
@@ -263,6 +322,64 @@ class VenueViewSet(ModelViewSet):
         )
 
 
+def _block_reason(block: VenueBlock) -> str:
+    return f"{block.venue.name} is unavailable ({block.get_category_display().lower()}): {block.reason}."
+
+
+class LayoutTypeViewSet(ModelViewSet):
+    """Week 7 clarification - Venue Staff add, edit and delete room layouts.
+
+    Everyone internal reads the catalogue. A layout still used by a venue, an
+    event, a booking or a change request cannot be deleted; retire it instead.
+    """
+
+    serializer_class = LayoutTypeSerializer
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = INTERNAL_ROLES | {Role.EVENT_ORGANISER}
+
+    def get_queryset(self):
+        layouts = LayoutType.objects.all()
+        if self.request.user.role == Role.EVENT_ORGANISER:
+            layouts = layouts.filter(is_active=True)
+        return layouts
+
+    def _require_staff(self, obj=None):
+        require_venue_staff(self.request, f"{self.request.method} {self.request.path}", obj)
+
+    def perform_create(self, serializer):
+        self._require_staff()
+        layout = serializer.save()
+        record(self.request.user, f"POST {self.request.path}", allowed=True, obj=layout)
+
+    def perform_update(self, serializer):
+        self._require_staff(serializer.instance)
+        layout = serializer.save()
+        record(self.request.user, f"PATCH {self.request.path}", allowed=True, obj=layout)
+
+    def destroy(self, request, *args, **kwargs):
+        layout = self.get_object()
+        self._require_staff(layout)
+        from apps.events.models import ChangeRequest
+
+        in_use = (
+            Venue.objects.filter(layouts__contains=[layout.code]).exists()
+            or EventRequest.objects.filter(required_layout=layout.code).exists()
+            or VenueBooking.objects.filter(layout=layout.code).exists()
+            or ChangeRequest.objects.filter(proposed_layout=layout.code).exists()
+        )
+        if in_use:
+            return Response(
+                {
+                    "detail": f"{layout.name} is used by venues, events or bookings. "
+                    "Retire it instead of deleting it."
+                },
+                status=http.HTTP_409_CONFLICT,
+            )
+        record(request.user, f"DELETE {request.path}", allowed=True, obj=layout)
+        layout.delete()
+        return Response(status=http.HTTP_204_NO_CONTENT)
+
+
 class VenueBlockViewSet(ModelViewSet):
     """SCRUM-13 AC6 - edit or remove a block, recording who and when."""
 
@@ -277,7 +394,15 @@ class VenueBlockViewSet(ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        block = serializer.save(updated_by=self.request.user)
+        with transaction.atomic():
+            block = serializer.save(updated_by=self.request.user)
+            disrupt_bookings(
+                block.venue,
+                self.request.user,
+                _block_reason(block),
+                start=block.start,
+                end=block.end,
+            )
         record(self.request.user, f"PATCH /api/venue-blocks/{block.pk}/", allowed=True, obj=block)
 
     def perform_destroy(self, instance):
@@ -361,6 +486,11 @@ class VenueBookingViewSet(ReadOnlyModelViewSet):
     permission_classes = [HasAnyRole, IsAuthenticated]
     allowed_roles = BOOKING_ROLES
 
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        # Week 7 change 4 - nothing on these screens shows a hold past its deadline.
+        process_holds()
+
     def get_queryset(self):
         bookings = VenueBooking.objects.select_related(
             "event",
@@ -370,7 +500,12 @@ class VenueBookingViewSet(ReadOnlyModelViewSet):
             "withdrawn_by",
             "suggested_venue",
             "reviewed_by",
+            "hold_set_by",
         ).exclude(event__status=EventStatus.DRAFT)
+        if self.request.user.is_coordinator and self.action == "list":
+            # Week 7 change 5 - a coordinator lists the bookings of their own events.
+            # Opening someone else's is refused and audited by the action, not hidden.
+            bookings = bookings.filter(event__coordinator=self.request.user)
         params = self.request.query_params
         if params.get("status"):
             wanted = [value for value in params["status"].split(",") if value]
@@ -421,8 +556,53 @@ class VenueBookingViewSet(ReadOnlyModelViewSet):
         booking = self.get_object()
         action_name = f"POST /api/venue-bookings/{booking.pk}/approve/"
         require_venue_staff(request, action_name, booking)
+        payload = ApproveBookingSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        hold_until = payload.validated_data.get("hold_until")
         return self._run(
-            request, action_name, booking, lambda: approve_booking(booking, request.user)
+            request,
+            action_name,
+            booking,
+            lambda: approve_booking(booking, request.user, hold_until=hold_until),
+        )
+
+    @action(detail=True, methods=["post"], url_path="update-hold")
+    def update_hold(self, request, pk=None):
+        """Week 7 change 4 - Venue Staff change when a tentative hold expires."""
+        booking = self.get_object()
+        action_name = f"POST /api/venue-bookings/{booking.pk}/update-hold/"
+        require_venue_staff(request, action_name, booking)
+        payload = HoldInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        return self._run(
+            request,
+            action_name,
+            booking,
+            lambda: update_hold(booking, request.user, payload.validated_data["hold_until"]),
+        )
+
+    @action(detail=True, methods=["post"], url_path="confirm-hold")
+    def confirm_hold(self, request, pk=None):
+        """Week 7 change 4 - the coordinator confirms a hold before it expires."""
+        booking = self.get_object()
+        action_name = f"POST /api/venue-bookings/{booking.pk}/confirm-hold/"
+        require_coordinator(request, action_name, booking)
+        return self._run(request, action_name, booking, lambda: confirm_hold(booking, request.user))
+
+    @action(detail=True, methods=["post"])
+    def replace(self, request, pk=None):
+        """Week 7 change 2 - request a replacement venue for a disrupted booking."""
+        booking = self.get_object()
+        action_name = f"POST /api/venue-bookings/{booking.pk}/replace/"
+        require_coordinator(request, action_name, booking)
+        payload = ReplacementInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        return self._run(
+            request,
+            action_name,
+            booking,
+            lambda: request_replacement(booking, request.user, dict(payload.validated_data)),
+            success=http.HTTP_201_CREATED,
         )
 
     @action(detail=True, methods=["post"])

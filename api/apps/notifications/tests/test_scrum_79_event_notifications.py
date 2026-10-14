@@ -11,16 +11,21 @@ from conftest import make_event, make_venue
 
 
 @pytest.mark.django_db
-def test_ac1_submitting_notifies_the_assigned_coordinator(
-    signed_in_organiser, coordinator, organiser
+def test_ac1_submitting_notifies_the_leads_and_assignment_the_coordinator(
+    api, signed_in_organiser, coordinator, organiser, lead
 ):
+    # Week 7 change 5 - the Lead hears of the submission; the coordinator of the assignment.
     draft = make_event(organiser)
 
     response = signed_in_organiser.post(f"/api/events/{draft.pk}/submit/")
 
     assert response.status_code == 200, response.data
+    assert "waiting to be assigned" in Notification.objects.get(recipient=lead).message
+    assert not Notification.objects.filter(recipient=coordinator).exists()
+    api.force_authenticate(lead)
+    api.post(f"/api/events/{draft.pk}/assign/", {"coordinator": coordinator.pk}, format="json")
     note = Notification.objects.get(recipient=coordinator)
-    assert "You have been assigned" in note.message
+    assert "You are now the coordinator" in note.message
     assert note.event == draft
 
 
@@ -85,6 +90,9 @@ def test_ac4_confirmation_notifies_client_and_involved_staff(
         password="pw-for-tests-only",
         role="VENUE_STAFF",
     )
+    from apps.safety.tests.helpers import approve_safety
+
+    approve_safety(event)
 
     signed_in_coordinator.post(f"/api/events/{event.pk}/confirm/")
 

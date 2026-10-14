@@ -16,7 +16,7 @@ from apps.notifications.models import NotificationKind
 from apps.notifications.services import notify
 from apps.registrations.models import RegistrationStatus
 from apps.venues.bookings import clashes, overlapping_blocks, venue_staff
-from apps.venues.models import BookingStatus
+from apps.venues.models import LIVE_STATUSES, BookingStatus
 from apps.venues.suitability import assess
 
 TIMING = frozenset({"preferred_start", "preferred_end"})
@@ -33,7 +33,7 @@ FIELD_LABELS = {
     "equipment_notes": "equipment requirements",
 }
 
-ACTIVE_BOOKINGS = (BookingStatus.PENDING, BookingStatus.APPROVED)
+ACTIVE_BOOKINGS = LIVE_STATUSES
 SUITABILITY_CRITERIA = ("Capacity", "Room layout", "Accessibility")
 
 
@@ -56,10 +56,30 @@ def shifted(booking, old: dict, new: dict):
     return start, end
 
 
-def unsuitable(venue, values: dict) -> list[str]:
+def booking_attendance(booking, old: dict, new: dict) -> int | None:
+    """Week 7 change 3 - how many people a venue must now hold.
+
+    With one venue, it holds the whole audience. With several, the venue booked
+    for the most people (the main room) follows the event's attendance, and
+    each breakout room keeps the number it was booked for.
+    """
+    live = list(
+        booking.event.venue_bookings.filter(status__in=LIVE_STATUSES).values_list(
+            "pk", "attendance"
+        )
+    )
+    if len(live) <= 1:
+        return new["expected_attendance"]
+    main_pk = max(live, key=lambda row: (row[1], -row[0]))[0]
+    if booking.pk == main_pk:
+        return new["expected_attendance"]
+    return booking.attendance
+
+
+def unsuitable(venue, values: dict, attendance=None) -> list[str]:
     """SCRUM-66 - reasons the venue no longer suits the event's capacity, layout or access."""
     needs = {
-        "attendance": values["expected_attendance"],
+        "attendance": attendance if attendance is not None else values["expected_attendance"],
         "layout": values["required_layout"],
         "accessibility_needs": values["accessibility_needs"],
     }
@@ -71,9 +91,13 @@ def unsuitable(venue, values: dict) -> list[str]:
 
 
 def venue_conflicts(booking, start, end) -> list[dict]:
+    """Bookings and blocks the moved booking would clash with, including setup and
+    turnaround time (Week 7 change 1)."""
     rows = [
         {"event": c.event_id, "event_name": c.event.name, "start": c.start, "end": c.end}
-        for c in clashes(booking.venue_id, start, end, event_id=booking.event_id)
+        for c in clashes(
+            booking.venue, start, end, event_id=booking.event_id, exclude_booking_id=booking.pk
+        )
     ]
     rows += [
         {"event": None, "event_name": f"Blocked: {b.reason}", "start": b.start, "end": b.end}
@@ -104,7 +128,11 @@ def impact_of(event: EventRequest, proposed: dict) -> dict:
             start, end = (
                 shifted(booking, old, new) if changed & TIMING else (booking.start, booking.end)
             )
-            issues = unsuitable(booking.venue, new) if changed & VENUE_NEEDS else []
+            issues = (
+                unsuitable(booking.venue, new, booking_attendance(booking, old, new))
+                if changed & VENUE_NEEDS
+                else []
+            )
             conflicts = venue_conflicts(booking, start, end) if changed & TIMING else []
             bookings.append(
                 {
@@ -213,9 +241,9 @@ def apply_change(event: EventRequest, before: dict, user, *, change_request=None
 
     for booking in event.venue_bookings.filter(status__in=ACTIVE_BOOKINGS).select_related("venue"):
         reasons, extra = [], {}
-        approved = booking.status == BookingStatus.APPROVED
+        approved = booking.status in (BookingStatus.APPROVED, BookingStatus.HELD)
         if approved and changed & VENUE_NEEDS:
-            reasons += unsuitable(booking.venue, new)
+            reasons += unsuitable(booking.venue, new, booking_attendance(booking, old, new))
         if approved and changed & TIMING:
             start, end = shifted(booking, old, new)
             extra = {"review_start": start, "review_end": end}
@@ -293,6 +321,11 @@ def apply_change(event: EventRequest, before: dict, user, *, change_request=None
             NotificationKind.EVENT_CHANGED,
             f'The date or time of "{event.name}" has changed. {describe_for_attendees(event)}',
         )
+    # Week 7 change 6 / clarification - a significant change needs every check
+    # again, including the safety check; a confirmed event returns to planning.
+    from apps.safety.services import arrangements_changed
+
+    arrangements_changed(event, user, general)
     return {
         "significant": review_all,
         "changed_fields": sorted(FIELD_LABELS[f] for f in significant),

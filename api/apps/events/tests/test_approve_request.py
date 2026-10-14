@@ -101,9 +101,9 @@ def test_ac2_the_approving_coordinator_and_timestamp_are_recorded_and_visible_in
     assert detail.data["approved_by_name"] == "Cora Coordinator"
     assert detail.data["approved_at"]
 
-    queue_row = signed_in_coordinator.get("/api/events/queue/").data[0]
-    assert queue_row["approved_by_name"] == "Cora Coordinator"
-    assert queue_row["approved_at"]
+    mine_row = signed_in_coordinator.get("/api/events/mine/").data[0]
+    assert mine_row["approved_by_name"] == "Cora Coordinator"
+    assert mine_row["approved_at"]
 
 
 @pytest.mark.django_db

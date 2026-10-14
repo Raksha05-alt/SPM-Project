@@ -1,9 +1,14 @@
-"""SCRUM-70 (US-14.2) - flag venue conflicts caused by a confirmed-event change."""
+"""SCRUM-70 (US-14.2) - flag venue conflicts caused by a confirmed-event change.
+
+Week 7: a confirmed event's timing changes through an approved change request
+(clarification session), and conflicts include setup and turnaround time
+(change 1, see ``apps/venues/tests/test_cr_01_setup_turnaround.py``).
+"""
 
 import pytest
 
 from apps.core.statuses import EventStatus
-from apps.events.tests.change_helpers import DAY, HOUR, confirmed_event, iso
+from apps.events.tests.change_helpers import DAY, HOUR, approve_change, confirmed_event, iso
 from apps.venues.models import BookingStatus
 from apps.venues.tests.helpers import block, book
 from conftest import make_event
@@ -15,6 +20,18 @@ def setup(organiser, coordinator):
 
 
 def move(client, event, delta):
+    """Move a confirmed event through the change-request process."""
+    return approve_change(
+        client,
+        event,
+        {
+            "preferred_start": iso(event.preferred_start + delta),
+            "preferred_end": iso(event.preferred_end + delta),
+        },
+    )
+
+
+def move_directly(client, event, delta):
     return client.patch(
         f"/api/events/{event.pk}/",
         {
@@ -83,7 +100,6 @@ def test_ac4_staff_and_coordinator_see_the_reason_and_period(
     request, api, setup, coordinator, viewer
 ):
     event = setup[0]
-    api.force_authenticate(coordinator)
     move(api, event, DAY)
     api.force_authenticate(request.getfixturevalue(viewer))
 
@@ -103,7 +119,7 @@ def test_a_planning_event_moved_without_conflict_raises_no_flag(
     event = make_event(organiser, status=EventStatus.PLANNING, coordinator=coordinator)
     booking = book(event, make_venue())
 
-    move(signed_in_coordinator, event, HOUR)
+    move_directly(signed_in_coordinator, event, HOUR)
 
     booking.refresh_from_db()
     assert booking.review_required is False
@@ -113,10 +129,10 @@ def test_a_planning_event_moved_without_conflict_raises_no_flag(
 def test_a_shortened_event_reviews_the_whole_new_period(signed_in_coordinator, setup):
     event, booking, _, _ = setup
     new_start = event.preferred_start + 5 * HOUR
-    signed_in_coordinator.patch(
-        f"/api/events/{event.pk}/",
+    approve_change(
+        signed_in_coordinator,
+        event,
         {"preferred_start": iso(new_start), "preferred_end": iso(new_start + HOUR)},
-        format="json",
     )
 
     booking.refresh_from_db()

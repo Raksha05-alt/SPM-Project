@@ -11,7 +11,9 @@ from apps.events.models import EventRequest
 def test_seeding_creates_one_user_per_role_and_some_events():
     call_command("seed_demo_data")
 
-    assert User.objects.count() == 6
+    # Every role, including the Week 7 Lead and Safety Officer, plus a second
+    # organiser (cross-client checks) and a second coordinator (assignment demos).
+    assert User.objects.count() == 9
     assert set(User.objects.values_list("role", flat=True)) == set(Role.values)
     assert EventRequest.objects.count() == 3
 
@@ -21,7 +23,7 @@ def test_seeding_twice_does_not_duplicate_anything():
     call_command("seed_demo_data")
     call_command("seed_demo_data")
 
-    assert User.objects.count() == 6
+    assert User.objects.count() == 9
     assert EventRequest.objects.count() == 3
 
 

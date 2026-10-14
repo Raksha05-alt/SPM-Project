@@ -33,7 +33,7 @@ def test_ac2_a_withdrawn_period_is_no_longer_held(signed_in_coordinator, pending
     signed_in_coordinator.post(url(pending))
     after = signed_in_coordinator.get(f"/api/venues/{venue.pk}/availability/", period)
 
-    assert [s["status"] for s in before.data["segments"]] == ["TENTATIVE"]
+    assert [s["status"] for s in before.data["segments"]] == ["REQUESTED"]
     assert [s["status"] for s in after.data["segments"]] == ["AVAILABLE"]
 
 

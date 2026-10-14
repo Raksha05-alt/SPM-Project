@@ -40,17 +40,22 @@ def test_ac2_changed_contact_details_are_stored(signed_in_organiser, organiser):
 
 @pytest.mark.django_db
 def test_ac2_new_contact_details_are_used_in_subsequent_notifications(
-    api, coordinator, organiser, complete_draft
+    api, coordinator, lead, organiser, complete_draft
 ):
     api.force_authenticate(coordinator)
     api.patch(ME, {"email": "cora.new@connectsphere.example"}, format="json")
-
     api.force_authenticate(organiser)
-    response = api.post(f"/api/events/{complete_draft.pk}/submit/")
+    api.post(f"/api/events/{complete_draft.pk}/submit/")
+
+    # Week 7 change 5 - the Lead assigns; the client is told the new address.
+    api.force_authenticate(lead)
+    response = api.post(
+        f"/api/events/{complete_draft.pk}/assign/", {"coordinator": coordinator.pk}, format="json"
+    )
 
     assert response.status_code == 200
     assert response.data["coordinator_email"] == "cora.new@connectsphere.example"
-    notice = Notification.objects.get(recipient=organiser, event=complete_draft)
+    notice = Notification.objects.get(recipient=organiser, event=complete_draft, kind="ASSIGNMENT")
     assert "cora.new@connectsphere.example" in notice.message
 
 

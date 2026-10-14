@@ -1,4 +1,8 @@
-"""US-04.1 - View the queue of submitted event requests."""
+"""US-04.1 - View the queue of submitted event requests.
+
+Week 7 change 5: the queue of incoming requests is now the Event Coordinator Lead's
+unassigned queue. A coordinator works from their own assigned events instead.
+"""
 
 import pytest
 from django.utils import timezone
@@ -11,9 +15,9 @@ QUEUE = "/api/events/queue/"
 
 @pytest.mark.django_db
 def test_ac1_the_queue_shows_everything_a_coordinator_needs_to_triage(
-    signed_in_coordinator, submitted_event
+    signed_in_lead, submitted_event
 ):
-    response = signed_in_coordinator.get(QUEUE)
+    response = signed_in_lead.get(QUEUE)
 
     assert response.status_code == 200
     row = response.data[0]
@@ -33,7 +37,7 @@ def test_ac1_the_queue_shows_everything_a_coordinator_needs_to_triage(
 
 
 @pytest.mark.django_db
-def test_ac2_the_queue_is_ordered_oldest_submission_first(signed_in_coordinator, organiser):
+def test_ac2_the_queue_is_ordered_oldest_submission_first(signed_in_lead, organiser):
     now = timezone.now()
     newer = make_event(
         organiser,
@@ -48,7 +52,7 @@ def test_ac2_the_queue_is_ordered_oldest_submission_first(signed_in_coordinator,
         submitted_at=now - timezone.timedelta(days=4),
     )
 
-    response = signed_in_coordinator.get(QUEUE)
+    response = signed_in_lead.get(QUEUE)
 
     ids = [row["id"] for row in response.data]
     assert ids.index(older.pk) < ids.index(newer.pk)
@@ -56,12 +60,12 @@ def test_ac2_the_queue_is_ordered_oldest_submission_first(signed_in_coordinator,
 
 @pytest.mark.django_db
 def test_ac3_drafts_and_rejected_requests_are_not_in_the_queue(
-    signed_in_coordinator, organiser, complete_draft
+    signed_in_lead, organiser, complete_draft
 ):
     rejected = make_event(organiser, status=EventStatus.REJECTED, name="Rejected one")
     kept = make_event(organiser, status=EventStatus.SUBMITTED, name="Kept")
 
-    response = signed_in_coordinator.get(QUEUE)
+    response = signed_in_lead.get(QUEUE)
 
     ids = [row["id"] for row in response.data]
     assert complete_draft.pk not in ids
@@ -70,7 +74,10 @@ def test_ac3_drafts_and_rejected_requests_are_not_in_the_queue(
 
 
 @pytest.mark.django_db
-def test_ac4_only_a_coordinator_can_open_the_queue(api, organiser, attendee, submitted_event):
+def test_ac4_only_a_lead_can_open_the_queue(api, organiser, attendee, coordinator, submitted_event):
+    api.force_authenticate(coordinator)
+    assert api.get(QUEUE).status_code == 403
+
     api.force_authenticate(organiser)
     assert api.get(QUEUE).status_code == 403
 
@@ -79,8 +86,8 @@ def test_ac4_only_a_coordinator_can_open_the_queue(api, organiser, attendee, sub
 
 
 @pytest.mark.django_db
-def test_ac5_an_empty_queue_shows_an_empty_list_rather_than_an_error(signed_in_coordinator):
-    response = signed_in_coordinator.get(QUEUE)
+def test_ac5_an_empty_queue_shows_an_empty_list_rather_than_an_error(signed_in_lead):
+    response = signed_in_lead.get(QUEUE)
 
     assert response.status_code == 200
     assert response.data == []

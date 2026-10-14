@@ -35,6 +35,14 @@ class NotAllowed(Exception):
     pass
 
 
+def _arrangements_changed(event, user, reason):
+    """Week 7 change 6 - a changed arrangement needs a new safety check, and a
+    confirmed event goes back to planning (see ``apps.safety.services``)."""
+    from apps.safety.services import arrangements_changed
+
+    arrangements_changed(event, user, reason)
+
+
 def technical_staff():
     return User.objects.filter(role=Role.TECHNICAL_SUPPORT, is_active=True)
 
@@ -146,6 +154,9 @@ def create_request(event: EventRequest, user, data: dict) -> EquipmentRequest:
     request = EquipmentRequest.objects.create(
         event=event, requested_by=user, updated_by=user, **data
     )
+    _arrangements_changed(
+        event, user, f"{request.quantity} x {request.equipment_type.name} was requested."
+    )
     notify(
         technical_staff(),
         event,
@@ -235,6 +246,7 @@ def amend_request(request: EquipmentRequest, user, data: dict) -> EquipmentReque
     request.save()
     description = " ".join(changes)
     EquipmentRequestChange.objects.create(request=request, description=description, changed_by=user)
+    _arrangements_changed(request.event, user, f"{request.equipment_type.name}: {description}")
     notify(
         technical_staff(),
         request.event,
@@ -264,6 +276,7 @@ def withdraw_request(request: EquipmentRequest, user) -> EquipmentRequest:
     if released:
         description += f" {released} reserved unit(s) released."
     EquipmentRequestChange.objects.create(request=request, description=description, changed_by=user)
+    _arrangements_changed(request.event, user, f"{request.equipment_type.name}: {description}")
     notify(
         technical_staff(),
         request.event,
@@ -292,6 +305,7 @@ def mark_unavailable(request: EquipmentRequest, user, reason: str) -> EquipmentR
         request=request, description=f"Marked unavailable: {reason}", changed_by=user
     )
     event = request.event
+    _arrangements_changed(event, user, f"{request.equipment_type.name} is unavailable.")
     notify(
         [event.coordinator],
         event,
@@ -384,6 +398,9 @@ def release(reservation: EquipmentReservation, user, reason: str) -> EquipmentRe
     if request.status == EquipmentRequestStatus.RESERVED:
         request.status = EquipmentRequestStatus.REQUESTED
         request.save(update_fields=["status", "updated_at"])
+    _arrangements_changed(
+        event, user, f"{reservation.quantity} x {reservation.equipment_type.name} was released."
+    )
     notify(
         [event.coordinator],
         event,

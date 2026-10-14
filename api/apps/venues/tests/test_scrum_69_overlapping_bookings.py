@@ -106,11 +106,33 @@ def test_ac5_approving_the_first_of_two_requests_flags_the_second(
 
 
 @pytest.mark.django_db
-def test_other_bookings_of_the_same_event_are_not_conflicts(signed_in_coordinator, event, venue):
+def test_two_sessions_of_one_event_in_the_same_room_at_once_conflict(
+    signed_in_coordinator, event, venue
+):
+    # Week 7 change 3 - each booking is checked on its own; one room cannot host
+    # two of the event's sessions at the same time.
     book(event, venue)
 
     response = request(
         signed_in_coordinator, event, venue, event.preferred_start, event.preferred_end
+    )
+
+    assert len(response.data["conflicts"]) == 1
+
+
+@pytest.mark.django_db
+def test_back_to_back_sessions_of_one_event_in_one_room_do_not_conflict(
+    signed_in_coordinator, event
+):
+    from conftest import make_venue
+
+    # The room stays set up between the event's own sessions, so no setup or
+    # turnaround gap is needed.
+    room = make_venue(name="Session Room", setup_minutes=30, turnaround_minutes=30)
+    book(event, room, event.preferred_start, event.preferred_start + HOUR)
+
+    response = request(
+        signed_in_coordinator, event, room, event.preferred_start + HOUR, event.preferred_end
     )
 
     assert response.data["conflicts"] == []

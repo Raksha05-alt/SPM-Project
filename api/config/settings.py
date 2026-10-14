@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "apps.equipment",
     "apps.registrations",
     "apps.notifications",
+    "apps.safety",
 ]
 
 MIDDLEWARE = [
@@ -112,3 +113,7 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Week 7 change 4 - how long before a tentative venue hold expires the
+# coordinator is warned. Venue Staff set each hold's expiry themselves.
+HOLD_WARNING_HOURS = int(os.environ.get("HOLD_WARNING_HOURS", "24"))

@@ -1,7 +1,9 @@
 """SCRUM-71 - does a venue appear suitable for an event, and if not, why not?"""
 
-from apps.events.models import RoomLayout
+from django.utils import timezone
+
 from apps.venues.matching import inside_operating_hours
+from apps.venues.models import layout_label
 from apps.venues.serializers import describe_hours
 
 
@@ -52,7 +54,7 @@ def assess(venue, needs: dict) -> list[dict]:
                 "matches": ok,
                 "reason": ""
                 if ok
-                else f"The venue does not support the {RoomLayout(layout).label} layout.",
+                else f"The venue does not support the {layout_label(layout)} layout.",
             }
         )
     if (needs.get("accessibility_needs") or "").strip():
@@ -95,3 +97,21 @@ def assess(venue, needs: dict) -> list[dict]:
 
 def unmet(checks) -> list[str]:
     return [check["reason"] for check in checks if not check["matches"]]
+
+
+def buffer_warnings(booking) -> list[str]:
+    """Week 7 clarification - Venue Staff decide whether setup and turnaround may fall
+    outside opening hours, so the system warns rather than refuses."""
+    venue = booking.venue
+    if not (venue.setup_minutes or venue.turnaround_minutes):
+        return []
+    if venue.opens_at is None or venue.closes_at is None:
+        return []
+    start, end = booking.occupied_start, booking.occupied_end
+    if inside_operating_hours(venue, start, end):
+        return []
+    return [
+        f"With setup and turnaround the venue is needed from "
+        f"{timezone.localtime(start):%H:%M} to {timezone.localtime(end):%H:%M}, outside its "
+        f"operating hours ({describe_hours(venue)})."
+    ]

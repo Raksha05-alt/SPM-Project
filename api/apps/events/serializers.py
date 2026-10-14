@@ -4,6 +4,7 @@ from rest_framework import serializers
 from apps.core.statuses import COORDINATOR_NEXT_ACTIONS, STATUS_DESCRIPTIONS, EventStatus
 from apps.events.models import (
     ChangeRequest,
+    ClarificationComment,
     ClarificationRequest,
     CoordinatorAssignment,
     EventChangeLog,
@@ -13,12 +14,51 @@ from apps.registrations import services as registrations
 from apps.registrations.serializers import confirmed_venues
 
 
+def validate_layout_code(value):
+    """Week 7 clarification - a layout must exist in the Venue Staff's catalogue."""
+    from apps.venues.models import LayoutType
+
+    if value and not LayoutType.objects.filter(code=value, is_active=True).exists():
+        raise serializers.ValidationError(f"Unknown room layout: {value}.")
+    return value
+
+
+class ClarificationCommentSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+    author_role = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClarificationComment
+        fields = ["id", "clarification", "message", "author_name", "author_role", "created_at"]
+        read_only_fields = fields
+
+    def get_author_name(self, obj) -> str | None:
+        return _display_name(obj.author)
+
+    def get_author_role(self, obj) -> str | None:
+        return obj.author.get_role_display() if obj.author else None
+
+
+class CommentInputSerializer(serializers.Serializer):
+    message = serializers.CharField(allow_blank=True, trim_whitespace=True, required=False)
+    clarification = serializers.IntegerField(required=False, allow_null=True)
+
+
 class ClarificationSerializer(serializers.ModelSerializer):
     requested_by_name = serializers.SerializerMethodField()
+    comments = ClarificationCommentSerializer(many=True, read_only=True)
 
     class Meta:
         model = ClarificationRequest
-        fields = ["id", "message", "fields", "requested_by_name", "requested_at", "resolved_at"]
+        fields = [
+            "id",
+            "message",
+            "fields",
+            "requested_by_name",
+            "requested_at",
+            "resolved_at",
+            "comments",
+        ]
         read_only_fields = fields
 
     def get_requested_by_name(self, obj) -> str | None:
@@ -126,6 +166,9 @@ class EventRequestSerializer(serializers.ModelSerializer):
     updated_by_name = serializers.SerializerMethodField()
     confirmed_by_name = serializers.SerializerMethodField()
     confirmed_arrangements = serializers.SerializerMethodField()
+    assigned_by_name = serializers.SerializerMethodField()
+    required_layout_label = serializers.SerializerMethodField()
+    safety_check = serializers.SerializerMethodField()
 
     class Meta:
         model = EventRequest
@@ -138,6 +181,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "preferred_end",
             "expected_attendance",
             "required_layout",
+            "required_layout_label",
             "accessibility_needs",
             "equipment_notes",
             "registration_required",
@@ -158,6 +202,8 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "coordinator_name",
             "coordinator_email",
             "assignment_requires_attention",
+            "assigned_by_name",
+            "assigned_at",
             "approved_by",
             "approved_by_name",
             "approved_at",
@@ -169,6 +215,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "confirmed_by_name",
             "confirmed_at",
             "confirmed_arrangements",
+            "safety_check",
             "clarifications",
             "assignment_history",
             "missing_mandatory_fields",
@@ -186,6 +233,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "created_by",
             "coordinator",
             "assignment_requires_attention",
+            "assigned_at",
             "approved_by",
             "approved_at",
             "rejected_by",
@@ -205,6 +253,8 @@ class EventRequestSerializer(serializers.ModelSerializer):
         "rejected_by",
         "rejected_by_name",
         "assignment_history",
+        "assigned_by_name",
+        "safety_check",
     )
 
     def to_representation(self, instance):
@@ -217,6 +267,21 @@ class EventRequestSerializer(serializers.ModelSerializer):
 
     def get_approved_by_name(self, obj) -> str | None:
         return _display_name(obj.approved_by)
+
+    def get_assigned_by_name(self, obj) -> str | None:
+        return _display_name(obj.assigned_by)
+
+    def get_required_layout_label(self, obj) -> str:
+        from apps.venues.models import layout_label
+
+        return layout_label(obj.required_layout)
+
+    def get_safety_check(self, obj) -> dict | None:
+        """Week 7 change 6 - the latest Operational Safety Check, if one was requested."""
+        from apps.safety.serializers import SafetyCheckSummarySerializer
+
+        latest = obj.safety_checks.first()
+        return SafetyCheckSummarySerializer(latest).data if latest else None
 
     def get_updated_by_name(self, obj) -> str | None:
         return _display_name(obj.updated_by)
@@ -250,7 +315,16 @@ class EventRequestSerializer(serializers.ModelSerializer):
         return obj.missing_mandatory_fields()
 
     def get_is_editable(self, obj) -> bool:
-        return obj.status in (EventStatus.DRAFT, EventStatus.UNDER_REVIEW)
+        """Whether the person asking may edit the event directly (Week 7 clarifications)."""
+        from apps.events.permissions import CLIENT_EDITABLE, COORDINATOR_EDITABLE
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is not None and getattr(user, "is_coordinator", False):
+            return obj.coordinator_id == user.pk and obj.status in COORDINATOR_EDITABLE
+        return obj.status in CLIENT_EDITABLE
+
+    validate_required_layout = staticmethod(validate_layout_code)
 
     # --- field level rules. Only values actually supplied are checked, so that
     # --- an incomplete draft still saves (US-03.1 AC2).
@@ -399,6 +473,24 @@ class EventQueueSerializer(serializers.ModelSerializer):
         return obj.coordinator.get_full_name() or obj.coordinator.email
 
 
+class AssignmentOverviewSerializer(EventQueueSerializer):
+    """Week 7 change 5 - one active assignment, as an Event Coordinator Lead sees it."""
+
+    coordinator_email = serializers.CharField(source="coordinator.email", read_only=True)
+    assigned_by_name = serializers.SerializerMethodField()
+
+    class Meta(EventQueueSerializer.Meta):
+        fields = EventQueueSerializer.Meta.fields + [
+            "coordinator_email",
+            "assigned_by",
+            "assigned_by_name",
+            "assigned_at",
+        ]
+
+    def get_assigned_by_name(self, obj) -> str | None:
+        return _display_name(obj.assigned_by)
+
+
 class AssignedEventSerializer(EventQueueSerializer):
     """SCRUM-54 - a coordinator's own events, with the next step for each."""
 
@@ -478,6 +570,8 @@ class ChangeRequestSerializer(serializers.ModelSerializer):
         if value is not None and value < timezone.now():
             raise serializers.ValidationError("The new start cannot be in the past.")
         return value
+
+    validate_proposed_layout = staticmethod(validate_layout_code)
 
 
 class DecisionInputSerializer(serializers.Serializer):
