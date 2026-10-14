@@ -1,5 +1,10 @@
 # SCRUM-51: automatic coordinator assignment
 
+> **Superseded in Week 7 (change 5).** ConnectSphere confirmed "it is now manually
+> assigned by the lead and no more system auto-assignment". AC1, AC2 and AC5 below
+> no longer apply; see [Week 7 change analysis](week-7-changes.md). This page is
+> kept as the record of what Sprint 2 delivered.
+
 ## Scope and branch
 
 Story: SCRUM-51, assigned to Nethren Balamurugan in Sprint 2; 5 points, Medium.
