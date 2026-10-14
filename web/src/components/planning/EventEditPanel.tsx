@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api/client";
 import {
-  LAYOUT_OPTIONS,
   fieldErrorsOf,
   fromLocalInput,
   toLocalInput,
@@ -12,6 +11,7 @@ import {
 } from "../../api/planning";
 import type { EventRequest } from "../../types";
 import { Field, inputClass } from "../Field";
+import { useLayoutOptions } from "../useLayoutOptions";
 
 type Form = {
   name: string;
@@ -65,6 +65,7 @@ export function EventEditPanel({ event }: { event: EventRequest }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Form>(() => formFrom(event));
+  const layoutOptions = useLayoutOptions(form.required_layout);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [outcome, setOutcome] = useState<SignificantChange | "saved" | null>(null);
 
@@ -236,7 +237,7 @@ export function EventEditPanel({ event }: { event: EventRequest }) {
                 onChange={(e) => set("required_layout", e.target.value)}
               >
                 <option value="">No preference</option>
-                {LAYOUT_OPTIONS.map((o) => (
+                {layoutOptions.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>

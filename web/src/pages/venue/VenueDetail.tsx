@@ -11,7 +11,15 @@ import {
   updateBlock,
   updateVenue,
 } from "../../api/venues";
-import type { BlockInput, Venue, VenueBlock } from "../../api/venues";
+import { BLOCK_CATEGORIES } from "../../components/blockCategories";
+import type {
+  BlockCategory,
+  BlockInput,
+  SavedVenue,
+  Venue,
+  VenueBlock,
+  VenueBooking,
+} from "../../api/venues";
 import { Field, inputClass } from "../../components/Field";
 import { VenueForm, VenueNav, formatDateTime, fromLocalInput, toLocalInput } from "./VenueCatalogue";
 
@@ -46,26 +54,32 @@ function BlockForm({
 }: {
   block?: VenueBlock;
   save: (input: BlockInput) => Promise<VenueBlock>;
-  onDone: () => void;
+  onDone: (saved: VenueBlock) => void;
   submitLabel: string;
 }) {
   const prefix = block ? `block-${block.id}` : "block-new";
   const [start, setStart] = useState(toLocalInput(block?.start ?? null));
   const [end, setEnd] = useState(toLocalInput(block?.end ?? null));
+  const [category, setCategory] = useState<BlockCategory>(block?.category ?? "MAINTENANCE");
   const [reason, setReason] = useState(block?.reason ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const mutation = useMutation({
     mutationFn: () =>
-      save({ start: fromLocalInput(start)!, end: fromLocalInput(end)!, reason: reason.trim() }),
-    onSuccess: () => {
+      save({
+        start: fromLocalInput(start)!,
+        end: fromLocalInput(end)!,
+        category,
+        reason: reason.trim(),
+      }),
+    onSuccess: (saved) => {
       setErrors({});
       if (!block) {
         setStart("");
         setEnd("");
         setReason("");
       }
-      onDone();
+      onDone(saved);
     },
     onError: (error) => setErrors(errorsFrom(error)),
   });
@@ -86,7 +100,7 @@ function BlockForm({
           {errors.detail}
         </p>
       )}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Block start" htmlFor={`${prefix}-start`} error={errors.start}>
           <input
             id={`${prefix}-start`}
@@ -104,6 +118,21 @@ function BlockForm({
             value={end}
             onChange={(e) => setEnd(e.target.value)}
           />
+        </Field>
+        {/* Week 7 change 2 - why the venue is temporarily unavailable. */}
+        <Field label="Category" htmlFor={`${prefix}-category`} error={errors.category}>
+          <select
+            id={`${prefix}-category`}
+            className={inputClass}
+            value={category}
+            onChange={(e) => setCategory(e.target.value as BlockCategory)}
+          >
+            {BLOCK_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label="Reason" htmlFor={`${prefix}-reason`} error={errors.reason}>
           <input
@@ -128,9 +157,32 @@ function BlockForm({
   );
 }
 
+/** Week 7 change 2 - the bookings a change of availability affected. */
+function AffectedBookings({ title, bookings }: { title: string; bookings: VenueBooking[] }) {
+  if (bookings.length === 0) return null;
+  return (
+    <div role="status" className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+      <p className="font-medium">{title}</p>
+      <ul className="mt-1 list-inside list-disc">
+        {bookings.map((b) => (
+          <li key={b.id}>
+            {b.event_name}
+            {b.session_name ? ` (${b.session_name})` : ""} · {formatDateTime(b.start)}
+            {b.coordinator_name ? ` · coordinator ${b.coordinator_name}` : ""}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 text-xs">
+        The events are not cancelled. Their coordinators have been told to arrange alternatives.
+      </p>
+    </div>
+  );
+}
+
 function Blocks({ venueId }: { venueId: number }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<number | null>(null);
+  const [affected, setAffected] = useState<VenueBooking[]>([]);
   const { data: blocks } = useQuery({
     queryKey: ["venue-blocks", venueId],
     queryFn: () => listBlocks(venueId),
@@ -171,7 +223,9 @@ function Blocks({ venueId }: { venueId: number }) {
             ) : (
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span>
-                  {formatDateTime(block.start)} – {formatDateTime(block.end)} · {block.reason}
+                  {formatDateTime(block.start)} – {formatDateTime(block.end)} ·{" "}
+                  {block.category_label ? `${block.category_label}: ` : ""}
+                  {block.reason}
                 </span>
                 <span className="flex gap-3">
                   <button
@@ -196,10 +250,17 @@ function Blocks({ venueId }: { venueId: number }) {
         ))}
       </ul>
       <h3 className="mb-2 text-sm font-semibold text-navy-700">Block this venue</h3>
+      <AffectedBookings
+        title="These bookings are affected by the unavailability:"
+        bookings={affected}
+      />
       <BlockForm
         submitLabel="Add block"
         save={(input) => createBlock(venueId, input)}
-        onDone={refresh}
+        onDone={(saved) => {
+          setAffected(saved.affected_bookings ?? []);
+          refresh();
+        }}
       />
     </section>
   );
@@ -294,6 +355,7 @@ export function VenueDetail() {
   const venueId = Number(id);
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [lastSave, setLastSave] = useState<SavedVenue | null>(null);
 
   const { data: venue, isLoading, isError } = useQuery({
     queryKey: ["venue", venueId],
@@ -301,6 +363,7 @@ export function VenueDetail() {
   });
 
   function onSaved(saved: Venue) {
+    setLastSave(saved as SavedVenue);
     queryClient.setQueryData(["venue", venueId], saved);
     void queryClient.invalidateQueries({ queryKey: ["venues"] });
     setEditing(false);
@@ -328,6 +391,25 @@ export function VenueDetail() {
         )}
       </div>
 
+      <AffectedBookings
+        title="Taking the venue out of service affected these bookings:"
+        bookings={lastSave?.disrupted_bookings ?? []}
+      />
+      {(lastSave?.flagged_bookings ?? []).length > 0 && (
+        <div role="status" className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-medium">
+            With the new setup and turnaround times these bookings now clash and need review:
+          </p>
+          <ul className="mt-1 list-inside list-disc">
+            {lastSave!.flagged_bookings!.map((b) => (
+              <li key={b.id}>
+                {b.event_name} · {formatDateTime(b.start)} – {b.review_reason}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs">Nothing was removed; review them in Booking requests.</p>
+        </div>
+      )}
       {editing ? (
         <VenueForm
           venue={venue}
@@ -348,6 +430,10 @@ export function VenueDetail() {
             </Detail>
             <Detail label="Accessibility notes">{venue.accessibility_notes || "—"}</Detail>
             <Detail label="Operating hours">{venue.operating_hours ?? "—"}</Detail>
+            <Detail label="Setup and turnaround">
+              {venue.setup_minutes ?? 0} min before · {venue.turnaround_minutes ?? 0} min after
+            </Detail>
+            <Detail label="Emergency access and restrictions">{venue.safety_notes || "—"}</Detail>
             {venue.missing_information.length > 0 && (
               <Detail label="Missing information">{venue.missing_information.join(", ")}</Detail>
             )}

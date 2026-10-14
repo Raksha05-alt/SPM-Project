@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  LAYOUT_OPTIONS,
   approveChangeRequest,
   fetchChangeRequest,
   fetchChangeRequests,
@@ -11,19 +10,19 @@ import {
   type ChangeRequest,
 } from "../../api/planning";
 import { inputClass } from "../Field";
+import { useLayoutLabel } from "../useLayoutOptions";
 
 const secondary =
   "rounded-md border border-slate-300 bg-white px-3 py-1 text-sm font-medium hover:bg-slate-50 disabled:opacity-50";
 
-function proposals(change: ChangeRequest): string[] {
+function proposals(change: ChangeRequest, layoutName: (code: string) => string): string[] {
   const rows: string[] = [];
   if (change.proposed_start) rows.push(`Start: ${formatDateTime(change.proposed_start)}`);
   if (change.proposed_end) rows.push(`End: ${formatDateTime(change.proposed_end)}`);
   if (change.proposed_attendance != null)
     rows.push(`Attendance: ${change.proposed_attendance}`);
   if (change.proposed_layout) {
-    const label = LAYOUT_OPTIONS.find((o) => o.value === change.proposed_layout)?.label;
-    rows.push(`Layout: ${label ?? change.proposed_layout}`);
+    rows.push(`Layout: ${layoutName(change.proposed_layout)}`);
   }
   if (change.proposed_accessibility_needs)
     rows.push(`Accessibility needs: ${change.proposed_accessibility_needs}`);
@@ -45,6 +44,7 @@ export function ChangeRequestsPanel({
     queryFn: () => fetchChangeRequests(eventId),
   });
   const [openId, setOpenId] = useState<number | null>(null);
+  const layoutName = useLayoutLabel();
 
   return (
     <section
@@ -74,9 +74,9 @@ export function ChangeRequestsPanel({
                   {change.requested_by_name ?? "Client"} · {formatDateTime(change.created_at)}
                 </p>
                 {change.reason && <p className="text-xs">Why: {change.reason}</p>}
-                {proposals(change).length > 0 && (
+                {proposals(change, layoutName).length > 0 && (
                   <ul className="mt-1 list-disc pl-5 text-xs">
-                    {proposals(change).map((p) => (
+                    {proposals(change, layoutName).map((p) => (
                       <li key={p}>{p}</li>
                     ))}
                   </ul>

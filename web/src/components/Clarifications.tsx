@@ -1,4 +1,8 @@
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { addClarificationNote } from "../api/events";
 import type { Clarification } from "../types";
+import { inputClass } from "./Field";
 
 /** Fields a coordinator can point the client to. Matches the API's list. */
 export const CLARIFIABLE_FIELDS: { value: string; label: string }[] = [
@@ -57,9 +61,90 @@ export function ClarificationHistory({ clarifications }: { clarifications: Clari
                 ? `answered ${new Date(c.resolved_at).toLocaleString("en-SG")}`
                 : "awaiting answer"}
             </p>
+            {(c.comments ?? []).length > 0 && (
+              <ul aria-label="Clarification notes" className="mt-2 space-y-1 border-l-2 border-slate-200 pl-3">
+                {(c.comments ?? []).map((note) => (
+                  <li key={note.id} className="text-xs text-slate-700">
+                    <span className="font-medium">
+                      {note.author_name ?? "Someone"}
+                      {note.author_role ? ` (${note.author_role})` : ""}
+                    </span>
+                    : {note.message}{" "}
+                    <span className="text-slate-500">
+                      · {new Date(note.created_at).toLocaleString("en-SG")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))}
       </ol>
     </section>
+  );
+}
+
+/**
+ * Week 9 clarification - the conversation happens offline (phone, email, meetings),
+ * and the system records what was said so that both sides can track it.
+ */
+export function ClarificationNoteForm({
+  eventId,
+  clarificationId,
+  invalidate,
+}: {
+  eventId: number;
+  clarificationId?: number;
+  invalidate: unknown[];
+}) {
+  const queryClient = useQueryClient();
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: () => addClarificationNote(eventId, message.trim(), clarificationId),
+    onSuccess: () => {
+      setMessage("");
+      void queryClient.invalidateQueries({ queryKey: invalidate });
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "We could not save the note."),
+  });
+
+  function submit() {
+    if (!message.trim()) {
+      setError("Write the note before saving it.");
+      return;
+    }
+    setError(null);
+    save.mutate();
+  }
+
+  return (
+    <div className="mt-3">
+      <label htmlFor="clarification-note" className="mb-1 block text-sm font-medium">
+        Record what was agreed (offline answers, calls, emails)
+      </label>
+      <textarea
+        id="clarification-note"
+        rows={2}
+        className={inputClass}
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+      />
+      {error && (
+        <p role="alert" className="mt-1 text-xs font-medium text-rose-700">
+          {error}
+        </p>
+      )}
+      <div className="mt-2 flex justify-end">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={save.isPending}
+          className="rounded-md border border-slate-300 bg-white px-3 py-1 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+        >
+          Save note
+        </button>
+      </div>
+    </div>
   );
 }

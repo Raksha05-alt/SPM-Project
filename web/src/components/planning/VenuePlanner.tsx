@@ -2,17 +2,19 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api/client";
 import {
-  LAYOUT_OPTIONS,
   acceptSuggestion,
   addToShortlist,
   compareAvailability,
+  confirmHold,
   fetchBookings,
   fetchShortlist,
   fetchSuitability,
   fieldErrorsOf,
   formatDateTime,
   fromLocalInput,
+  listVenueOptions,
   removeFromShortlist,
+  replaceBooking,
   requestBooking,
   searchVenues,
   toLocalInput,
@@ -23,6 +25,7 @@ import {
 } from "../../api/planning";
 import type { EventRequest } from "../../types";
 import { Field, inputClass } from "../Field";
+import { useLayoutOptions } from "../useLayoutOptions";
 
 const secondary =
   "rounded-md border border-slate-300 bg-white px-3 py-1 text-sm font-medium hover:bg-slate-50 disabled:opacity-50";
@@ -43,7 +46,12 @@ function ErrorBox({ error }: { error: Error | null }) {
   );
 }
 
-/** SCRUM-64 / 71 / 62 / 68 venues, and SCRUM-11 / 67 / 73 / 69 bookings for one event. */
+/**
+ * SCRUM-64 / 71 / 62 / 68 venues, and SCRUM-11 / 67 / 73 / 69 bookings for one event.
+ *
+ * Week 7 change 3 - an event can book several venues (one per session); each is
+ * requested, decided and withdrawn on its own.
+ */
 export function VenuePlanner({ event }: { event: EventRequest }) {
   const [bookingVenue, setBookingVenue] = useState<{ id: number; name: string } | null>(null);
 
@@ -72,6 +80,7 @@ function VenueSearch({ event, onRequest }: { event: EventRequest; onRequest: Req
     wheelchair_access: Boolean(event.accessibility_needs.trim()),
   });
   const [checked, setChecked] = useState<Record<number, Suitability>>({});
+  const layoutOptions = useLayoutOptions(criteria.layout);
 
   const search = useMutation({
     mutationFn: (params: VenueSearchParams) => searchVenues(params),
@@ -123,7 +132,7 @@ function VenueSearch({ event, onRequest }: { event: EventRequest; onRequest: Req
               onChange={(e) => setCriteria({ ...criteria, layout: e.target.value })}
             >
               <option value="">Any layout</option>
-              {LAYOUT_OPTIONS.map((o) => (
+              {layoutOptions.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
@@ -384,12 +393,14 @@ function BookingForm({
     start: toLocalInput(event.preferred_start),
     end: toLocalInput(event.preferred_end),
     attendance: event.expected_attendance?.toString() ?? "",
+    session_name: "",
     layout: event.required_layout,
     facilities: "",
     accessibility_needs: event.accessibility_needs,
     notes: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const layoutOptions = useLayoutOptions(form.layout);
 
   const submitBooking = useMutation({
     mutationFn: () =>
@@ -399,6 +410,7 @@ function BookingForm({
         start: fromLocalInput(form.start) ?? "",
         end: fromLocalInput(form.end) ?? "",
         attendance: form.attendance ? Number(form.attendance) : null,
+        session_name: form.session_name.trim(),
         layout: form.layout,
         facilities: form.facilities
           .split(",")
@@ -489,7 +501,7 @@ function BookingForm({
               onChange={(e) => set("layout", e.target.value)}
             >
               <option value="">No preference</option>
-              {LAYOUT_OPTIONS.map((o) => (
+              {layoutOptions.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
@@ -497,6 +509,19 @@ function BookingForm({
             </select>
           </Field>
         </div>
+        <Field
+          label="Session"
+          htmlFor="booking-session"
+          hint="Optional - for events using several spaces, e.g. Main programme or Breakout A."
+          error={errors.session_name}
+        >
+          <input
+            id="booking-session"
+            className={inputClass}
+            value={form.session_name}
+            onChange={(e) => set("session_name", e.target.value)}
+          />
+        </Field>
         <Field
           label="Facilities needed"
           htmlFor="booking-facilities"
@@ -556,6 +581,7 @@ function Bookings({ event }: { event: EventRequest }) {
   function refresh() {
     void queryClient.invalidateQueries({ queryKey: ["bookings", event.id] });
     void queryClient.invalidateQueries({ queryKey: ["event", event.id] });
+    void queryClient.invalidateQueries({ queryKey: ["readiness", event.id] });
   }
 
   const withdraw = useMutation({
@@ -573,9 +599,16 @@ function Bookings({ event }: { event: EventRequest }) {
     },
   });
   const accept = useMutation({ mutationFn: (id: number) => acceptSuggestion(id), onSuccess: refresh });
+  const confirm = useMutation({ mutationFn: (id: number) => confirmHold(id), onSuccess: refresh });
+  const replace = useMutation({
+    mutationFn: ({ id, venue }: { id: number; venue: number }) => replaceBooking(id, venue),
+    onSuccess: refresh,
+  });
 
   const actionError =
-    withdraw.error && !warning ? withdraw.error : (accept.error ?? null);
+    withdraw.error && !warning
+      ? withdraw.error
+      : (accept.error ?? confirm.error ?? replace.error ?? null);
 
   return (
     <section aria-label="Venue bookings" className={card}>
@@ -596,11 +629,57 @@ function Bookings({ event }: { event: EventRequest }) {
               withdraw.reset();
             }}
             onAccept={() => accept.mutate(b.id)}
-            busy={withdraw.isPending || accept.isPending}
+            onConfirmHold={() => confirm.mutate(b.id)}
+            onReplace={(venue) => replace.mutate({ id: b.id, venue })}
+            busy={withdraw.isPending || accept.isPending || confirm.isPending || replace.isPending}
           />
         ))}
       </ul>
     </section>
+  );
+}
+
+const WITHDRAWABLE = ["PENDING", "HELD", "APPROVED", "DISRUPTED"];
+
+function ReplacementPicker({
+  booking,
+  onReplace,
+  busy,
+}: {
+  booking: VenueBooking;
+  onReplace: (venue: number) => void;
+  busy: boolean;
+}) {
+  const { data: venues } = useQuery({ queryKey: ["venue-options"], queryFn: listVenueOptions });
+  const [venue, setVenue] = useState("");
+  const options = (venues ?? []).filter((v) => v.is_active && v.id !== booking.venue);
+  return (
+    <div className="mt-2 flex flex-wrap items-end gap-2">
+      <label className="text-xs font-medium" htmlFor={`replace-${booking.id}`}>
+        Replacement venue
+        <select
+          id={`replace-${booking.id}`}
+          className={`${inputClass} mt-1`}
+          value={venue}
+          onChange={(e) => setVenue(e.target.value)}
+        >
+          <option value="">Choose a venue</option>
+          {options.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.name} (capacity {v.capacity})
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        className={secondary}
+        disabled={!venue || busy}
+        onClick={() => onReplace(Number(venue))}
+      >
+        Request replacement
+      </button>
+    </div>
   );
 }
 
@@ -610,6 +689,8 @@ function BookingRow({
   onWithdraw,
   onKeep,
   onAccept,
+  onConfirmHold,
+  onReplace,
   busy,
 }: {
   booking: VenueBooking;
@@ -617,33 +698,81 @@ function BookingRow({
   onWithdraw: (confirm: boolean) => void;
   onKeep: () => void;
   onAccept: () => void;
+  onConfirmHold: () => void;
+  onReplace: (venue: number) => void;
   busy: boolean;
 }) {
   const hasSuggestion = Boolean(b.suggested_venue || b.suggested_start || b.suggested_end);
+  const buffered = Boolean(b.setup_minutes || b.turnaround_minutes);
+  const label = b.session_name ? `${b.venue_name} (${b.session_name})` : b.venue_name;
   return (
     <li className="py-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-medium">
-            {b.venue_name} <span className="font-normal text-slate-600">· {b.status_display}</span>
+            {label} <span className="font-normal text-slate-600">· {b.status_display}</span>
           </p>
           <p className="text-xs text-slate-500">
             {period(b.start, b.end)} · {b.attendance} people
             {b.layout_label ? ` · ${b.layout_label}` : ""}
           </p>
+          {buffered && b.occupied_from && (
+            <p className="text-xs text-slate-500">
+              Venue occupied {period(b.occupied_from, b.occupied_until ?? null)} (setup{" "}
+              {b.setup_minutes} min, turnaround {b.turnaround_minutes} min)
+            </p>
+          )}
         </div>
-        {(b.status === "PENDING" || b.status === "APPROVED") && !warning && (
-          <button
-            type="button"
-            className={secondary}
-            disabled={busy}
-            onClick={() => onWithdraw(false)}
-            aria-label={`Withdraw ${b.venue_name}`}
-          >
-            Withdraw
-          </button>
-        )}
+        <div className="flex gap-2">
+          {b.status === "HELD" && !b.hold_expired && (
+            <button
+              type="button"
+              className={primary}
+              disabled={busy}
+              onClick={onConfirmHold}
+              aria-label={`Confirm hold on ${b.venue_name}`}
+            >
+              Confirm hold
+            </button>
+          )}
+          {WITHDRAWABLE.includes(b.status) && !warning && (
+            <button
+              type="button"
+              className={secondary}
+              disabled={busy}
+              onClick={() => onWithdraw(false)}
+              aria-label={`Withdraw ${b.venue_name}`}
+            >
+              Withdraw
+            </button>
+          )}
+        </div>
       </div>
+
+      {b.status === "HELD" && b.hold_expires_at && (
+        <p className="mt-2 rounded-md bg-blue-50 p-2 text-xs text-blue-900">
+          Tentatively held until {formatDateTime(b.hold_expires_at)}. Confirm the hold before then
+          or the venue will be released.
+        </p>
+      )}
+      {b.status === "EXPIRED" && (
+        <p className="mt-2 rounded-md bg-slate-100 p-2 text-xs text-slate-700">
+          The hold expired {formatDateTime(b.hold_expires_at ?? null)}; the venue is no longer
+          reserved. Request it again if it is still needed.
+        </p>
+      )}
+      {b.status === "DISRUPTED" && (
+        <div role="alert" className="mt-2 rounded-md bg-rose-50 p-2 text-xs text-rose-900">
+          <p className="font-semibold">Venue unavailable - alternative arrangements required</p>
+          <p>{b.disruption_reason}</p>
+          <ReplacementPicker booking={b} onReplace={onReplace} busy={busy} />
+        </div>
+      )}
+      {(b.buffer_warnings ?? []).map((w) => (
+        <p key={w} className="mt-2 text-xs text-amber-900">
+          {w}
+        </p>
+      ))}
 
       {warning && (
         <div role="alert" className="mt-2 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
@@ -670,7 +799,10 @@ function BookingRow({
           <ul className="list-disc pl-5">
             {b.conflicts.map((c) => (
               <li key={c.booking}>
-                {c.event_name} ({period(c.start, c.end)})
+                {c.event_name}
+                {c.session_name ? ` - ${c.session_name}` : ""} (
+                {period(c.occupied_from ?? c.start, c.occupied_until ?? c.end)}, including setup
+                and turnaround)
               </li>
             ))}
           </ul>

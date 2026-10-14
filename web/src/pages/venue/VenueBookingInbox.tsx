@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api/client";
 import {
   approveBooking,
@@ -7,10 +7,11 @@ import {
   listVenues,
   rejectBooking,
   reviewBooking,
+  updateHold,
 } from "../../api/venues";
 import type { BookingConflict, RejectInput, VenueBooking } from "../../api/venues";
 import { Field, inputClass } from "../../components/Field";
-import { VenueNav, formatDateTime, fromLocalInput } from "./VenueCatalogue";
+import { VenueNav, formatDateTime, fromLocalInput, toLocalInput } from "./VenueCatalogue";
 
 const secondaryButton =
   "rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50";
@@ -27,7 +28,10 @@ function ConflictList({ conflicts }: { conflicts: BookingConflict[] }) {
     <ul className="mt-1 list-inside list-disc">
       {conflicts.map((c) => (
         <li key={c.booking}>
-          {c.event_name} · {formatDateTime(c.start)} – {formatDateTime(c.end)}
+          {c.event_name}
+          {c.session_name ? ` (${c.session_name})` : ""} · occupied{" "}
+          {formatDateTime(c.occupied_from ?? c.start)} – {formatDateTime(c.occupied_until ?? c.end)}
+          {c.status === "HELD" ? " · tentative hold" : ""}
         </li>
       ))}
     </ul>
@@ -37,10 +41,26 @@ function ConflictList({ conflicts }: { conflicts: BookingConflict[] }) {
 function BookingSummary({ booking }: { booking: VenueBooking }) {
   return (
     <>
-      <h3 className="text-base font-semibold text-navy-700">{booking.event_name}</h3>
+      <h3 className="text-base font-semibold text-navy-700">
+        {booking.event_name}
+        {booking.session_name ? ` · ${booking.session_name}` : ""}
+      </h3>
       <p className="text-sm text-slate-600">
         {booking.venue_name} · {formatDateTime(booking.start)} – {formatDateTime(booking.end)}
       </p>
+      {/* Week 7 change 1 - the period the room is actually needed. */}
+      {Boolean(booking.setup_minutes || booking.turnaround_minutes) && (
+        <p className="text-xs text-slate-500">
+          With setup ({booking.setup_minutes} min) and turnaround ({booking.turnaround_minutes}{" "}
+          min): {formatDateTime(booking.occupied_from ?? booking.start)} –{" "}
+          {formatDateTime(booking.occupied_until ?? booking.end)}
+        </p>
+      )}
+      {(booking.buffer_warnings ?? []).map((w) => (
+        <p key={w} className="text-xs text-amber-900">
+          {w}
+        </p>
+      ))}
       <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm text-slate-800 sm:grid-cols-2">
         <div>
           <dt className="inline text-slate-500">Attendance: </dt>
@@ -225,7 +245,12 @@ function PendingRequest({ booking }: { booking: VenueBooking }) {
     setShowReject(false);
   }
 
-  const approve = useMutation({ mutationFn: approveBooking, onSuccess: onDecided });
+  // Week 7 change 4 - leave empty to confirm the booking; set to hold it tentatively.
+  const [holdUntil, setHoldUntil] = useState("");
+  const approve = useMutation({
+    mutationFn: () => approveBooking(booking.id, fromLocalInput(holdUntil)),
+    onSuccess: onDecided,
+  });
   const refusedConflicts = conflictsOf(approve.error);
 
   return (
@@ -235,7 +260,9 @@ function PendingRequest({ booking }: { booking: VenueBooking }) {
       {/* SCRUM-69 - conflicting confirmed bookings, named by event. */}
       {!decided && booking.conflicts.length > 0 && (
         <div className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
-          <p className="font-medium">Conflicts with confirmed bookings:</p>
+          <p className="font-medium">
+            Conflicts with bookings at this venue (including setup and turnaround):
+          </p>
           <ConflictList conflicts={booking.conflicts} />
         </div>
       )}
@@ -251,13 +278,24 @@ function PendingRequest({ booking }: { booking: VenueBooking }) {
         <p role="status" className="mt-3 text-sm text-slate-700">
           {decided.status_display} by {decided.decided_by_name ?? "—"} on{" "}
           {formatDateTime(decided.decided_at)}
+          {decided.hold_expires_at && ` until ${formatDateTime(decided.hold_expires_at)}`}
           {decided.rejection_reason && `. Reason: ${decided.rejection_reason}`}
           {decided.suggested_venue_name && `. Suggested: ${decided.suggested_venue_name}`}
         </p>
       ) : showReject ? (
         <RejectForm booking={booking} onDecided={onDecided} onCancel={() => setShowReject(false)} />
       ) : (
-        <div className="mt-3 flex justify-end gap-3">
+        <div className="mt-3 flex flex-wrap items-end justify-end gap-3">
+          <label className="text-xs font-medium text-slate-700" htmlFor={`hold-${booking.id}`}>
+            Hold tentatively until (optional)
+            <input
+              id={`hold-${booking.id}`}
+              type="datetime-local"
+              className={`${inputClass} mt-1`}
+              value={holdUntil}
+              onChange={(e) => setHoldUntil(e.target.value)}
+            />
+          </label>
           <button
             type="button"
             onClick={() => setShowReject(true)}
@@ -267,11 +305,11 @@ function PendingRequest({ booking }: { booking: VenueBooking }) {
           </button>
           <button
             type="button"
-            onClick={() => approve.mutate(booking.id)}
+            onClick={() => approve.mutate()}
             disabled={approve.isPending}
             className={primaryButton}
           >
-            Approve
+            {holdUntil ? "Approve as tentative hold" : "Approve"}
           </button>
         </div>
       )}
@@ -389,6 +427,51 @@ function ReviewItem({ booking }: { booking: VenueBooking }) {
   );
 }
 
+/** Week 7 change 4 - a current tentative hold, whose expiry Venue Staff can change. */
+function HeldBooking({ booking }: { booking: VenueBooking }) {
+  const queryClient = useQueryClient();
+  const [until, setUntil] = useState(toLocalInput(booking.hold_expires_at ?? null));
+  const change = useMutation({
+    mutationFn: () => updateHold(booking.id, fromLocalInput(until)!),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["venue-bookings"] }),
+  });
+  return (
+    <li className="rounded-lg border border-slate-200 bg-white p-4">
+      <BookingSummary booking={booking} />
+      <p className="mt-2 text-sm text-blue-900">
+        Held until {formatDateTime(booking.hold_expires_at ?? null)}
+        {booking.hold_set_by_name ? ` (set by ${booking.hold_set_by_name})` : ""}. Waiting for{" "}
+        {booking.coordinator_name ?? "the coordinator"} to confirm.
+      </p>
+      {change.error && (
+        <p role="alert" className="mt-2 rounded-md bg-rose-50 p-3 text-sm text-rose-800">
+          {change.error.message}
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap items-end justify-end gap-3">
+        <label className="text-xs font-medium text-slate-700" htmlFor={`update-hold-${booking.id}`}>
+          New expiry
+          <input
+            id={`update-hold-${booking.id}`}
+            type="datetime-local"
+            className={`${inputClass} mt-1`}
+            value={until}
+            onChange={(e) => setUntil(e.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => change.mutate()}
+          disabled={!until || change.isPending}
+          className={secondaryButton}
+        >
+          Update hold
+        </button>
+      </div>
+    </li>
+  );
+}
+
 export function VenueBookingInbox() {
   const pending = useQuery({
     queryKey: ["venue-bookings", "PENDING"],
@@ -397,6 +480,10 @@ export function VenueBookingInbox() {
   const approved = useQuery({
     queryKey: ["venue-bookings", "APPROVED"],
     queryFn: () => listBookings("APPROVED"),
+  });
+  const held = useQuery({
+    queryKey: ["venue-bookings", "HELD"],
+    queryFn: () => listBookings("HELD"),
   });
   const needsReview = approved.data?.filter((b) => b.review_required) ?? [];
 
@@ -414,6 +501,17 @@ export function VenueBookingInbox() {
         )}
         <ul className="space-y-4">
           {pending.data?.map((booking) => <PendingRequest key={booking.id} booking={booking} />)}
+        </ul>
+      </section>
+
+      <section aria-label="Tentative holds" className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold text-navy-700">Tentative holds</h2>
+        {held.isError && <p role="alert">We could not load the tentative holds.</p>}
+        {held.data?.length === 0 && (
+          <p className="text-sm text-slate-500">No venues are tentatively held.</p>
+        )}
+        <ul className="space-y-4">
+          {held.data?.map((booking) => <HeldBooking key={booking.id} booking={booking} />)}
         </ul>
       </section>
 

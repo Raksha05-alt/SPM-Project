@@ -11,6 +11,7 @@ import {
 } from "../../api/organiser";
 import type { EventRequest, EventStatus } from "../../types";
 import { Field, inputClass } from "../Field";
+import { useLayoutOptions } from "../useLayoutOptions";
 
 /** The submitted event, plus the organiser-only fields the API adds to it. */
 export type FollowUpEvent = Pick<EventRequest, "id" | "status" | "registration_required"> & {
@@ -20,14 +21,6 @@ export type FollowUpEvent = Pick<EventRequest, "id" | "status" | "registration_r
 
 /** SCRUM-20 AC4 - closed events cannot be changed; SCRUM-56 - nor cancelled again. */
 const CLOSED: EventStatus[] = ["DRAFT", "CANCELLED", "COMPLETED", "REJECTED"];
-
-const LAYOUTS: Record<string, string> = {
-  CLASSROOM: "Classroom",
-  THEATRE: "Theatre",
-  BOARDROOM: "Boardroom",
-  BANQUET: "Banquet",
-  EXHIBITION: "Exhibition",
-};
 
 function formatDateTime(value: string | null | undefined) {
   return value ? new Date(value).toLocaleString("en-SG") : "—";
@@ -80,6 +73,7 @@ function Arrangements({ arrangements }: { arrangements: ConfirmedArrangements })
           {arrangements.venues.map((v, i) => (
             <li key={i}>
               {v.venue}
+              {v.session ? ` (${v.session})` : ""}
               {v.location ? `, ${v.location}` : ""} · {formatDateTime(v.start)} to{" "}
               {formatDateTime(v.end)}
             </li>
@@ -181,6 +175,7 @@ function ChangeRequests({ eventId, canRaise }: { eventId: number; canRaise: bool
   });
 
   const [form, setForm] = useState<ChangeRequestInput>(EMPTY_CHANGE);
+  const layoutOptions = useLayoutOptions();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [refusal, setRefusal] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -332,9 +327,9 @@ function ChangeRequests({ eventId, canRaise }: { eventId: number; canRaise: bool
                 onChange={(e) => set("proposed_layout", e.target.value)}
               >
                 <option value="">No change</option>
-                {Object.entries(LAYOUTS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
+                {layoutOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
                   </option>
                 ))}
               </select>

@@ -73,7 +73,6 @@ export function CoordinatorMyEvents() {
     mutationFn: approveEvent,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["my-events"] });
-      void queryClient.invalidateQueries({ queryKey: ["queue"] });
     },
   });
 
@@ -84,13 +83,11 @@ export function CoordinatorMyEvents() {
 
   return (
     <div>
-      <div className="flex items-baseline justify-between">
-        <h1 className="mb-1 text-2xl font-semibold text-navy-700">My assigned events</h1>
-        <Link to="/coordinator" className="text-sm text-navy-700 underline">
-          Incoming requests
-        </Link>
-      </div>
-      <p className="mb-6 text-sm text-slate-500">Events needing your action are shown first.</p>
+      <h1 className="mb-1 text-2xl font-semibold text-navy-700">My assigned events</h1>
+      <p className="mb-6 text-sm text-slate-500">
+        Events an Event Coordinator Lead has assigned to you. Those needing your action are shown
+        first.
+      </p>
 
       {approve.isError && (
         <p role="alert" className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-800">

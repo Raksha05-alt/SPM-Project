@@ -8,7 +8,12 @@ import { Field, inputClass } from "../components/Field";
 import { StatusBadge } from "../components/StatusBadge";
 import { CoordinatorAssignment } from "../components/CoordinatorAssignment";
 import { RejectionNotice } from "../components/RejectionNotice";
-import { ClarificationHistory, OpenClarification } from "../components/Clarifications";
+import {
+  ClarificationHistory,
+  ClarificationNoteForm,
+  OpenClarification,
+} from "../components/Clarifications";
+import { useLayoutOptions } from "../components/useLayoutOptions";
 import { EventFollowUp } from "../components/organiser/EventFollowUp";
 
 const FIELD_LABELS: Record<string, string> = {
@@ -56,10 +61,12 @@ export function EventRequestForm() {
     if (existing) setForm({ ...EMPTY, ...existing });
   }, [existing]);
 
+  // Week 9 clarification - once submitted, the client no longer edits the request;
+  // changes go through the coordinator or a change request.
   const readOnly = existing ? !existing.is_editable : false;
-  // SCRUM-49 AC2 - a request awaiting clarification is open to edit and resubmit.
   const awaitingClarification = existing?.status === "UNDER_REVIEW";
   const openClarification = existing?.clarifications?.find((c) => c.resolved_at === null);
+  const layoutOptions = useLayoutOptions(form.required_layout ?? "");
 
   function set<K extends keyof EventDraft>(key: K, value: EventDraft[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -89,7 +96,7 @@ export function EventRequestForm() {
     },
     onSuccess: (saved) => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
-      setBanner(awaitingClarification ? "Changes saved." : "Draft saved.");
+      setBanner("Draft saved.");
       if (eventId === null) navigate(`/organiser/requests/${saved.id}`, { replace: true });
     },
     onError: handleApiError,
@@ -105,11 +112,7 @@ export function EventRequestForm() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      setBanner(
-        awaitingClarification
-          ? "Your updated request has been resubmitted to ConnectSphere."
-          : "Your request has been sent to ConnectSphere.",
-      );
+      setBanner("Your request has been sent to ConnectSphere.");
       navigate("/organiser", { replace: true });
     },
     onError: handleApiError,
@@ -136,7 +139,24 @@ export function EventRequestForm() {
       {existing && <RejectionNotice event={existing} />}
       {existing && existing.status !== "DRAFT" && <CoordinatorAssignment event={existing} />}
       {awaitingClarification && openClarification && (
-        <OpenClarification clarification={openClarification} />
+        <div className="mb-4">
+          <OpenClarification clarification={openClarification} />
+          <p className="text-sm text-slate-600">
+            Your coordinator will contact you. Once you have answered, you can record what was
+            agreed here; your coordinator updates the request.
+          </p>
+          <ClarificationNoteForm
+            eventId={existing!.id}
+            clarificationId={openClarification.id}
+            invalidate={["events", eventId]}
+          />
+        </div>
+      )}
+      {existing && existing.status !== "DRAFT" && (
+        <p className="mb-4 text-sm text-slate-500">
+          This request has been submitted, so it can no longer be edited here. To change it, ask
+          your coordinator or raise a change request below.
+        </p>
       )}
 
       {banner && (
@@ -234,11 +254,11 @@ export function EventRequestForm() {
               onChange={(e) => set("required_layout", e.target.value)}
             >
               <option value="">No preference</option>
-              <option value="CLASSROOM">Classroom</option>
-              <option value="THEATRE">Theatre</option>
-              <option value="BOARDROOM">Boardroom</option>
-              <option value="BANQUET">Banquet</option>
-              <option value="EXHIBITION">Exhibition</option>
+              {layoutOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </Field>
         </div>
@@ -281,7 +301,7 @@ export function EventRequestForm() {
             disabled={save.isPending}
             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
           >
-            {awaitingClarification ? "Save changes" : "Save draft"}
+            Save draft
           </button>
           <button
             type="button"
@@ -289,7 +309,7 @@ export function EventRequestForm() {
             disabled={submit.isPending}
             className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-600"
           >
-            {awaitingClarification ? "Resubmit to ConnectSphere" : "Send to ConnectSphere"}
+            Send to ConnectSphere
           </button>
         </div>
       )}

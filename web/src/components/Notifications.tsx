@@ -16,6 +16,10 @@ function eventLink(role: Role | undefined, eventId: number): string {
       return `/organiser/requests/${eventId}`;
     case "COORDINATOR":
       return `/coordinator/events/${eventId}`;
+    case "COORDINATOR_LEAD":
+      return `/lead/events/${eventId}`;
+    case "SAFETY_OFFICER":
+      return "/safety";
     case "ATTENDEE":
       return "/events/mine";
     case "VENUE_STAFF":

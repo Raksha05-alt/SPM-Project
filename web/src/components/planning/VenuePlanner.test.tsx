@@ -7,10 +7,13 @@ import {
   acceptSuggestion,
   addToShortlist,
   compareAvailability,
+  confirmHold,
   fetchBookings,
   fetchShortlist,
   fetchSuitability,
+  listVenueOptions,
   removeFromShortlist,
+  replaceBooking,
   requestBooking,
   searchVenues,
   withdrawBooking,
@@ -31,6 +34,9 @@ vi.mock("../../api/planning", async (importOriginal) => ({
   requestBooking: vi.fn(),
   withdrawBooking: vi.fn(),
   acceptSuggestion: vi.fn(),
+  confirmHold: vi.fn(),
+  replaceBooking: vi.fn(),
+  listVenueOptions: vi.fn(),
 }));
 
 const hallA = {
@@ -338,6 +344,7 @@ describe("SCRUM-11 request a venue booking", () => {
       start: "2026-11-20T01:00:00.000Z",
       end: "2026-11-20T07:00:00.000Z",
       attendance: 120,
+      session_name: "",
       layout: "THEATRE",
       facilities: [],
       accessibility_needs: "Wheelchair access",
@@ -498,5 +505,94 @@ describe("SCRUM-69 / 73 / 66 / 70 bookings with conflicts, review and suggestion
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Only the coordinator assigned to this event can do this.",
     );
+  });
+});
+
+describe("Week 7 changes in the venue planner", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fetchShortlist).mockResolvedValue([]);
+  });
+
+  it("CR1: shows when the venue is occupied with setup and turnaround", async () => {
+    vi.mocked(fetchBookings).mockResolvedValue([
+      booking({
+        status: "APPROVED",
+        status_display: "Approved",
+        setup_minutes: 30,
+        turnaround_minutes: 45,
+        occupied_from: "2026-11-20T00:30:00Z",
+        occupied_until: "2026-11-20T07:45:00Z",
+      }),
+    ]);
+
+    renderPlanner();
+
+    expect(await screen.findByText(/setup 30 min, turnaround 45 min/)).toBeInTheDocument();
+  });
+
+  it("CR3: a request names its session", async () => {
+    vi.mocked(fetchBookings).mockResolvedValue([
+      booking({ session_name: "Breakout A", status: "PENDING" }),
+    ]);
+
+    renderPlanner();
+
+    expect(await screen.findByText(/Hall A \(Breakout A\)/)).toBeInTheDocument();
+  });
+
+  it("CR4: the coordinator confirms a tentative hold before it expires", async () => {
+    vi.mocked(fetchBookings).mockResolvedValue([
+      booking({
+        status: "HELD",
+        status_display: "Tentatively held",
+        hold_expires_at: "2026-11-01T01:00:00Z",
+        hold_expired: false,
+      }),
+    ]);
+    vi.mocked(confirmHold).mockResolvedValue(booking({ status: "APPROVED" }));
+
+    renderPlanner();
+    expect(await screen.findByText(/Tentatively held until/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Confirm hold on Hall A" }));
+
+    expect(confirmHold).toHaveBeenCalledWith(11);
+  });
+
+  it("CR4: an expired hold is shown as no longer reserved", async () => {
+    vi.mocked(fetchBookings).mockResolvedValue([
+      booking({ status: "EXPIRED", status_display: "Hold expired", hold_expires_at: "2026-10-01T01:00:00Z" }),
+    ]);
+
+    renderPlanner();
+
+    expect(await screen.findByText(/no longer\s+reserved/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Confirm hold/ })).not.toBeInTheDocument();
+  });
+
+  it("CR2: a disrupted booking asks for alternative arrangements and requests a replacement", async () => {
+    vi.mocked(fetchBookings).mockResolvedValue([
+      booking({
+        status: "DISRUPTED",
+        status_display: "Venue unavailable",
+        disruption_reason: "Hall A is unavailable (maintenance): Air-con repair.",
+      }),
+    ]);
+    vi.mocked(listVenueOptions).mockResolvedValue([
+      { id: 3, name: "Hall A", capacity: 200, is_active: true },
+      { id: 4, name: "Hall B", capacity: 150, is_active: true },
+      { id: 5, name: "Closed Room", capacity: 90, is_active: false },
+    ]);
+    vi.mocked(replaceBooking).mockResolvedValue(booking({ id: 12, venue: 4 }));
+
+    renderPlanner();
+    expect(await screen.findByText(/alternative arrangements required/)).toBeInTheDocument();
+    expect(screen.getByText(/Air-con repair/)).toBeInTheDocument();
+    await screen.findByRole("option", { name: "Hall B (capacity 150)" });
+    expect(screen.queryByRole("option", { name: /Closed Room/ })).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Replacement venue"), "4");
+    await userEvent.click(screen.getByRole("button", { name: "Request replacement" }));
+
+    expect(replaceBooking).toHaveBeenCalledWith(11, 4);
   });
 });

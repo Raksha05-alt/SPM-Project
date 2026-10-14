@@ -3,13 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client";
-import {
-  cancelEvent,
-  completeEvent,
-  confirmEvent,
-  listCoordinators,
-  reassignEvent,
-} from "../../api/planning";
+import { cancelEvent, completeEvent, confirmEvent } from "../../api/planning";
 import { EventActions } from "./EventActions";
 import { planningEvent } from "./fixtures";
 
@@ -18,8 +12,6 @@ vi.mock("../../api/planning", async (importOriginal) => ({
   confirmEvent: vi.fn(),
   cancelEvent: vi.fn(),
   completeEvent: vi.fn(),
-  reassignEvent: vi.fn(),
-  listCoordinators: vi.fn(),
   updateEvent: vi.fn(),
 }));
 
@@ -130,53 +122,10 @@ describe("SCRUM-56 cancel and complete", () => {
   });
 });
 
-describe("SCRUM-53 reassign an event", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("AC1: picks another coordinator from the list", async () => {
-    vi.mocked(listCoordinators).mockResolvedValue([
-      { id: 2, name: "Cora Coordinator", email: "cora@example.com", available: true },
-      { id: 5, name: "Dan Delegate", email: "dan@example.com", available: true },
-    ]);
-    vi.mocked(reassignEvent).mockResolvedValue(planningEvent({ coordinator: 5 }));
-
+describe("Week 7 CR5 - reassignment moved to the Lead", () => {
+  it("offers coordinators no Reassign action", () => {
     renderActions();
-    await userEvent.click(screen.getByRole("button", { name: "Reassign" }));
-    await screen.findByRole("option", { name: "Dan Delegate" });
-    expect(screen.queryByRole("option", { name: "Cora Coordinator" })).not.toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText("New coordinator"), "5");
-    await userEvent.click(screen.getByRole("button", { name: "Confirm reassignment" }));
 
-    expect(reassignEvent).toHaveBeenCalledWith(9, 5);
-  });
-
-  it("AC2: a coordinator must be chosen", async () => {
-    vi.mocked(listCoordinators).mockResolvedValue([]);
-
-    renderActions();
-    await userEvent.click(screen.getByRole("button", { name: "Reassign" }));
-    await userEvent.click(screen.getByRole("button", { name: "Confirm reassignment" }));
-
-    expect(screen.getByText("Choose a coordinator.")).toBeInTheDocument();
-    expect(reassignEvent).not.toHaveBeenCalled();
-  });
-
-  it("AC3: shows the API's refusal", async () => {
-    vi.mocked(listCoordinators).mockResolvedValue([
-      { id: 5, name: "Dan Delegate", email: "dan@example.com", available: true },
-    ]);
-    vi.mocked(reassignEvent).mockRejectedValue(
-      new ApiError(400, { coordinator: ["Choose an active Event Coordinator."] }, "Choose an active Event Coordinator."),
-    );
-
-    renderActions();
-    await userEvent.click(screen.getByRole("button", { name: "Reassign" }));
-    await screen.findByRole("option", { name: "Dan Delegate" });
-    await userEvent.selectOptions(screen.getByLabelText("New coordinator"), "5");
-    await userEvent.click(screen.getByRole("button", { name: "Confirm reassignment" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Choose an active Event Coordinator.",
-    );
+    expect(screen.queryByRole("button", { name: "Reassign" })).not.toBeInTheDocument();
   });
 });

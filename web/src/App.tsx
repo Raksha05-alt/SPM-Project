@@ -3,7 +3,6 @@ import { AuthProvider } from "./auth/AuthProvider";
 import { RequireRole } from "./auth/RequireRole";
 import { useAuth } from "./auth/AuthContext";
 import { Layout } from "./components/Layout";
-import { CoordinatorQueue } from "./pages/CoordinatorQueue";
 import { CoordinatorMyEvents } from "./pages/CoordinatorMyEvents";
 import { CoordinatorEventDetail } from "./pages/CoordinatorEventDetail";
 import { AttendeeEvents } from "./pages/AttendeeEvents";
@@ -17,6 +16,12 @@ import { EquipmentRequests } from "./pages/tech/EquipmentRequests";
 import { VenueBookingInbox } from "./pages/venue/VenueBookingInbox";
 import { VenueCatalogue } from "./pages/venue/VenueCatalogue";
 import { VenueDetail } from "./pages/venue/VenueDetail";
+import { LayoutCatalogue } from "./pages/venue/LayoutCatalogue";
+import { LeadAssignments } from "./pages/lead/LeadAssignments";
+import { LeadEventDetail } from "./pages/lead/LeadEventDetail";
+import { LeadQueue } from "./pages/lead/LeadQueue";
+import { SafetyCheckDetail } from "./pages/safety/SafetyCheckDetail";
+import { SafetyQueue } from "./pages/safety/SafetyQueue";
 
 function Home() {
   const { user, loading } = useAuth();
@@ -56,22 +61,16 @@ export default function App() {
               </RequireRole>
             }
           />
+          {/* Week 7 change 5 - a coordinator works from their own assigned events. */}
           <Route
             path="/coordinator"
-            element={
-              <RequireRole roles={["COORDINATOR"]}>
-                <CoordinatorQueue />
-              </RequireRole>
-            }
-          />
-          <Route
-            path="/coordinator/mine"
             element={
               <RequireRole roles={["COORDINATOR"]}>
                 <CoordinatorMyEvents />
               </RequireRole>
             }
           />
+          <Route path="/coordinator/mine" element={<Navigate to="/coordinator" replace />} />
           <Route
             path="/coordinator/events/:id"
             element={
@@ -85,6 +84,14 @@ export default function App() {
             element={
               <RequireRole roles={["VENUE_STAFF"]}>
                 <VenueCatalogue />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/venues/layouts"
+            element={
+              <RequireRole roles={["VENUE_STAFF"]}>
+                <LayoutCatalogue />
               </RequireRole>
             }
           />
@@ -133,6 +140,48 @@ export default function App() {
             element={
               <RequireRole roles={["ATTENDEE"]}>
                 <MyRegistrations />
+              </RequireRole>
+            }
+          />
+          {/* Week 7 change 5 - the Event Coordinator Lead. */}
+          <Route
+            path="/lead"
+            element={
+              <RequireRole roles={["COORDINATOR_LEAD"]}>
+                <LeadQueue />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/lead/assignments"
+            element={
+              <RequireRole roles={["COORDINATOR_LEAD"]}>
+                <LeadAssignments />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/lead/events/:id"
+            element={
+              <RequireRole roles={["COORDINATOR_LEAD"]}>
+                <LeadEventDetail />
+              </RequireRole>
+            }
+          />
+          {/* Week 7 change 6 - the Safety Officer. */}
+          <Route
+            path="/safety"
+            element={
+              <RequireRole roles={["SAFETY_OFFICER"]}>
+                <SafetyQueue />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/safety/checks/:id"
+            element={
+              <RequireRole roles={["SAFETY_OFFICER"]}>
+                <SafetyCheckDetail />
               </RequireRole>
             }
           />

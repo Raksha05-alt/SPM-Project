@@ -9,9 +9,9 @@ describe("SCRUM-51 coordinator details", () => {
     expect(screen.getByRole("link", { name: "cora@example.com" })).toHaveAttribute("href", "mailto:cora@example.com");
   });
 
-  it("AC5: explains that an unassigned request remains submitted", () => {
+  it("Week 7 CR5: explains that a Coordinator Lead will assign the coordinator", () => {
     render(<CoordinatorAssignment event={{ coordinator_name: null, coordinator_email: null, assignment_requires_attention: true }} />);
-    expect(screen.getByText(/Your request is submitted and needs ConnectSphere staff/)).toBeInTheDocument();
+    expect(screen.getByText(/A ConnectSphere Event Coordinator Lead will assign your coordinator/)).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 

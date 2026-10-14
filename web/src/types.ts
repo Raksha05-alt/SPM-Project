@@ -1,8 +1,10 @@
 export type Role =
   | "ORGANISER"
   | "COORDINATOR"
+  | "COORDINATOR_LEAD"
   | "VENUE_STAFF"
   | "TECH_SUPPORT"
+  | "SAFETY_OFFICER"
   | "ATTENDEE";
 
 export interface User {
@@ -29,6 +31,16 @@ export type EventStatus =
   | "CANCELLED"
   | "REJECTED";
 
+/** Week 9 clarification - a note recording what was said offline. */
+export interface ClarificationComment {
+  id: number;
+  clarification: number;
+  message: string;
+  author_name: string | null;
+  author_role: string | null;
+  created_at: string;
+}
+
 /** SCRUM-49 - one round of a coordinator asking the client for more information. */
 export interface Clarification {
   id: number;
@@ -37,6 +49,30 @@ export interface Clarification {
   requested_by_name: string | null;
   requested_at: string;
   resolved_at: string | null;
+  comments?: ClarificationComment[];
+}
+
+/** Week 7 change 6 - the state of an Operational Safety Check. */
+export type SafetyStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "CHANGES_REQUESTED"
+  | "SUPERSEDED";
+
+export interface SafetyCheckSummary {
+  id: number;
+  event: number;
+  status: SafetyStatus;
+  status_display: string;
+  requested_by_name: string | null;
+  requested_at: string;
+  request_note: string;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  comment: string;
+  superseded_at: string | null;
+  superseded_reason: string;
 }
 
 export interface EventRequest {
@@ -48,6 +84,8 @@ export interface EventRequest {
   preferred_end: string | null;
   expected_attendance: number | null;
   required_layout: string;
+  /** Week 7 clarification - the name from the layout catalogue. */
+  required_layout_label?: string;
   accessibility_needs: string;
   equipment_notes: string;
   registration_required: boolean;
@@ -61,7 +99,13 @@ export interface EventRequest {
   coordinator: number | null;
   coordinator_name: string | null;
   coordinator_email: string | null;
+  /** Week 7 change 5 - true while the request waits for a Lead to assign it. */
   assignment_requires_attention: boolean;
+  assigned_at?: string | null;
+  /** Internal only: the Lead who made the current assignment. */
+  assigned_by_name?: string | null;
+  /** Internal only: the latest Operational Safety Check. */
+  safety_check?: SafetyCheckSummary | null;
   /** Approval decision - only sent to internal users. */
   approved_by_name?: string | null;
   approved_at?: string | null;

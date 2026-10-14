@@ -3,7 +3,13 @@
  * equipment, change requests, registrations and change history.
  */
 import { request } from "./client";
-import type { AssignedEventRow, EventRequest, EventStatus, QueueRow } from "../types";
+import type {
+  AssignedEventRow,
+  EventRequest,
+  EventStatus,
+  QueueRow,
+  SafetyCheckSummary,
+} from "../types";
 
 // --- SCRUM-57 - status filters ------------------------------------------------------
 
@@ -72,11 +78,13 @@ export interface MissingArrangement {
   detail: string;
 }
 
-export interface Coordinator {
-  id: number;
-  name: string;
-  email: string;
-  available: boolean;
+export interface Readiness {
+  status: EventStatus;
+  arrangements: MissingArrangement[];
+  safety_check: SafetyCheckSummary | null;
+  can_request_safety_check: boolean;
+  can_confirm: boolean;
+  missing: MissingArrangement[];
 }
 
 export const confirmEvent = (id: number) =>
@@ -88,13 +96,8 @@ export const cancelEvent = (id: number, reason: string) =>
 export const completeEvent = (id: number) =>
   request<EventRequest>(`/api/events/${id}/complete/`, { method: "POST" });
 
-export const reassignEvent = (id: number, coordinator: number) =>
-  request<EventRequest>(`/api/events/${id}/reassign/`, {
-    method: "POST",
-    body: { coordinator },
-  });
-
-export const listCoordinators = () => request<Coordinator[]>("/api/coordinators/");
+/** Week 7 changes 3, 4 and 6 - what still stands between the event and confirmation. */
+export const fetchReadiness = (id: number) => request<Readiness>(`/api/events/${id}/readiness/`);
 
 // --- SCRUM-60 - change history ---------------------------------------------------------
 
@@ -232,11 +235,23 @@ export interface BookingConflict {
   booking: number;
   event: number;
   event_name: string;
+  session_name?: string;
+  status?: string;
   start: string;
   end: string;
+  occupied_from?: string;
+  occupied_until?: string;
 }
 
-export type BookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "WITHDRAWN" | "RELEASED";
+export type BookingStatus =
+  | "PENDING"
+  | "HELD"
+  | "APPROVED"
+  | "REJECTED"
+  | "WITHDRAWN"
+  | "RELEASED"
+  | "EXPIRED"
+  | "DISRUPTED";
 
 export interface VenueBooking {
   id: number;
@@ -246,6 +261,13 @@ export interface VenueBooking {
   venue_name: string;
   start: string;
   end: string;
+  /** Week 7 change 1 - the venue is occupied from the start of setup to the end of turnaround. */
+  occupied_from?: string;
+  occupied_until?: string;
+  setup_minutes?: number;
+  turnaround_minutes?: number;
+  /** Week 7 change 3 - which part of the event this venue is for. */
+  session_name?: string;
   attendance: number;
   layout: string;
   layout_label: string;
@@ -254,6 +276,13 @@ export interface VenueBooking {
   notes: string;
   status: BookingStatus;
   status_display: string;
+  /** Week 7 change 4 - a tentative hold and its deadline. */
+  hold_expires_at?: string | null;
+  hold_expired?: boolean;
+  /** Week 7 change 2 - the venue became unavailable. */
+  disrupted_at?: string | null;
+  disruption_reason?: string;
+  buffer_warnings?: string[];
   requested_by_name: string | null;
   decided_by_name: string | null;
   decided_at: string | null;
@@ -280,6 +309,7 @@ export interface BookingRequestInput {
   start: string;
   end: string;
   attendance: number | null;
+  session_name: string;
   layout: string;
   facilities: string[];
   accessibility_needs: string;
@@ -300,6 +330,26 @@ export const withdrawBooking = (id: number, confirm: boolean) =>
 
 export const acceptSuggestion = (id: number) =>
   request<VenueBooking>(`/api/venue-bookings/${id}/accept-suggestion/`, { method: "POST" });
+
+/** Week 7 change 4 - the coordinator completes a tentative hold before it expires. */
+export const confirmHold = (id: number) =>
+  request<VenueBooking>(`/api/venue-bookings/${id}/confirm-hold/`, { method: "POST" });
+
+/** Week 7 change 2 - request another venue for a booking whose venue became unavailable. */
+export const replaceBooking = (id: number, venue: number) =>
+  request<VenueBooking>(`/api/venue-bookings/${id}/replace/`, {
+    method: "POST",
+    body: { venue },
+  });
+
+export interface VenueOption {
+  id: number;
+  name: string;
+  capacity: number;
+  is_active: boolean;
+}
+
+export const listVenueOptions = () => request<VenueOption[]>("/api/venues/");
 
 // --- SCRUM-74 / 75 / 12 - equipment ---------------------------------------------------------
 

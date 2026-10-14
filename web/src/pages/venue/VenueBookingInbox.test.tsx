@@ -10,6 +10,7 @@ import {
   listVenues,
   rejectBooking,
   reviewBooking,
+  updateHold,
 } from "../../api/venues";
 import type { Venue, VenueBooking } from "../../api/venues";
 import { VenueBookingInbox } from "./VenueBookingInbox";
@@ -20,6 +21,7 @@ vi.mock("../../api/venues", () => ({
   approveBooking: vi.fn(),
   rejectBooking: vi.fn(),
   reviewBooking: vi.fn(),
+  updateHold: vi.fn(),
 }));
 
 function booking(overrides: Partial<VenueBooking> = {}): VenueBooking {
@@ -67,9 +69,9 @@ function booking(overrides: Partial<VenueBooking> = {}): VenueBooking {
 const garden = { id: 4, name: "Garden Room" } as Venue;
 const fmt = (value: string) => new Date(value).toLocaleString("en-SG");
 
-function setup(pending: VenueBooking[], approved: VenueBooking[] = []) {
+function setup(pending: VenueBooking[], approved: VenueBooking[] = [], held: VenueBooking[] = []) {
   vi.mocked(listBookings).mockImplementation(async (status) =>
-    status === "PENDING" ? pending : approved,
+    status === "PENDING" ? pending : status === "HELD" ? held : approved,
   );
   vi.mocked(listVenues).mockResolvedValue([garden]);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -119,7 +121,8 @@ describe("SCRUM-72 respond to a booking request", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
 
-    expect(approveBooking).toHaveBeenCalledWith(5);
+    // No hold expiry entered: an outright approval (Week 7 change 4).
+    expect(approveBooking).toHaveBeenCalledWith(5, null);
     expect(await screen.findByRole("status")).toHaveTextContent(
       `Approved by Vera Venue on ${fmt("2026-10-09T02:00:00Z")}`,
     );
@@ -258,7 +261,11 @@ describe("SCRUM-69 booking conflicts", () => {
   it("AC1: names the events a request conflicts with", async () => {
     setup([booking({ conflicts: [conflict] })]);
 
-    expect(await screen.findByText("Conflicts with confirmed bookings:")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Conflicts with bookings at this venue (including setup and turnaround):",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Board Dinner/)).toBeInTheDocument();
   });
 
@@ -388,5 +395,71 @@ describe("SCRUM-80 staff review of affected bookings", () => {
     expect(await within(section).findByRole("alert")).toHaveTextContent(
       "The revised period is not free at this venue.",
     );
+  });
+});
+
+describe("Week 7 CR4 - tentative holds", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("AC1: approves a request as a hold until the time Venue Staff choose", async () => {
+    vi.mocked(approveBooking).mockResolvedValue(
+      booking({
+        status: "HELD",
+        status_display: "Tentatively held",
+        decided_by_name: "Vera Venue",
+        decided_at: "2026-10-02T01:00:00Z",
+        hold_expires_at: "2026-10-05T10:00:00Z",
+      }),
+    );
+    setup([booking()]);
+
+    const hold = await screen.findByLabelText(/Hold tentatively until/);
+    fireEvent.change(hold, { target: { value: "2026-10-05T18:00" } });
+    await userEvent.click(screen.getByRole("button", { name: "Approve as tentative hold" }));
+
+    expect(approveBooking).toHaveBeenCalledWith(5, new Date("2026-10-05T18:00").toISOString());
+    expect(await screen.findByRole("status")).toHaveTextContent("Tentatively held by Vera Venue");
+  });
+
+  it("AC4: lists current holds and changes when one expires", async () => {
+    vi.mocked(updateHold).mockResolvedValue(booking({ status: "HELD" }));
+    setup(
+      [],
+      [],
+      [
+        booking({
+          id: 6,
+          status: "HELD",
+          status_display: "Tentatively held",
+          hold_expires_at: "2026-10-05T10:00:00Z",
+          hold_set_by_name: "Vera Venue",
+          coordinator_name: "Cora Coordinator",
+        }),
+      ],
+    );
+
+    const region = await screen.findByRole("region", { name: "Tentative holds" });
+    expect(within(region).getByText(/Waiting for Cora Coordinator to confirm/)).toBeInTheDocument();
+    fireEvent.change(within(region).getByLabelText("New expiry"), {
+      target: { value: "2026-10-07T18:00" },
+    });
+    await userEvent.click(within(region).getByRole("button", { name: "Update hold" }));
+
+    expect(updateHold).toHaveBeenCalledWith(6, new Date("2026-10-07T18:00").toISOString());
+  });
+
+  it("CR1: shows the occupied period with setup and turnaround", async () => {
+    setup([
+      booking({
+        setup_minutes: 30,
+        turnaround_minutes: 45,
+        occupied_from: "2026-10-20T00:30:00Z",
+        occupied_until: "2026-10-20T07:45:00Z",
+        buffer_warnings: ["With setup and turnaround the venue is needed from 07:30 to 15:45."],
+      }),
+    ]);
+
+    expect(await screen.findByText(/With setup \(30 min\) and turnaround \(45/)).toBeInTheDocument();
+    expect(screen.getByText(/needed from 07:30 to 15:45/)).toBeInTheDocument();
   });
 });

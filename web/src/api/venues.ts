@@ -1,6 +1,7 @@
 import { request } from "./client";
 
-export type VenueLayout = "CLASSROOM" | "THEATRE" | "BOARDROOM" | "BANQUET" | "EXHIBITION";
+/** A layout code from the catalogue (Week 7 clarification), e.g. "THEATRE". */
+export type VenueLayout = string;
 
 export interface Venue {
   id: number;
@@ -16,6 +17,11 @@ export interface Venue {
   closes_at: string | null;
   operating_days: number[];
   operating_hours: string | null;
+  /** Week 7 change 1 - minutes before and after each booking. */
+  setup_minutes: number;
+  turnaround_minutes: number;
+  /** Week 7 change 6 - emergency access and known restrictions. */
+  safety_notes: string;
   is_active: boolean;
   operational_status: string;
   missing_information: string[];
@@ -35,7 +41,16 @@ export interface VenueInput {
   opens_at: string | null;
   closes_at: string | null;
   operating_days: number[];
+  setup_minutes: number;
+  turnaround_minutes: number;
+  safety_notes: string;
   is_active: boolean;
+}
+
+/** What saving a venue reports back (Week 7 changes 1 and 2). */
+export interface SavedVenue extends Venue {
+  disrupted_bookings?: VenueBooking[];
+  flagged_bookings?: VenueBooking[];
 }
 
 /** SCRUM-5 AC4 - a confirmed booking that relies on a layout being removed. */
@@ -48,13 +63,26 @@ export interface AffectedBooking {
   end: string;
 }
 
+/** Week 7 change 2 - why a venue is temporarily unavailable. */
+export type BlockCategory =
+  | "MAINTENANCE"
+  | "EQUIPMENT_FAILURE"
+  | "RENOVATION"
+  | "SAFETY"
+  | "INTERNAL"
+  | "OTHER";
+
 export interface VenueBlock {
   id: number;
   venue: number;
   venue_name: string;
   start: string;
   end: string;
+  category?: BlockCategory;
+  category_label?: string;
   reason: string;
+  /** Present on a newly created block: the bookings it disrupted. */
+  affected_bookings?: VenueBooking[];
   created_by_name: string | null;
   created_at: string;
   updated_by_name: string | null;
@@ -64,10 +92,17 @@ export interface VenueBlock {
 export interface BlockInput {
   start: string;
   end: string;
+  category?: BlockCategory;
   reason: string;
 }
 
-export type SegmentStatus = "AVAILABLE" | "TENTATIVE" | "CONFIRMED" | "BLOCKED" | "UNAVAILABLE";
+export type SegmentStatus =
+  | "AVAILABLE"
+  | "REQUESTED"
+  | "TENTATIVE"
+  | "CONFIRMED"
+  | "BLOCKED"
+  | "UNAVAILABLE";
 
 export interface AvailabilitySegment {
   start: string;
@@ -87,15 +122,28 @@ export interface VenueAvailability {
   segments: AvailabilitySegment[];
 }
 
-export type BookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "WITHDRAWN" | "RELEASED";
+export type BookingStatus =
+  | "PENDING"
+  | "HELD"
+  | "APPROVED"
+  | "REJECTED"
+  | "WITHDRAWN"
+  | "RELEASED"
+  | "EXPIRED"
+  | "DISRUPTED";
 
-/** SCRUM-69 - a confirmed booking of another event that overlaps this one. */
+/** SCRUM-69 - a booking of another event that overlaps this one, including
+ * setup and turnaround time (Week 7 change 1). */
 export interface BookingConflict {
   booking: number;
   event: number;
   event_name: string;
+  session_name?: string;
+  status?: string;
   start: string;
   end: string;
+  occupied_from?: string;
+  occupied_until?: string;
 }
 
 export interface VenueBooking {
@@ -107,6 +155,11 @@ export interface VenueBooking {
   venue_name: string;
   start: string;
   end: string;
+  occupied_from?: string;
+  occupied_until?: string;
+  setup_minutes?: number;
+  turnaround_minutes?: number;
+  session_name?: string;
   attendance: number;
   layout: string;
   layout_label: string;
@@ -115,6 +168,13 @@ export interface VenueBooking {
   notes: string;
   status: BookingStatus;
   status_display: string;
+  coordinator_name?: string | null;
+  hold_expires_at?: string | null;
+  hold_set_by_name?: string | null;
+  hold_expired?: boolean;
+  disrupted_at?: string | null;
+  disruption_reason?: string;
+  buffer_warnings?: string[];
   requested_by_name: string | null;
   decided_by_name: string | null;
   decided_at: string | null;
@@ -161,7 +221,7 @@ export const createVenue = (input: VenueInput) =>
   request<Venue>("/api/venues/", { method: "POST", body: input });
 
 export const updateVenue = (id: number, input: VenueInput, confirmLayoutRemoval = false) =>
-  request<Venue>(`/api/venues/${id}/`, {
+  request<SavedVenue>(`/api/venues/${id}/`, {
     method: "PATCH",
     body: confirmLayoutRemoval ? { ...input, confirm_layout_removal: true } : input,
   });
@@ -186,8 +246,22 @@ export const getAvailability = (venueId: number, start: string, end: string) =>
 export const listBookings = (status: BookingStatus) =>
   request<VenueBooking[]>(`/api/venue-bookings/?status=${status}`);
 
-export const approveBooking = (id: number) =>
-  request<VenueBooking>(`/api/venue-bookings/${id}/approve/`, { method: "POST" });
+/** SCRUM-72 / Week 7 change 4 - give ``holdUntil`` to approve as a tentative hold. */
+export const approveBooking = (id: number, holdUntil?: string | null) =>
+  request<VenueBooking>(`/api/venue-bookings/${id}/approve/`, {
+    method: "POST",
+    body: holdUntil ? { hold_until: holdUntil } : {},
+  });
+
+/** Week 7 change 4 - Venue Staff change when a hold expires. */
+export const updateHold = (id: number, holdUntil: string) =>
+  request<VenueBooking>(`/api/venue-bookings/${id}/update-hold/`, {
+    method: "POST",
+    body: { hold_until: holdUntil },
+  });
+
+export const listBookingsByStatus = (statuses: BookingStatus[]) =>
+  request<VenueBooking[]>(`/api/venue-bookings/?status=${statuses.join(",")}`);
 
 export const rejectBooking = (id: number, input: RejectInput) =>
   request<VenueBooking>(`/api/venue-bookings/${id}/reject/`, { method: "POST", body: input });

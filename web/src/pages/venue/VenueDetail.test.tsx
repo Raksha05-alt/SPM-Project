@@ -41,6 +41,9 @@ function venue(overrides: Partial<Venue> = {}): Venue {
     closes_at: "22:00:00",
     operating_days: [0, 1, 2, 3, 4],
     operating_hours: "08:00-22:00 (Mon, Tue, Wed, Thu, Fri)",
+    setup_minutes: 0,
+    turnaround_minutes: 0,
+    safety_notes: "",
     is_active: true,
     operational_status: "In service",
     missing_information: [],
@@ -200,6 +203,7 @@ describe("SCRUM-13 block a venue", () => {
     expect(createBlock).toHaveBeenCalledWith(3, {
       start: new Date("2026-10-12T09:00").toISOString(),
       end: new Date("2026-10-12T13:00").toISOString(),
+      category: "MAINTENANCE",
       reason: "Carpet replacement",
     });
   });
@@ -264,6 +268,7 @@ describe("SCRUM-13 block a venue", () => {
     expect(updateBlock).toHaveBeenCalledWith(11, {
       start: "2026-10-12T01:00:00.000Z",
       end: "2026-10-12T05:00:00.000Z",
+      category: "MAINTENANCE",
       reason: "Floor polishing",
     });
   });
@@ -333,5 +338,67 @@ describe("SCRUM-17 venue availability", () => {
       new Date("2026-12-15T00:00").toISOString(),
     );
     expect(await screen.findByText("Choose a period of 31 days or less.")).toBeInTheDocument();
+  });
+});
+
+describe("Week 7 changes on the venue page", () => {
+  it("CR2: a block reports the bookings it affected, and keeps its category", async () => {
+    vi.mocked(createBlock).mockResolvedValue({
+      ...block({ category: "SAFETY", category_label: "Safety concern" }),
+      affected_bookings: [
+        {
+          id: 5,
+          event_name: "Partner Summit",
+          session_name: "Main programme",
+          start: "2026-10-12T02:00:00Z",
+          coordinator_name: "Cora Coordinator",
+        } as never,
+      ],
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: "Harbour Hall" });
+
+    fireEvent.change(screen.getByLabelText("Block start"), { target: { value: "2026-10-12T09:00" } });
+    fireEvent.change(screen.getByLabelText("Block end"), { target: { value: "2026-10-12T13:00" } });
+    await userEvent.selectOptions(screen.getByLabelText("Category"), "SAFETY");
+    await userEvent.type(screen.getByLabelText("Reason"), "Fire alarm fault");
+    await userEvent.click(screen.getByRole("button", { name: "Add block" }));
+
+    expect(createBlock).toHaveBeenCalledWith(3, expect.objectContaining({ category: "SAFETY" }));
+    expect(await screen.findByText(/Partner Summit \(Main programme\)/)).toBeInTheDocument();
+    expect(screen.getByText(/The events are not cancelled/)).toBeInTheDocument();
+  });
+
+  it("CR1: staff set setup and turnaround, and see bookings that now clash", async () => {
+    vi.mocked(updateVenue).mockResolvedValue({
+      ...venue({ setup_minutes: 30, turnaround_minutes: 60 }),
+      flagged_bookings: [
+        {
+          id: 7,
+          event_name: "Gala",
+          start: "2026-10-20T10:00:00Z",
+          review_reason: "With setup of 30 min and turnaround of 60 min this booking now overlaps \"Expo\".",
+        } as never,
+      ],
+      disrupted_bookings: [],
+    });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit venue" }));
+    const setupField = screen.getByLabelText("Setup time (minutes)");
+    await userEvent.clear(setupField);
+    await userEvent.type(setupField, "30");
+    const turnaround = screen.getByLabelText("Turnaround time (minutes)");
+    await userEvent.clear(turnaround);
+    await userEvent.type(turnaround, "60");
+    await userEvent.type(screen.getByLabelText("Emergency access and known restrictions"), "Two exits");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(updateVenue).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ setup_minutes: 30, turnaround_minutes: 60, safety_notes: "Two exits" }),
+      false,
+    );
+    expect(await screen.findByText(/now clash and need review/)).toBeInTheDocument();
+    expect(screen.getByText(/overlaps "Expo"/)).toBeInTheDocument();
   });
 });

@@ -3,16 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { createVenue, listVenues } from "../../api/venues";
-import type { AffectedBooking, Venue, VenueInput, VenueLayout } from "../../api/venues";
+import type { AffectedBooking, Venue, VenueInput } from "../../api/venues";
 import { Field, inputClass } from "../../components/Field";
-
-export const LAYOUTS: { value: VenueLayout; label: string }[] = [
-  { value: "CLASSROOM", label: "Classroom" },
-  { value: "THEATRE", label: "Theatre" },
-  { value: "BOARDROOM", label: "Boardroom" },
-  { value: "BANQUET", label: "Banquet" },
-  { value: "EXHIBITION", label: "Exhibition" },
-];
+import { useLayoutOptions } from "../../components/useLayoutOptions";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -45,6 +38,9 @@ export function VenueNav() {
       <Link to="/venues/bookings" className="text-navy-700 underline">
         Booking requests
       </Link>
+      <Link to="/venues/layouts" className="text-navy-700 underline">
+        Room layouts
+      </Link>
     </nav>
   );
 }
@@ -60,6 +56,9 @@ const EMPTY: VenueInput = {
   opens_at: null,
   closes_at: null,
   operating_days: [0, 1, 2, 3, 4, 5, 6],
+  setup_minutes: 0,
+  turnaround_minutes: 0,
+  safety_notes: "",
   is_active: true,
 };
 
@@ -75,6 +74,9 @@ function toInput(venue: Venue): VenueInput {
     opens_at: venue.opens_at?.slice(0, 5) ?? null,
     closes_at: venue.closes_at?.slice(0, 5) ?? null,
     operating_days: venue.operating_days,
+    setup_minutes: venue.setup_minutes ?? 0,
+    turnaround_minutes: venue.turnaround_minutes ?? 0,
+    safety_notes: venue.safety_notes ?? "",
     is_active: venue.is_active,
   };
 }
@@ -98,6 +100,7 @@ export function VenueForm({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [affected, setAffected] = useState<AffectedBooking[]>([]);
+  const layoutOptions = useLayoutOptions();
 
   function set<K extends keyof VenueInput>(key: K, value: VenueInput[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -233,7 +236,7 @@ export function VenueForm({
       <fieldset className="mb-4">
         <legend className="mb-2 text-sm font-medium text-slate-700">Supported layouts</legend>
         <div className="flex flex-wrap gap-4">
-          {LAYOUTS.map((l) => (
+          {layoutOptions.map((l) => (
             <label key={l.value} className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -293,6 +296,55 @@ export function VenueForm({
           />
         </Field>
       </div>
+
+      {/* Week 7 change 1 - preparation before and reset after every booking. */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Setup time (minutes)"
+          htmlFor="venue-setup"
+          hint="Time to prepare the room before each event."
+          error={fieldErrors.setup_minutes}
+        >
+          <input
+            id="venue-setup"
+            type="number"
+            min={0}
+            className={inputClass}
+            value={form.setup_minutes}
+            onChange={(e) => set("setup_minutes", Number(e.target.value || 0))}
+          />
+        </Field>
+        <Field
+          label="Turnaround time (minutes)"
+          htmlFor="venue-turnaround"
+          hint="Time to reset the room after each event."
+          error={fieldErrors.turnaround_minutes}
+        >
+          <input
+            id="venue-turnaround"
+            type="number"
+            min={0}
+            className={inputClass}
+            value={form.turnaround_minutes}
+            onChange={(e) => set("turnaround_minutes", Number(e.target.value || 0))}
+          />
+        </Field>
+      </div>
+      {/* Week 7 change 6 - what the Safety Officer needs to know about this room. */}
+      <Field
+        label="Emergency access and known restrictions"
+        htmlFor="venue-safety"
+        hint="Exits, assembly points, load limits and other restrictions the Safety Officer reviews."
+        error={fieldErrors.safety_notes}
+      >
+        <textarea
+          id="venue-safety"
+          rows={2}
+          className={inputClass}
+          value={form.safety_notes}
+          onChange={(e) => set("safety_notes", e.target.value)}
+        />
+      </Field>
 
       <fieldset className="mb-4">
         <legend className="mb-2 text-sm font-medium text-slate-700">Operating days</legend>

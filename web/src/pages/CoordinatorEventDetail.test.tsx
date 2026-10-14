@@ -3,7 +3,14 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { approveEvent, getEvent, rejectEvent, requestClarification } from "../api/events";
+import {
+  addClarificationNote,
+  approveEvent,
+  getEvent,
+  rejectEvent,
+  requestClarification,
+  resumeReview,
+} from "../api/events";
 import { fetchChangeRequests, fetchHistory } from "../api/planning";
 import type { EventRequest } from "../types";
 import { CoordinatorEventDetail } from "./CoordinatorEventDetail";
@@ -13,6 +20,8 @@ vi.mock("../api/events", () => ({
   approveEvent: vi.fn(),
   requestClarification: vi.fn(),
   rejectEvent: vi.fn(),
+  resumeReview: vi.fn(),
+  addClarificationNote: vi.fn(),
 }));
 vi.mock("../api/planning", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/planning")>()),
@@ -35,6 +44,14 @@ vi.mock("../api/planning", async (importOriginal) => ({
     results: [],
   }),
   listEquipmentTypes: vi.fn().mockResolvedValue([]),
+  fetchReadiness: vi.fn().mockResolvedValue({
+    status: "PLANNING",
+    arrangements: [],
+    safety_check: null,
+    can_request_safety_check: false,
+    can_confirm: false,
+    missing: [],
+  }),
 }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: 2 } }) }));
 
@@ -48,6 +65,7 @@ function event(overrides: Partial<EventRequest> = {}): EventRequest {
     preferred_end: "2026-10-20T07:00:00Z",
     expected_attendance: 120,
     required_layout: "THEATRE",
+    required_layout_label: "Theatre",
     accessibility_needs: "Wheelchair access",
     equipment_notes: "Two projectors",
     registration_required: true,
@@ -274,5 +292,46 @@ describe("SCRUM-61 / 11 / 74 / 78 / 60 planning panels on the event page", () =>
     expect(await screen.findByRole("button", { name: "Approve request" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Find a venue" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Equipment requests" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Week 9 clarifications on the coordinator's event page", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const asked = {
+    id: 1,
+    message: "How many wheelchair users?",
+    fields: [],
+    requested_by_name: "Cora Coordinator",
+    requested_at: "2026-09-28T01:00:00Z",
+    resolved_at: null,
+    comments: [],
+  };
+
+  it("records the client's offline answer and resumes the review", async () => {
+    vi.mocked(getEvent).mockResolvedValue(
+      event({ status: "UNDER_REVIEW", status_label: "Awaiting Clarification", clarifications: [asked] }),
+    );
+    vi.mocked(addClarificationNote).mockResolvedValue({} as never);
+    vi.mocked(resumeReview).mockResolvedValue(event({ status: "SUBMITTED" }));
+
+    renderPage();
+    await userEvent.type(await screen.findByLabelText(/Record what was agreed/), "Six, by phone");
+    await userEvent.click(screen.getByRole("button", { name: "Save note" }));
+    await userEvent.click(screen.getByRole("button", { name: /resume review/ }));
+
+    expect(addClarificationNote).toHaveBeenCalledWith(9, "Six, by phone", 1);
+    expect(resumeReview).toHaveBeenCalledWith(9);
+  });
+
+  it("offers no direct editing on a confirmed event", async () => {
+    vi.mocked(getEvent).mockResolvedValue(
+      event({ status: "CONFIRMED", status_label: "Confirmed" }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText(/Changes go through a\s+change request/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Edit event details" })).not.toBeInTheDocument();
   });
 });

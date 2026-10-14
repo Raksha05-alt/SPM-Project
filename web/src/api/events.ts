@@ -1,5 +1,11 @@
 import { request } from "./client";
-import type { AssignedEventRow, AttendeeEvent, EventRequest, QueueRow } from "../types";
+import type {
+  AssignedEventRow,
+  AttendeeEvent,
+  ClarificationComment,
+  EventRequest,
+  QueueRow,
+} from "../types";
 
 export type EventDraft = Partial<
   Pick<
@@ -50,3 +56,14 @@ export const requestClarification = (id: number, message: string, fields: string
 
 export const rejectEvent = (id: number, reason: string) =>
   request<EventRequest>(`/api/events/${id}/reject/`, { method: "POST", body: { reason } });
+
+/** The coordinator records the client's offline answers and resumes the review. */
+export const resumeReview = (id: number) =>
+  request<EventRequest>(`/api/events/${id}/resume-review/`, { method: "POST" });
+
+/** Week 9 clarification - record what was said offline about a clarification. */
+export const addClarificationNote = (id: number, message: string, clarification?: number) =>
+  request<ClarificationComment>(`/api/events/${id}/comment/`, {
+    method: "POST",
+    body: clarification ? { message, clarification } : { message },
+  });

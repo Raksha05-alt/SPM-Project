@@ -1,35 +1,41 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { approveEvent, getEvent, rejectEvent, requestClarification } from "../api/events";
+import {
+  approveEvent,
+  getEvent,
+  rejectEvent,
+  requestClarification,
+  resumeReview,
+} from "../api/events";
 import { useAuth } from "../auth/AuthContext";
 import { ApprovalNote } from "../components/ApprovalNote";
-import { CLARIFIABLE_FIELDS, ClarificationHistory } from "../components/Clarifications";
+import {
+  CLARIFIABLE_FIELDS,
+  ClarificationHistory,
+  ClarificationNoteForm,
+} from "../components/Clarifications";
 import { inputClass } from "../components/Field";
 import { ChangeHistory } from "../components/planning/ChangeHistory";
 import { ChangeRequestsPanel } from "../components/planning/ChangeRequestsPanel";
 import { EquipmentPlanner } from "../components/planning/EquipmentPlanner";
 import { EventActions } from "../components/planning/EventActions";
 import { EventEditPanel } from "../components/planning/EventEditPanel";
+import { ReadinessPanel } from "../components/planning/ReadinessPanel";
 import { RegistrationsPanel } from "../components/planning/RegistrationsPanel";
 import { VenuePlanner } from "../components/planning/VenuePlanner";
 import { RejectionNotice } from "../components/RejectionNotice";
 import { StatusBadge } from "../components/StatusBadge";
 import type { EventRequest, EventStatus } from "../types";
 
-const LAYOUT_LABELS: Record<string, string> = {
-  CLASSROOM: "Classroom",
-  THEATRE: "Theatre",
-  BOARDROOM: "Boardroom",
-  BANQUET: "Banquet",
-  EXHIBITION: "Exhibition",
-};
-
 /** Statuses a coordinator can approve from; the API enforces the same rule. */
 const REVIEWABLE: EventStatus[] = ["SUBMITTED", "UNDER_REVIEW"];
 
-/** Statuses in which venues, equipment and details are planned (SCRUM-61, 11, 74). */
+/** Statuses in which venues and equipment are planned (SCRUM-11, 74). */
 const PLANNABLE: EventStatus[] = ["APPROVED", "PLANNING", "CONFIRMED"];
+
+/** Week 9 clarification - the coordinator edits event details until confirmation. */
+const EDITABLE: EventStatus[] = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PLANNING"];
 
 function formatDateTime(value: string | null) {
   return value ? new Date(value).toLocaleString("en-SG") : "—";
@@ -62,10 +68,10 @@ export function CoordinatorEventDetail() {
   function onDecision(updated: EventRequest) {
     queryClient.setQueryData(["event", eventId], updated);
     void queryClient.invalidateQueries({ queryKey: ["my-events"] });
-    void queryClient.invalidateQueries({ queryKey: ["queue"] });
   }
 
   const approve = useMutation({ mutationFn: approveEvent, onSuccess: onDecision });
+  const resume = useMutation({ mutationFn: () => resumeReview(eventId), onSuccess: onDecision });
 
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState("");
@@ -124,19 +130,18 @@ export function CoordinatorEventDetail() {
 
   const isAssigned = event.coordinator === user?.id;
   const canApprove = isAssigned && REVIEWABLE.includes(event.status);
-  const canClarify = isAssigned && event.status === "SUBMITTED";
+  const canClarify = isAssigned && REVIEWABLE.includes(event.status);
   const canReject = canApprove;
   const canPlan = isAssigned && PLANNABLE.includes(event.status);
-  const decisionError = approve.error ?? clarify.error ?? reject.error;
+  const canEdit = isAssigned && EDITABLE.includes(event.status);
+  const openClarification = event.clarifications?.find((c) => c.resolved_at === null);
+  const decisionError = approve.error ?? clarify.error ?? reject.error ?? resume.error;
 
   return (
     <div>
       <div className="mb-4 flex gap-4 text-sm">
-        <Link to="/coordinator/mine" className="text-navy-700 underline">
-          ← My assigned events
-        </Link>
         <Link to="/coordinator" className="text-navy-700 underline">
-          Incoming requests
+          ← My assigned events
         </Link>
       </div>
 
@@ -176,7 +181,7 @@ export function CoordinatorEventDetail() {
           <Detail label="Preferred start">{formatDateTime(event.preferred_start)}</Detail>
           <Detail label="Preferred end">{formatDateTime(event.preferred_end)}</Detail>
           <Detail label="Required room layout">
-            {LAYOUT_LABELS[event.required_layout] ?? "No preference"}
+            {event.required_layout_label || "No preference"}
           </Detail>
           <Detail label="Registration required">
             {event.registration_required ? "Yes" : "No"}
@@ -340,13 +345,53 @@ export function CoordinatorEventDetail() {
         </div>
       )}
 
+      {/* Week 9 clarification - answers arrive offline; record them, then resume. */}
+      {isAssigned && event.status === "UNDER_REVIEW" && openClarification && (
+        <section
+          aria-label="Awaiting clarification"
+          className="mt-6 rounded-lg border border-amber-200 bg-white p-6"
+        >
+          <h2 className="mb-2 text-sm font-semibold text-navy-700">Awaiting the client's answer</h2>
+          <p className="text-sm text-slate-700">{openClarification.message}</p>
+          <p className="mt-2 text-xs text-slate-500">
+            Contact the client, record what was agreed below, update the details on their behalf,
+            then resume the review.
+          </p>
+          <ClarificationNoteForm
+            eventId={event.id}
+            clarificationId={openClarification.id}
+            invalidate={["event", eventId]}
+          />
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => resume.mutate()}
+              disabled={resume.isPending}
+              className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-600 disabled:opacity-50"
+            >
+              Answers recorded - resume review
+            </button>
+          </div>
+        </section>
+      )}
+
+      {isAssigned && (event.status === "PLANNING" || event.status === "CONFIRMED") && (
+        <ReadinessPanel eventId={event.id} />
+      )}
+
       {isAssigned && <EventActions event={event} />}
 
       <ClarificationHistory clarifications={event.clarifications ?? []} />
 
+      {canEdit && <EventEditPanel event={event} />}
+      {isAssigned && event.status === "CONFIRMED" && (
+        <p className="mt-6 rounded-md bg-slate-100 p-3 text-sm text-slate-700">
+          This event is confirmed, so its details cannot be edited directly. Changes go through a
+          change request, which returns the event to planning for every approval again.
+        </p>
+      )}
       {canPlan && (
         <>
-          <EventEditPanel event={event} />
           <VenuePlanner event={event} />
           <EquipmentPlanner event={event} />
         </>

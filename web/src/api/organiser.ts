@@ -3,7 +3,7 @@ import type { EventRequest, EventStatus } from "../types";
 
 /** SCRUM-58 AC5 - what the client can rely on once the event is confirmed. */
 export interface ConfirmedArrangements {
-  venues: Array<{ venue: string; location: string; start: string; end: string }>;
+  venues: Array<{ venue: string; session?: string; location: string; start: string; end: string }>;
   equipment: Array<{ equipment: string; quantity: number }>;
 }
 
