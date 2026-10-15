@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.accounts.models import ClientOrganisation, Role, User
 from apps.core.statuses import EventStatus
 from apps.events.models import EventRequest, EventStatusHistory
+from apps.venues.models import Venue
 
 DEMO_PASSWORD = "connectsphere-demo"
 
@@ -86,10 +87,57 @@ class Command(BaseCommand):
                     changed_by=organiser,
                 )
 
+        venues = self._seed_venues(users["venue@connectsphere.example"])
+
         self.stdout.write(
             self.style.SUCCESS(
-                f"Seeded {len(orgs)} organisations, {len(users)} users and "
-                f"{EventRequest.objects.count()} event requests. "
+                f"Seeded {len(orgs)} organisations, {len(users)} users, "
+                f"{EventRequest.objects.count()} event requests and {len(venues)} venues. "
                 f"All demo accounts use the password: {DEMO_PASSWORD}"
             )
         )
+
+    def _seed_venues(self, staff) -> dict[str, Venue]:
+        """SCRUM-65 - a small catalogue for Venue Staff to maintain."""
+        rows = [
+            {
+                "name": "Harbour Hall",
+                "location": "Level 2, Marina Wing",
+                "capacity": 200,
+                "facilities": ["Projector", "Stage", "Hearing loop"],
+                "layouts": ["THEATRE", "BANQUET"],
+                "wheelchair_access": True,
+                "accessibility_notes": "Step-free entrance and accessible toilets on level 2.",
+            },
+            {
+                "name": "Skyline Room",
+                "location": "Level 30, Tower One",
+                "capacity": 60,
+                "facilities": ["Video conferencing", "Whiteboard"],
+                "layouts": ["BOARDROOM", "CLASSROOM"],
+                "wheelchair_access": True,
+            },
+            {
+                "name": "Garden Pavilion",
+                "location": "Ground floor, East Courtyard",
+                "capacity": 120,
+                "facilities": ["Outdoor PA"],
+                "layouts": ["EXHIBITION", "BANQUET"],
+                "wheelchair_access": False,
+                "accessibility_notes": "Gravel path; ramp access via the east gate only.",
+            },
+        ]
+        venues = {}
+        for row in rows:
+            venue, _ = Venue.objects.get_or_create(
+                name=row["name"],
+                defaults={
+                    **row,
+                    "opens_at": "08:00",
+                    "closes_at": "22:00",
+                    "created_by": staff,
+                    "updated_by": staff,
+                },
+            )
+            venues[venue.name] = venue
+        return venues

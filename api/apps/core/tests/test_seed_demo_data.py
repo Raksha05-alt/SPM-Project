@@ -5,6 +5,7 @@ from django.core.management import call_command
 
 from apps.accounts.models import Role, User
 from apps.events.models import EventRequest
+from apps.venues.models import Venue
 
 
 @pytest.mark.django_db
@@ -23,3 +24,12 @@ def test_seeding_twice_does_not_duplicate_anything():
 
     assert User.objects.count() == 6
     assert EventRequest.objects.count() == 3
+
+
+@pytest.mark.django_db
+def test_seeding_gives_venue_staff_a_small_catalogue():
+    call_command("seed_demo_data")
+    call_command("seed_demo_data")
+
+    assert Venue.objects.count() == 3
+    assert all(v.capacity > 0 and v.layouts for v in Venue.objects.all())

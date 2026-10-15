@@ -17,6 +17,7 @@ Sprint 1 delivered one thin vertical slice through the whole stack:
 | US-04.1 | An Event Coordinator sees submitted requests in a queue |
 | US-06.1 | Every event shows its current status in plain language |
 | SCRUM-51 | Assign one available coordinator on submission, notify both users, and show coordinator contact details |
+| SCRUM-65 | Venue Staff create and update venue records with the user and time of each change; capacity must be at least one, and only Venue Staff may write |
 
 Sprint 2 extended US-01.2 (SCRUM-1): anonymous refusals are now recorded, the
 audit write can no longer turn a 403 into a 500, and `GET /api/audit/` lets

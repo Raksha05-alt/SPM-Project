@@ -119,3 +119,41 @@ export interface AttendeeEvent {
   status_description: string;
   status_changed_at: string | null;
 }
+
+/** SCRUM-65 - a venue record as Venue Staff maintain it. */
+export interface Venue {
+  id: number;
+  name: string;
+  location: string;
+  capacity: number;
+  facilities: string[];
+  layouts: string[];
+  layout_labels: string[];
+  wheelchair_access: boolean | null;
+  accessibility_notes: string;
+  opens_at: string | null;
+  closes_at: string | null;
+  operating_days: number[];
+  operating_hours: string | null;
+  setup_minutes: number;
+  turnaround_minutes: number;
+  emergency_access: string;
+  known_restrictions: string;
+  in_service: boolean;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** SCRUM-65 AC5 - a booking marked Disrupted when its venue went out of service. */
+export interface DisruptedBooking {
+  id: number;
+  event: number;
+  event_name: string;
+  start: string;
+}
+
+export interface SavedVenue extends Venue {
+  disrupted_bookings?: DisruptedBooking[];
+}
