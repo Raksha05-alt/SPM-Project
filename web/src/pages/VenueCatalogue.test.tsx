@@ -27,10 +27,6 @@ const HALL: Venue = {
   closes_at: "22:00:00",
   operating_days: [0, 1, 2, 3, 4],
   operating_hours: "08:00-22:00 (Mon, Tue, Wed, Thu, Fri)",
-  setup_minutes: 60,
-  turnaround_minutes: 45,
-  emergency_access: "Three exits.",
-  known_restrictions: "No open flames.",
   in_service: true,
   created_by_name: "Vera Venue",
   updated_by_name: "Vera Venue",
@@ -53,12 +49,11 @@ describe("VenueCatalogue (SCRUM-65)", () => {
     vi.mocked(listVenues).mockResolvedValue([HALL]);
   });
 
-  it("lists venues with capacity, setup and turnaround, status and last change", async () => {
+  it("lists venues with capacity, status and last change", async () => {
     renderPage();
 
     const row = (await screen.findByText("Harbour Hall")).closest("tr")!;
     expect(within(row).getByText("200")).toBeInTheDocument();
-    expect(within(row).getByText("60 / 45 min")).toBeInTheDocument();
     expect(within(row).getByText("In service")).toBeInTheDocument();
     expect(within(row).getByText(/by Vera Venue/)).toBeInTheDocument();
   });
@@ -79,7 +74,7 @@ describe("VenueCatalogue (SCRUM-65)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("We could not load the venues.");
   });
 
-  it("AC1: records every venue detail, including setup, turnaround, emergency access and restrictions", async () => {
+  it("AC1: records every venue detail", async () => {
     const user = userEvent.setup();
     vi.mocked(createVenue).mockResolvedValue({ ...HALL, id: 9, name: "Skyline Room" });
     renderPage();
@@ -90,10 +85,6 @@ describe("VenueCatalogue (SCRUM-65)", () => {
     await user.clear(screen.getByLabelText("Maximum capacity"));
     await user.type(screen.getByLabelText("Maximum capacity"), "60");
     await user.type(screen.getByLabelText("Facilities"), "Whiteboard, Video conferencing");
-    await user.clear(screen.getByLabelText("Setup time (minutes)"));
-    await user.type(screen.getByLabelText("Setup time (minutes)"), "30");
-    await user.clear(screen.getByLabelText("Turnaround time (minutes)"));
-    await user.type(screen.getByLabelText("Turnaround time (minutes)"), "15");
     await user.type(screen.getByLabelText("Opens at"), "08:00");
     await user.type(screen.getByLabelText("Closes at"), "20:00");
     await user.click(screen.getByLabelText("Sat"));
@@ -101,8 +92,6 @@ describe("VenueCatalogue (SCRUM-65)", () => {
     await user.click(screen.getByLabelText("Boardroom"));
     await user.selectOptions(screen.getByLabelText("Wheelchair access"), "true");
     await user.type(screen.getByLabelText("Accessibility information"), "Lift to level 30.");
-    await user.type(screen.getByLabelText("Emergency access"), "Two stairwells.");
-    await user.type(screen.getByLabelText("Known restrictions"), "Max 60 people.");
     await user.click(screen.getByRole("button", { name: "Save venue" }));
 
     expect(createVenue).toHaveBeenCalledWith({
@@ -116,10 +105,6 @@ describe("VenueCatalogue (SCRUM-65)", () => {
       opens_at: "08:00",
       closes_at: "20:00",
       operating_days: [0, 1, 2, 3, 4],
-      setup_minutes: 30,
-      turnaround_minutes: 15,
-      emergency_access: "Two stairwells.",
-      known_restrictions: "Max 60 people.",
       in_service: true,
     });
     expect(await screen.findByRole("status")).toHaveTextContent("Saved Skyline Room");
@@ -185,30 +170,6 @@ describe("VenueCatalogue (SCRUM-65)", () => {
     await user.click(screen.getByRole("button", { name: "Save venue" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("We could not save the venue.");
-  });
-
-  it("AC5: warns before taking a venue out of service, then lists the disrupted bookings", async () => {
-    const user = userEvent.setup();
-    vi.mocked(updateVenue).mockResolvedValue({
-      ...HALL,
-      in_service: false,
-      disrupted_bookings: [
-        { id: 1, event: 4, event_name: "Leadership Offsite", start: "2026-12-01T01:00:00Z" },
-      ],
-    });
-    renderPage();
-
-    await user.click(await screen.findByRole("button", { name: "Edit Harbour Hall" }));
-    await user.click(screen.getByLabelText("In service"));
-    expect(screen.getByRole("note")).toHaveTextContent(
-      "marks its future bookings Disrupted and informs their coordinators",
-    );
-    await user.click(screen.getByRole("button", { name: "Save venue" }));
-
-    expect(updateVenue).toHaveBeenCalledWith(3, expect.objectContaining({ in_service: false }));
-    const status = await screen.findByRole("status");
-    expect(status).toHaveTextContent("1 future booking is now Disrupted");
-    expect(status).toHaveTextContent("Leadership Offsite");
   });
 
   it("cancel closes the form without saving", async () => {

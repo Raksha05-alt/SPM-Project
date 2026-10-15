@@ -135,25 +135,9 @@ export interface Venue {
   closes_at: string | null;
   operating_days: number[];
   operating_hours: string | null;
-  setup_minutes: number;
-  turnaround_minutes: number;
-  emergency_access: string;
-  known_restrictions: string;
   in_service: boolean;
   created_by_name: string | null;
   updated_by_name: string | null;
   created_at: string;
   updated_at: string;
-}
-
-/** SCRUM-65 AC5 - a booking marked Disrupted when its venue went out of service. */
-export interface DisruptedBooking {
-  id: number;
-  event: number;
-  event_name: string;
-  start: string;
-}
-
-export interface SavedVenue extends Venue {
-  disrupted_bookings?: DisruptedBooking[];
 }

@@ -1,5 +1,5 @@
 import { request } from "./client";
-import type { SavedVenue, Venue } from "../types";
+import type { Venue } from "../types";
 
 export type VenueInput = Omit<
   Venue,
@@ -15,7 +15,7 @@ export type VenueInput = Omit<
 export const listVenues = () => request<Venue[]>("/api/venues/");
 
 export const createVenue = (venue: VenueInput) =>
-  request<SavedVenue>("/api/venues/", { method: "POST", body: venue });
+  request<Venue>("/api/venues/", { method: "POST", body: venue });
 
 export const updateVenue = (id: number, venue: Partial<VenueInput>) =>
-  request<SavedVenue>(`/api/venues/${id}/`, { method: "PATCH", body: venue });
+  request<Venue>(`/api/venues/${id}/`, { method: "PATCH", body: venue });

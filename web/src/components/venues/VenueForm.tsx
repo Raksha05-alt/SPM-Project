@@ -25,10 +25,6 @@ const EMPTY: VenueInput = {
   opens_at: null,
   closes_at: null,
   operating_days: [0, 1, 2, 3, 4, 5, 6],
-  setup_minutes: 0,
-  turnaround_minutes: 0,
-  emergency_access: "",
-  known_restrictions: "",
   in_service: true,
 };
 
@@ -87,7 +83,6 @@ export function VenueForm({
     (list as (string | number)[]).includes(item)
       ? (list as (string | number)[]).filter((x) => x !== item)
       : [...list, item];
-  const goingOutOfService = venue?.in_service === true && !form.in_service;
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -156,28 +151,6 @@ export function VenueForm({
             className={inputClass}
             value={facilities}
             onChange={(e) => setFacilities(e.target.value)}
-          />
-        </Field>
-        <Field label="Setup time (minutes)" htmlFor="v-setup" error={errors.setup_minutes}>
-          <input
-            id="v-setup"
-            type="number"
-            className={inputClass}
-            value={form.setup_minutes}
-            onChange={(e) => set("setup_minutes", Number(e.target.value))}
-          />
-        </Field>
-        <Field
-          label="Turnaround time (minutes)"
-          htmlFor="v-turnaround"
-          error={errors.turnaround_minutes}
-        >
-          <input
-            id="v-turnaround"
-            type="number"
-            className={inputClass}
-            value={form.turnaround_minutes}
-            onChange={(e) => set("turnaround_minutes", Number(e.target.value))}
           />
         </Field>
         <Field label="Opens at" htmlFor="v-opens" error={errors.opens_at}>
@@ -270,24 +243,8 @@ export function VenueForm({
           onChange={(e) => set("accessibility_notes", e.target.value)}
         />
       </Field>
-      <Field label="Emergency access" htmlFor="v-emergency" error={errors.emergency_access}>
-        <textarea
-          id="v-emergency"
-          className={inputClass}
-          value={form.emergency_access}
-          onChange={(e) => set("emergency_access", e.target.value)}
-        />
-      </Field>
-      <Field label="Known restrictions" htmlFor="v-restrictions" error={errors.known_restrictions}>
-        <textarea
-          id="v-restrictions"
-          className={inputClass}
-          value={form.known_restrictions}
-          onChange={(e) => set("known_restrictions", e.target.value)}
-        />
-      </Field>
 
-      <label className="mb-2 flex items-center gap-2 text-sm">
+      <label className="mb-4 flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           checked={form.in_service}
@@ -295,12 +252,6 @@ export function VenueForm({
         />
         In service
       </label>
-      {goingOutOfService && (
-        <p role="note" className="mb-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-          Taking this venue out of service marks its future bookings Disrupted and informs their
-          coordinators.
-        </p>
-      )}
 
       <div className="flex gap-3">
         <button

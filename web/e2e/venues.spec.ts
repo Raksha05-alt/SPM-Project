@@ -25,14 +25,10 @@ test("venue staff add a venue, are stopped by a zero capacity, then update it", 
   await page.getByLabel("Name").fill(name);
   await page.getByLabel("Location").fill("Level 5");
   await page.getByLabel("Maximum capacity").fill("40");
-  await page.getByLabel("Setup time (minutes)").fill("20");
-  await page.getByLabel("Turnaround time (minutes)").fill("10");
-  await page.getByLabel("Emergency access").fill("One exit beside the lift.");
-  await page.getByLabel("Known restrictions").fill("No catering.");
   await page.getByRole("button", { name: "Save venue" }).click();
   await expect(page.getByRole("status")).toContainText(`Saved ${name}`);
   const row = page.getByRole("row", { name: new RegExp(name) });
-  await expect(row).toContainText("20 / 10 min");
+  await expect(row).toContainText("Level 5");
 
   // AC3
   await page.getByRole("button", { name: `Edit ${name}` }).click();

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { createVenue, listVenues, updateVenue, type VenueInput } from "../api/venues";
 import { VenueForm } from "../components/venues/VenueForm";
-import type { SavedVenue, Venue } from "../types";
+import type { Venue } from "../types";
 
 type Editing = { venue: Venue | null } | null;
 
@@ -11,7 +11,7 @@ export function VenueCatalogue() {
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useQuery({ queryKey: ["venues"], queryFn: listVenues });
   const [editing, setEditing] = useState<Editing>(null);
-  const [saved, setSaved] = useState<SavedVenue | null>(null);
+  const [saved, setSaved] = useState<Venue | null>(null);
 
   const save = useMutation({
     mutationFn: (input: VenueInput) =>
@@ -33,7 +33,6 @@ export function VenueCatalogue() {
   if (isError) return <p role="alert">We could not load the venues.</p>;
 
   const rows = data ?? [];
-  const disrupted = saved?.disrupted_bookings ?? [];
 
   return (
     <div>
@@ -55,21 +54,6 @@ export function VenueCatalogue() {
             {saved.updated_by_name ? ` by ${saved.updated_by_name}` : ""} at{" "}
             {new Date(saved.updated_at).toLocaleString("en-SG")}.
           </p>
-          {disrupted.length > 0 && (
-            <div className="mt-2">
-              <p className="font-medium">
-                {disrupted.length} future booking{disrupted.length === 1 ? " is" : "s are"} now
-                Disrupted and their coordinators have been informed:
-              </p>
-              <ul className="ml-5 list-disc">
-                {disrupted.map((b) => (
-                  <li key={b.id}>
-                    {b.event_name}, {new Date(b.start).toLocaleString("en-SG")}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       )}
 
@@ -98,7 +82,6 @@ export function VenueCatalogue() {
                 <th className="px-4 py-3">Venue</th>
                 <th className="px-4 py-3">Location</th>
                 <th className="px-4 py-3">Capacity</th>
-                <th className="px-4 py-3">Setup / turnaround</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Last updated</th>
                 <th className="px-4 py-3" />
@@ -110,9 +93,6 @@ export function VenueCatalogue() {
                   <td className="px-4 py-3 font-medium text-navy-700">{venue.name}</td>
                   <td className="px-4 py-3">{venue.location || "—"}</td>
                   <td className="px-4 py-3">{venue.capacity}</td>
-                  <td className="px-4 py-3">
-                    {venue.setup_minutes} / {venue.turnaround_minutes} min
-                  </td>
                   <td className="px-4 py-3">
                     {venue.in_service ? "In service" : "Out of service"}
                   </td>
