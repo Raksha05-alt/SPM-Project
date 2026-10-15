@@ -6,6 +6,8 @@ export type VenueInput = Omit<
   | "id"
   | "layout_labels"
   | "operating_hours"
+  | "operational_status"
+  | "missing_information"
   | "created_by_name"
   | "updated_by_name"
   | "created_at"
@@ -13,6 +15,8 @@ export type VenueInput = Omit<
 >;
 
 export const listVenues = () => request<Venue[]>("/api/venues/");
+
+export const getVenue = (id: number) => request<Venue>(`/api/venues/${id}/`);
 
 export const createVenue = (venue: VenueInput) =>
   request<Venue>("/api/venues/", { method: "POST", body: venue });

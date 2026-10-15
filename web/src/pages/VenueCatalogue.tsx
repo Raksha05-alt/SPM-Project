@@ -1,12 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { createVenue, listVenues, updateVenue, type VenueInput } from "../api/venues";
 import { VenueForm } from "../components/venues/VenueForm";
 import type { Venue } from "../types";
 
 type Editing = { venue: Venue | null } | null;
 
-/** SCRUM-65 - Venue Staff create and update the venues ConnectSphere operates. */
+/**
+ * SCRUM-9 - the catalogue of ConnectSphere venues.
+ * SCRUM-65 - Venue Staff create and update them here.
+ */
 export function VenueCatalogue() {
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useQuery({ queryKey: ["venues"], queryFn: listVenues });
@@ -90,12 +94,20 @@ export function VenueCatalogue() {
             <tbody className="divide-y divide-slate-200">
               {rows.map((venue) => (
                 <tr key={venue.id}>
-                  <td className="px-4 py-3 font-medium text-navy-700">{venue.name}</td>
+                  <td className="px-4 py-3 font-medium text-navy-700">
+                    <Link to={`/venues/${venue.id}`} className="hover:underline">
+                      {venue.name}
+                    </Link>
+                    {venue.missing_information.length > 0 && (
+                      <p className="text-xs font-normal text-amber-700">
+                        {venue.missing_information.length} detail
+                        {venue.missing_information.length === 1 ? "" : "s"} not provided
+                      </p>
+                    )}
+                  </td>
                   <td className="px-4 py-3">{venue.location || "—"}</td>
                   <td className="px-4 py-3">{venue.capacity}</td>
-                  <td className="px-4 py-3">
-                    {venue.in_service ? "In service" : "Out of service"}
-                  </td>
+                  <td className="px-4 py-3">{venue.operational_status}</td>
                   <td className="px-4 py-3 text-slate-500">
                     {new Date(venue.updated_at).toLocaleString("en-SG")}
                     {venue.updated_by_name ? ` by ${venue.updated_by_name}` : ""}

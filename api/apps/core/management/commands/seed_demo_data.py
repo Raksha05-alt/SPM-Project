@@ -126,15 +126,17 @@ class Command(BaseCommand):
                 "wheelchair_access": False,
                 "accessibility_notes": "Gravel path; ramp access via the east gate only.",
             },
+            # SCRUM-9 AC3 - a venue still missing details, to show how gaps are named.
+            {"name": "Studio Annex", "capacity": 25, "location": "Basement, Tower One"},
         ]
         venues = {}
         for row in rows:
             venue, _ = Venue.objects.get_or_create(
                 name=row["name"],
                 defaults={
+                    "opens_at": "08:00" if row.get("layouts") else None,
+                    "closes_at": "22:00" if row.get("layouts") else None,
                     **row,
-                    "opens_at": "08:00",
-                    "closes_at": "22:00",
                     "created_by": staff,
                     "updated_by": staff,
                 },

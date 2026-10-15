@@ -12,6 +12,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { OrganiserDashboard } from "./pages/OrganiserDashboard";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { VenueCatalogue } from "./pages/VenueCatalogue";
+import { VenueDetail } from "./pages/VenueDetail";
 
 function Home() {
   const { user, loading } = useAuth();
@@ -80,6 +81,14 @@ export default function App() {
             element={
               <RequireRole roles={["VENUE_STAFF"]}>
                 <VenueCatalogue />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/venues/:id"
+            element={
+              <RequireRole roles={["VENUE_STAFF"]}>
+                <VenueDetail />
               </RequireRole>
             }
           />

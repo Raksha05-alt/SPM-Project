@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
 import { createVenue, listVenues, updateVenue } from "../api/venues";
@@ -28,6 +29,8 @@ const HALL: Venue = {
   operating_days: [0, 1, 2, 3, 4],
   operating_hours: "08:00-22:00 (Mon, Tue, Wed, Thu, Fri)",
   in_service: true,
+  operational_status: "In service",
+  missing_information: [],
   created_by_name: "Vera Venue",
   updated_by_name: "Vera Venue",
   created_at: "2026-10-01T02:00:00Z",
@@ -38,7 +41,9 @@ function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <VenueCatalogue />
+      <MemoryRouter>
+        <VenueCatalogue />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -56,6 +61,31 @@ describe("VenueCatalogue (SCRUM-65)", () => {
     expect(within(row).getByText("200")).toBeInTheDocument();
     expect(within(row).getByText("In service")).toBeInTheDocument();
     expect(within(row).getByText(/by Vera Venue/)).toBeInTheDocument();
+  });
+
+  it("SCRUM-9 AC1: each venue links to its full details", async () => {
+    renderPage();
+
+    expect(await screen.findByRole("link", { name: "Harbour Hall" })).toHaveAttribute(
+      "href",
+      "/venues/3",
+    );
+  });
+
+  it("SCRUM-9 AC3/AC4: flags venues with missing details and shows their status", async () => {
+    vi.mocked(listVenues).mockResolvedValue([
+      {
+        ...HALL,
+        operational_status: "Out of service",
+        missing_information: ["Location", "Facilities"],
+      },
+    ]);
+
+    renderPage();
+
+    const row = (await screen.findByRole("link", { name: "Harbour Hall" })).closest("tr")!;
+    expect(within(row).getByText("2 details not provided")).toBeInTheDocument();
+    expect(within(row).getByText("Out of service")).toBeInTheDocument();
   });
 
   it("shows an empty state when there are no venues", async () => {

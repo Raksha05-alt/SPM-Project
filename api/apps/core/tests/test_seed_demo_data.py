@@ -31,5 +31,8 @@ def test_seeding_gives_venue_staff_a_small_catalogue():
     call_command("seed_demo_data")
     call_command("seed_demo_data")
 
-    assert Venue.objects.count() == 3
-    assert all(v.capacity > 0 and v.layouts for v in Venue.objects.all())
+    assert Venue.objects.count() == 4
+    assert all(v.capacity > 0 for v in Venue.objects.all())
+    # SCRUM-9 AC3 demo: one venue is deliberately incomplete.
+    annex = Venue.objects.get(name="Studio Annex")
+    assert annex.opens_at is None and not annex.facilities

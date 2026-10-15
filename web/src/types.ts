@@ -136,6 +136,10 @@ export interface Venue {
   operating_days: number[];
   operating_hours: string | null;
   in_service: boolean;
+  /** SCRUM-9 AC4. */
+  operational_status: "In service" | "Out of service";
+  /** SCRUM-9 AC3 - labels of details that have not been provided. */
+  missing_information: string[];
   created_by_name: string | null;
   updated_by_name: string | null;
   created_at: string;

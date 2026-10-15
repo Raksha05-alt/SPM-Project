@@ -5,6 +5,15 @@ from apps.venues.models import Venue
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+# SCRUM-9 AC2 / AC3 - the details a complete catalogue entry has, in staff terms.
+DESCRIBED_FIELDS = (
+    ("location", "Location"),
+    ("facilities", "Facilities"),
+    ("accessibility", "Accessibility information"),
+    ("layouts", "Supported room layouts"),
+    ("operating_hours", "Operating hours"),
+)
+
 
 def _name(user):
     if user is None:
@@ -13,15 +22,29 @@ def _name(user):
 
 
 def describe_hours(venue) -> str | None:
-    if venue.opens_at is None or venue.closes_at is None:
+    if venue.opens_at is None or venue.closes_at is None or not venue.operating_days:
         return None
     days = ", ".join(DAY_NAMES[d] for d in sorted(venue.operating_days))
-    return f"{venue.opens_at:%H:%M}-{venue.closes_at:%H:%M} ({days or 'no days'})"
+    return f"{venue.opens_at:%H:%M}-{venue.closes_at:%H:%M} ({days})"
+
+
+def missing_information(venue) -> list[str]:
+    """SCRUM-9 AC3 - name what has not been provided rather than leaving it blank."""
+    present = {
+        "location": bool(venue.location),
+        "facilities": bool(venue.facilities),
+        "accessibility": venue.wheelchair_access is not None or bool(venue.accessibility_notes),
+        "layouts": bool(venue.layouts),
+        "operating_hours": describe_hours(venue) is not None,
+    }
+    return [label for key, label in DESCRIBED_FIELDS if not present[key]]
 
 
 class VenueSerializer(serializers.ModelSerializer):
     layout_labels = serializers.SerializerMethodField()
     operating_hours = serializers.SerializerMethodField()
+    operational_status = serializers.SerializerMethodField()
+    missing_information = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
 
@@ -42,6 +65,8 @@ class VenueSerializer(serializers.ModelSerializer):
             "operating_days",
             "operating_hours",
             "in_service",
+            "operational_status",
+            "missing_information",
             "created_by_name",
             "updated_by_name",
             "created_at",
@@ -64,6 +89,13 @@ class VenueSerializer(serializers.ModelSerializer):
 
     def get_operating_hours(self, obj) -> str | None:
         return describe_hours(obj)
+
+    def get_operational_status(self, obj) -> str:
+        # SCRUM-9 AC4.
+        return "In service" if obj.in_service else "Out of service"
+
+    def get_missing_information(self, obj) -> list[str]:
+        return missing_information(obj)
 
     def get_created_by_name(self, obj) -> str | None:
         return _name(obj.created_by)

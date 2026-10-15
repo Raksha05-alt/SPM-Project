@@ -36,6 +36,8 @@ function toInput(venue: Venue | null): VenueInput {
     id: _id,
     layout_labels: _l,
     operating_hours: _h,
+    operational_status: _s,
+    missing_information: _m,
     created_by_name: _c,
     updated_by_name: _u,
     created_at: _ca,
