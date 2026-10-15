@@ -126,7 +126,7 @@ docs/
 
 ## Conventions
 
-- Branch names carry the Jira key: `feature/SCRUM-12-submit-draft`.
+- Use short-lived feature-group branches such as `feature/account-access`; include affected SCRUM keys in commit messages and pull requests. See [the contribution guide](CONTRIBUTING.md) for the feature map, ownership and verification workflow.
 - Every pull request needs one approving review and a green pipeline.
 - Access control lives in DRF permission classes, never in view bodies.
 - Business rules live in `services.py`, not in serializers or views.
