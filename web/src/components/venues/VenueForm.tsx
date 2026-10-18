@@ -14,6 +14,31 @@ const LAYOUTS: [string, string][] = [
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+/** SCRUM-5 AC2 - one-click choices for the facilities coordinators ask about most. */
+export const COMMON_FACILITIES = [
+  "Video conferencing",
+  "Hearing loop",
+  "Step-free access",
+  "Accessible toilet",
+];
+
+function splitFacilities(text: string): string[] {
+  return text
+    .split(",")
+    .map((f) => f.trim())
+    .filter(Boolean);
+}
+
+/** Add or remove one facility from the comma-separated text, ignoring case. */
+export function toggleFacility(text: string, facility: string): string {
+  const current = splitFacilities(text);
+  const present = current.some((f) => f.toLowerCase() === facility.toLowerCase());
+  const next = present
+    ? current.filter((f) => f.toLowerCase() !== facility.toLowerCase())
+    : [...current, facility];
+  return next.join(", ");
+}
+
 const EMPTY: VenueInput = {
   name: "",
   location: "",
@@ -90,10 +115,7 @@ export function VenueForm({
     event.preventDefault();
     onSave({
       ...form,
-      facilities: facilities
-        .split(",")
-        .map((f) => f.trim())
-        .filter(Boolean),
+      facilities: splitFacilities(facilities),
       opens_at: form.opens_at || null,
       closes_at: form.closes_at || null,
     });
@@ -154,6 +176,20 @@ export function VenueForm({
             value={facilities}
             onChange={(e) => setFacilities(e.target.value)}
           />
+          <div className="mt-2 flex flex-wrap gap-3 text-sm" aria-label="Common facilities">
+            {COMMON_FACILITIES.map((facility) => (
+              <label key={facility} className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={splitFacilities(facilities).some(
+                    (f) => f.toLowerCase() === facility.toLowerCase(),
+                  )}
+                  onChange={() => setFacilities((text) => toggleFacility(text, facility))}
+                />
+                {facility}
+              </label>
+            ))}
+          </div>
         </Field>
         <Field label="Opens at" htmlFor="v-opens" error={errors.opens_at}>
           <input

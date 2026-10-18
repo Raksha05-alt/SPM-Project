@@ -1,10 +1,12 @@
 from django.db import transaction
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from apps.core.audit import record
 from apps.core.permissions import HasAnyRole
+from apps.events.models import RoomLayout
 from apps.venues.models import Venue
 from apps.venues.permissions import VENUE_EDITORS, VENUE_READERS
 from apps.venues.serializers import VenueSerializer
@@ -19,6 +21,18 @@ class VenueViewSet(ModelViewSet):
     # Venue records are kept, so there is no delete.
     http_method_names = ["get", "post", "put", "patch", "head", "options"]
     queryset = Venue.objects.select_related("created_by", "updated_by")
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        layout = self.request.query_params.get("layout")
+        if self.action == "list" and layout:
+            # SCRUM-5 AC3 - a venue with the layout recorded is eligible to appear.
+            if layout not in RoomLayout.values:
+                raise ValidationError(
+                    {"layout": f"Unknown layout. Choose from {', '.join(RoomLayout.values)}."}
+                )
+            queryset = queryset.supporting_layout(layout)
+        return queryset
 
     @property
     def allowed_roles(self):
