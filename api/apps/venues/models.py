@@ -1,5 +1,44 @@
-"""EP-08 to EP-14. Built in sprints 2 and 3.
+"""SCRUM-65 - ConnectSphere's venue records."""
 
-The package exists from sprint 1 so that the repository structure matches the
-C4 level 3 component diagram. No models yet, deliberately.
-"""
+from django.conf import settings
+from django.core.validators import MinValueValidator
+from django.db import models
+
+from apps.core.models import TimeStampedModel
+
+WEEKDAYS = list(range(7))  # Monday = 0, matching datetime.weekday()
+
+
+def every_day():
+    return list(WEEKDAYS)
+
+
+class Venue(TimeStampedModel):
+    """One room or space ConnectSphere operates."""
+
+    name = models.CharField(max_length=200, unique=True)
+    location = models.CharField(max_length=300, blank=True)
+    capacity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    # Free-text facility names, for example "Video conferencing" or "Hearing loop".
+    facilities = models.JSONField(default=list, blank=True)
+    # Values from apps.events.models.RoomLayout.
+    layouts = models.JSONField(default=list, blank=True)
+    wheelchair_access = models.BooleanField(null=True, blank=True)
+    accessibility_notes = models.TextField(blank=True)
+    opens_at = models.TimeField(null=True, blank=True)
+    closes_at = models.TimeField(null=True, blank=True)
+    operating_days = models.JSONField(default=every_day, blank=True)
+    # SCRUM-9 AC4 - the venue's current operational status.
+    in_service = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name

@@ -119,3 +119,29 @@ export interface AttendeeEvent {
   status_description: string;
   status_changed_at: string | null;
 }
+
+/** SCRUM-65 - a venue record as Venue Staff maintain it. */
+export interface Venue {
+  id: number;
+  name: string;
+  location: string;
+  capacity: number;
+  facilities: string[];
+  layouts: string[];
+  layout_labels: string[];
+  wheelchair_access: boolean | null;
+  accessibility_notes: string;
+  opens_at: string | null;
+  closes_at: string | null;
+  operating_days: number[];
+  operating_hours: string | null;
+  in_service: boolean;
+  /** SCRUM-9 AC4. */
+  operational_status: "In service" | "Out of service";
+  /** SCRUM-9 AC3 - labels of details that have not been provided. */
+  missing_information: string[];
+  created_by_name: string | null;
+  updated_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
