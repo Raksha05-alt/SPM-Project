@@ -1,5 +1,6 @@
 import { useAuth } from "../auth/AuthContext";
 import { Notifications } from "./Notifications";
+import { Link } from "react-router-dom";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
@@ -11,6 +12,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <span className="text-lg font-semibold text-navy-700">ConnectSphere</span>
           {user && (
             <div className="flex items-center gap-4 text-sm">
+              {["COORDINATOR", "VENUE_STAFF"].includes(user.role) && <Link to="/venues/availability" className="text-navy-700 underline">Venue availability</Link>}
               <Notifications key={user.id} userId={user.id} />
               <span className="text-slate-600">
                 {user.first_name} {user.last_name} · {user.role_label}

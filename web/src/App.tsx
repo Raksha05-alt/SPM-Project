@@ -13,6 +13,7 @@ import { OrganiserDashboard } from "./pages/OrganiserDashboard";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { VenueCatalogue } from "./pages/VenueCatalogue";
 import { VenueDetail } from "./pages/VenueDetail";
+import { VenueAvailability } from "./pages/VenueAvailability";
 
 function Home() {
   const { user, loading } = useAuth();
@@ -83,6 +84,10 @@ export default function App() {
                 <VenueCatalogue />
               </RequireRole>
             }
+          />
+          <Route
+            path="/venues/availability"
+            element={<RequireRole roles={["COORDINATOR", "VENUE_STAFF"]}><VenueAvailability /></RequireRole>}
           />
           <Route
             path="/venues/:id"
