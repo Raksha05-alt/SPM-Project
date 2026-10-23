@@ -8,6 +8,7 @@ import { CLARIFIABLE_FIELDS, ClarificationHistory } from "../components/Clarific
 import { inputClass } from "../components/Field";
 import { RejectionNotice } from "../components/RejectionNotice";
 import { StatusBadge } from "../components/StatusBadge";
+import { VenueSuitability } from "../components/venues/VenueSuitability";
 import type { EventRequest, EventStatus } from "../types";
 
 const LAYOUT_LABELS: Record<string, string> = {
@@ -328,6 +329,9 @@ export function CoordinatorEventDetail() {
           )}
         </div>
       )}
+
+      {/* SCRUM-71 - check venues against this event's requirements. */}
+      <VenueSuitability eventId={event.id} />
 
       <ClarificationHistory clarifications={event.clarifications ?? []} />
     </div>

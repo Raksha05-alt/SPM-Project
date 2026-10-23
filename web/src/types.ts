@@ -145,3 +145,23 @@ export interface Venue {
   created_at: string;
   updated_at: string;
 }
+
+/** SCRUM-71 - a requirement of the event that a venue does not meet. */
+export interface SuitabilityReason {
+  requirement: "CAPACITY" | "LAYOUT" | "ACCESSIBILITY" | "OPERATING_HOURS";
+  message: string;
+}
+
+/** SCRUM-71 - one venue checked against one event. */
+export interface VenueSuitability {
+  venue: number;
+  venue_name: string;
+  suitable: boolean;
+  reasons: SuitabilityReason[];
+}
+
+export interface EventSuitability {
+  event: number;
+  required_facilities: string[];
+  venues: VenueSuitability[];
+}
