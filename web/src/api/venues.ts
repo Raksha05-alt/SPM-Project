@@ -16,6 +16,10 @@ export type VenueInput = Omit<
 
 export const listVenues = () => request<Venue[]>("/api/venues/");
 
+/** SCRUM-5 AC3 - only the venues that have recorded this layout as supported. */
+export const listVenuesSupportingLayout = (layout: string) =>
+  request<Venue[]>(`/api/venues/?layout=${encodeURIComponent(layout)}`);
+
 export const getVenue = (id: number) => request<Venue>(`/api/venues/${id}/`);
 
 export const createVenue = (venue: VenueInput) =>

@@ -13,6 +13,16 @@ def every_day():
     return list(WEEKDAYS)
 
 
+class VenueQuerySet(models.QuerySet):
+    def supporting_layout(self, layout: str):
+        """SCRUM-5 AC3 - venues that have recorded this layout as supported.
+
+        This is the shared eligibility rule for coordinator venue search
+        (SCRUM-64): a venue with the layout recorded may appear in the results.
+        """
+        return self.filter(layouts__contains=[layout])
+
+
 class Venue(TimeStampedModel):
     """One room or space ConnectSphere operates."""
 
@@ -36,6 +46,8 @@ class Venue(TimeStampedModel):
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
+
+    objects = VenueQuerySet.as_manager()
 
     class Meta:
         ordering = ["name"]
