@@ -54,3 +54,45 @@ class Venue(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.name
+
+
+class VenueBlock(TimeStampedModel):
+    """A half-open [starts_at, ends_at) period of unavailability."""
+
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name="blocks")
+    reason = models.TextField()
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["starts_at", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(ends_at__gt=models.F("starts_at")),
+                name="venue_block_positive_interval",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.venue_id}: {self.reason}"
+
+
+class VenueBlockHistory(models.Model):
+    """Durable snapshots, including removals; written with the block transaction."""
+
+    venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name="block_history")
+    block_id = models.PositiveBigIntegerField()
+    action = models.CharField(
+        max_length=10, choices=[(x, x) for x in ("created", "updated", "removed")]
+    )
+    reason = models.TextField()
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self):
+        return f"Block {self.block_id} {self.action} at {self.created_at}"

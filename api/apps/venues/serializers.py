@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.events.models import RoomLayout
@@ -92,6 +93,9 @@ class VenueSerializer(serializers.ModelSerializer):
 
     def get_operational_status(self, obj) -> str:
         # SCRUM-9 AC4.
+        now = timezone.now()
+        if obj.blocks.filter(starts_at__lte=now, ends_at__gt=now).exists():
+            return "Blocked"
         return "In service" if obj.in_service else "Out of service"
 
     def get_missing_information(self, obj) -> list[str]:
