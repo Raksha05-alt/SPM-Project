@@ -94,7 +94,11 @@ class VenueSerializer(serializers.ModelSerializer):
     def get_operational_status(self, obj) -> str:
         # SCRUM-9 AC4.
         now = timezone.now()
-        if obj.blocks.filter(starts_at__lte=now, ends_at__gt=now).exists():
+        if "blocks" in getattr(obj, "_prefetched_objects_cache", {}):
+            blocked = any(b.starts_at <= now < b.ends_at for b in obj.blocks.all())
+        else:
+            blocked = obj.blocks.filter(starts_at__lte=now, ends_at__gt=now).exists()
+        if blocked:
             return "Blocked"
         return "In service" if obj.in_service else "Out of service"
 

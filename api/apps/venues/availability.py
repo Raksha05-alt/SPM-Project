@@ -23,7 +23,12 @@ def within_operating_hours(venue, start, end):
 
 
 def availability(venue, start, end):
-    blocks = list(venue.blocks.filter(starts_at__lt=end, ends_at__gt=start))
+    # Discovery checks several venues at once. Reuse its request-scoped prefetch
+    # without changing the same half-open overlap rule used by direct checks.
+    if "blocks" in getattr(venue, "_prefetched_objects_cache", {}):
+        blocks = [b for b in venue.blocks.all() if b.starts_at < end and b.ends_at > start]
+    else:
+        blocks = list(venue.blocks.filter(starts_at__lt=end, ends_at__gt=start))
     if blocks:
         status = "blocked"
     elif not venue.in_service or not within_operating_hours(venue, start, end):

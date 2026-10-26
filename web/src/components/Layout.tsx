@@ -13,6 +13,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {user && (
             <div className="flex items-center gap-4 text-sm">
               {["COORDINATOR", "VENUE_STAFF"].includes(user.role) && <Link to="/venues/availability" className="text-navy-700 underline">Venue availability</Link>}
+              {user.role === "COORDINATOR" && (
+                <Link to="/coordinator/venues" className="text-navy-700 underline">
+                  Venue search
+                </Link>
+              )}
               <Notifications key={user.id} userId={user.id} />
               <span className="text-slate-600">
                 {user.first_name} {user.last_name} · {user.role_label}
