@@ -8,6 +8,11 @@ from apps.venues.availability_views import (
     BlockView,
     CalendarView,
 )
+from apps.venues.discovery_views import (
+    EventVenueShortlistItemView,
+    EventVenueShortlistView,
+    VenueSearchView,
+)
 from apps.venues.views import VenueViewSet
 
 router = SimpleRouter()
@@ -19,5 +24,16 @@ urlpatterns = [
     path("venues/<int:pk>/blocks/", BlockView.as_view()),
     path("venues/<int:pk>/blocks/history/", BlockHistoryView.as_view()),
     path("venues/<int:pk>/blocks/<int:block_pk>/", BlockDetailView.as_view()),
+    path("venues/search/", VenueSearchView.as_view(), name="venue-search"),
+    path(
+        "events/<int:event_id>/venue-shortlist/",
+        EventVenueShortlistView.as_view(),
+        name="venue-shortlist",
+    ),
+    path(
+        "events/<int:event_id>/venue-shortlist/<int:venue_id>/",
+        EventVenueShortlistItemView.as_view(),
+        name="venue-shortlist-item",
+    ),
     path("", include(router.urls)),
 ]

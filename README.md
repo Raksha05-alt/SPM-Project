@@ -74,6 +74,22 @@ Sign in as both organisers to see that neither can reach the other's events.
 
 ## Tests
 
+### Venue discovery and shortlists (SCRUM-64/68 implementation slice)
+
+After migrating, sign in as a coordinator and use **Venue search**, or open an
+assigned event and choose **Venue search and shortlist**. Filters cover recorded
+capacity, layouts, facilities, operating hours and recorded date-specific blocks.
+Shortlists persist per event and recheck current venue data when reopened.
+
+Search and shortlist checks share the merged SCRUM-13/17 date-block rules and
+SCRUM-5 layout query. Booking/hold occupancy still requires the booking workflow;
+results retain an unverified availability notice. Run all migrations, including
+the merge migration joining the block and shortlist tables. See the
+[implementation and AC/test map](docs/scrum-64-68-venue-discovery.md) for tested
+behaviour, the remaining cases and the demo procedure.
+
+### Running the test suites
+
 ```bash
 cd api  && pytest                 # coverage gate at 80%
 cd web  && npm run test

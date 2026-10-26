@@ -127,6 +127,9 @@ export function CoordinatorEventDetail() {
         <Link to="/coordinator" className="text-navy-700 underline">
           Incoming requests
         </Link>
+        <Link to={`/coordinator/events/${eventId}/venues`} className="text-navy-700 underline">
+          Venue search and shortlist
+        </Link>
       </div>
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">

@@ -14,6 +14,7 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { VenueCatalogue } from "./pages/VenueCatalogue";
 import { VenueDetail } from "./pages/VenueDetail";
 import { VenueAvailability } from "./pages/VenueAvailability";
+import { VenueDiscoveryPage } from "./pages/VenueDiscovery";
 
 function Home() {
   const { user, loading } = useAuth();
@@ -74,6 +75,22 @@ export default function App() {
             element={
               <RequireRole roles={["COORDINATOR"]}>
                 <CoordinatorEventDetail />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/coordinator/venues"
+            element={
+              <RequireRole roles={["COORDINATOR"]}>
+                <VenueDiscoveryPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/coordinator/events/:id/venues"
+            element={
+              <RequireRole roles={["COORDINATOR"]}>
+                <VenueDiscoveryPage />
               </RequireRole>
             }
           />

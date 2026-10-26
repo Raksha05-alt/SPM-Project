@@ -96,3 +96,22 @@ class VenueBlockHistory(models.Model):
 
     def __str__(self):
         return f"Block {self.block_id} {self.action} at {self.created_at}"
+
+
+class VenueShortlistEntry(TimeStampedModel):
+    """SCRUM-68: a venue and the search criteria saved for one event."""
+
+    event = models.ForeignKey(
+        "events.EventRequest", on_delete=models.CASCADE, related_name="venue_shortlist"
+    )
+    venue = models.ForeignKey(Venue, on_delete=models.PROTECT, related_name="shortlist_entries")
+    search_criteria = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["event", "venue"], name="unique_event_shortlist_venue")
+        ]
