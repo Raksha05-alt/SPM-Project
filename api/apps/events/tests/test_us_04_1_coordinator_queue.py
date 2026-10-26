@@ -11,8 +11,10 @@ QUEUE = "/api/events/queue/"
 
 @pytest.mark.django_db
 def test_ac1_the_queue_shows_everything_a_coordinator_needs_to_triage(
-    signed_in_coordinator, submitted_event
+    signed_in_coordinator, submitted_event, coordinator
 ):
+    submitted_event.coordinator = coordinator
+    submitted_event.save(update_fields=["coordinator"])
     response = signed_in_coordinator.get(QUEUE)
 
     assert response.status_code == 200
@@ -33,18 +35,22 @@ def test_ac1_the_queue_shows_everything_a_coordinator_needs_to_triage(
 
 
 @pytest.mark.django_db
-def test_ac2_the_queue_is_ordered_oldest_submission_first(signed_in_coordinator, organiser):
+def test_ac2_the_queue_is_ordered_oldest_submission_first(
+    signed_in_coordinator, organiser, coordinator
+):
     now = timezone.now()
     newer = make_event(
         organiser,
         status=EventStatus.SUBMITTED,
         name="Newer",
+        coordinator=coordinator,
         submitted_at=now - timezone.timedelta(hours=1),
     )
     older = make_event(
         organiser,
         status=EventStatus.SUBMITTED,
         name="Older",
+        coordinator=coordinator,
         submitted_at=now - timezone.timedelta(days=4),
     )
 
@@ -56,10 +62,12 @@ def test_ac2_the_queue_is_ordered_oldest_submission_first(signed_in_coordinator,
 
 @pytest.mark.django_db
 def test_ac3_drafts_and_rejected_requests_are_not_in_the_queue(
-    signed_in_coordinator, organiser, complete_draft
+    signed_in_coordinator, organiser, complete_draft, coordinator
 ):
-    rejected = make_event(organiser, status=EventStatus.REJECTED, name="Rejected one")
-    kept = make_event(organiser, status=EventStatus.SUBMITTED, name="Kept")
+    rejected = make_event(
+        organiser, status=EventStatus.REJECTED, name="Rejected one", coordinator=coordinator
+    )
+    kept = make_event(organiser, status=EventStatus.SUBMITTED, name="Kept", coordinator=coordinator)
 
     response = signed_in_coordinator.get(QUEUE)
 

@@ -1,6 +1,7 @@
 export type Role =
   | "ORGANISER"
   | "COORDINATOR"
+  | "COORDINATOR_LEAD"
   | "VENUE_STAFF"
   | "TECH_SUPPORT"
   | "ATTENDEE";

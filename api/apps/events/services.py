@@ -1,18 +1,22 @@
 """Behaviour that is not the business of a serializer or a view."""
 
-from secrets import choice
-
 from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import Role, User
+from apps.core.audit import record
 from apps.core.statuses import (
     REVIEWABLE_STATUSES,
     EventStatus,
     InvalidTransition,
     validate_transition,
 )
-from apps.events.models import ClarificationRequest, EventRequest, EventStatusHistory
+from apps.events.models import (
+    ClarificationRequest,
+    CoordinatorAssignment,
+    EventRequest,
+    EventStatusHistory,
+)
 from apps.notifications.models import Notification, NotificationKind
 
 
@@ -32,6 +36,92 @@ class MissingRejectionReason(Exception):
 
 class NotAssignedCoordinator(Exception):
     """Raised when someone other than the assigned coordinator tries a coordinator decision."""
+
+
+class AssignmentConflict(Exception):
+    """The assignment changed or the event cannot be assigned."""
+
+
+class InvalidCoordinator(Exception):
+    """An assignment target must be an active Event Coordinator."""
+
+
+class NotCoordinatorLead(Exception):
+    """Only an active Coordinator Lead can assign or reassign."""
+
+
+@transaction.atomic
+def assign_coordinator(event, coordinator_id, user, expected_revision):
+    """Compare-and-set under a row lock; each actual change is one occurrence."""
+    locked = EventRequest.objects.select_for_update().get(pk=event.pk)
+    if not User.objects.filter(
+        pk=user.pk, role=Role.EVENT_COORDINATOR_LEAD, is_active=True
+    ).exists():
+        raise NotCoordinatorLead
+    if locked.status in {EventStatus.DRAFT, EventStatus.COMPLETED, EventStatus.CANCELLED}:
+        raise AssignmentConflict("Draft, completed and cancelled events cannot be assigned.")
+    if locked.assignment_revision != expected_revision:
+        raise AssignmentConflict("The assignment changed. Reload the event before assigning it.")
+    coordinator = (
+        # Account fields must stay current, but assignment history also takes
+        # FK key-share locks on previous owners. NO KEY UPDATE permits those
+        # checks when two Leads concurrently swap owners of different events.
+        User.objects.select_for_update(no_key=True)
+        .filter(pk=coordinator_id, role=Role.EVENT_COORDINATOR, is_active=True)
+        .first()
+    )
+    if coordinator is None:
+        raise InvalidCoordinator("Choose an active Event Coordinator.")
+    if locked.coordinator_id == coordinator.pk:
+        event.refresh_from_db()
+        return None
+    previous = locked.coordinator
+    assignment = CoordinatorAssignment.objects.create(
+        event=locked,
+        previous_coordinator=previous,
+        coordinator=coordinator,
+        assigned_by=user,
+        previous_supervising_lead=locked.supervising_lead,
+        revision=locked.assignment_revision + 1,
+    )
+    locked.coordinator = coordinator
+    locked.supervising_lead = user
+    locked.assignment_revision = assignment.revision
+    locked.assignment_requires_attention = False
+    locked.save(
+        update_fields=[
+            "coordinator",
+            "supervising_lead",
+            "assignment_revision",
+            "assignment_requires_attention",
+            "updated_at",
+        ]
+    )
+    recipients = {
+        person.pk: person for person in (coordinator, previous, locked.created_by) if person
+    }
+    name = coordinator.get_full_name() or coordinator.email
+    Notification.objects.bulk_create(
+        [
+            Notification(
+                recipient=recipient,
+                event=locked,
+                assignment=assignment,
+                kind=NotificationKind.ASSIGNMENT,
+                message=f'{name} ({coordinator.email}) is now the coordinator for "{locked.name}".',
+            )
+            for recipient in recipients.values()
+        ]
+    )
+    record(
+        user,
+        f"POST /api/events/{locked.pk}/assign-coordinator/",
+        allowed=True,
+        obj=assignment,
+        detail=f"Assignment revision {assignment.revision}",
+    )
+    event.refresh_from_db()
+    return assignment
 
 
 @transaction.atomic
@@ -55,7 +145,7 @@ def transition_event(event: EventRequest, target: str, user) -> EventRequest:
 
 @transaction.atomic
 def submit_event(event: EventRequest, user) -> EventRequest:
-    """Submit and assign atomically; repeated/concurrent submissions cannot reassign."""
+    """Submit atomically into the Lead's unassigned queue (SCRUM-89)."""
     # Lock only the event row, not the nullable coordinator join used by the view.
     locked = EventRequest.objects.select_for_update().get(pk=event.pk)
     if locked.status == EventStatus.UNDER_REVIEW:
@@ -65,32 +155,11 @@ def submit_event(event: EventRequest, user) -> EventRequest:
     missing = locked.missing_mandatory_fields()
     if missing:
         raise MissingMandatoryFields(missing)
-    candidates = list(
-        User.objects.filter(
-            role=Role.EVENT_COORDINATOR, is_active=True, coordinator_available=True
-        ).order_by("pk")
-    )
-    locked.coordinator = choice(candidates) if candidates else None
-    locked.assignment_requires_attention = not candidates
-    locked.save(update_fields=["coordinator", "assignment_requires_attention"])
+    locked.coordinator = None
+    locked.supervising_lead = None
+    locked.assignment_requires_attention = True
+    locked.save(update_fields=["coordinator", "supervising_lead", "assignment_requires_attention"])
     transition_event(locked, EventStatus.SUBMITTED, user)
-    if locked.coordinator:
-        coordinator = locked.coordinator
-        name = coordinator.get_full_name() or coordinator.email
-        Notification.objects.bulk_create(
-            [
-                Notification(
-                    recipient=user,
-                    event=locked,
-                    message=f'{name} ({coordinator.email}) is your coordinator for "{locked.name}".',
-                ),
-                Notification(
-                    recipient=coordinator,
-                    event=locked,
-                    message=f'You have been assigned to "{locked.name}". Contact {user.email}.',
-                ),
-            ]
-        )
     event.refresh_from_db()
     return event
 

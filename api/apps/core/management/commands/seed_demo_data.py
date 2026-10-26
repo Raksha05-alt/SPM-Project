@@ -1,4 +1,4 @@
-"""Repeatable demo data: one user per role plus a few event requests.
+"""Repeatable demo data, including two Leads and two coordinators.
 
 Run with:  python manage.py seed_demo_data
 Safe to run more than once; it updates rather than duplicating.
@@ -18,6 +18,9 @@ PEOPLE = [
     ("organiser@acme.example", Role.EVENT_ORGANISER, "Ada", "Organiser", "Acme Pte Ltd"),
     ("organiser@globex.example", Role.EVENT_ORGANISER, "Otto", "Other", "Globex LLP"),
     ("coordinator@connectsphere.example", Role.EVENT_COORDINATOR, "Cora", "Coordinator", None),
+    ("coordinator2@connectsphere.example", Role.EVENT_COORDINATOR, "Casey", "Coordinator", None),
+    ("lead@connectsphere.example", Role.EVENT_COORDINATOR_LEAD, "Lee", "Lead", None),
+    ("lead2@connectsphere.example", Role.EVENT_COORDINATOR_LEAD, "Lane", "Lead", None),
     ("venue@connectsphere.example", Role.VENUE_STAFF, "Vera", "Venue", None),
     ("tech@connectsphere.example", Role.TECHNICAL_SUPPORT, "Tariq", "Tech", None),
     ("attendee@example.com", Role.ATTENDEE, "Andy", "Attendee", None),
@@ -25,7 +28,7 @@ PEOPLE = [
 
 
 class Command(BaseCommand):
-    help = "Create demo organisations, one user per role, and sample event requests."
+    help = "Create demo organisations, role accounts, Leads, and sample event requests."
 
     def handle(self, *args, **options):
         orgs = {}
@@ -71,6 +74,7 @@ class Command(BaseCommand):
                     "preferred_end": start + timezone.timedelta(days=offset, hours=6),
                     "expected_attendance": attendance,
                     "status": status,
+                    "assignment_requires_attention": status != EventStatus.DRAFT,
                     "submitted_at": (
                         timezone.now() - timezone.timedelta(days=3 - offset)
                         if status != EventStatus.DRAFT

@@ -11,7 +11,7 @@ describe("SCRUM-51 coordinator details", () => {
 
   it("AC5: explains that an unassigned request remains submitted", () => {
     render(<CoordinatorAssignment event={{ coordinator_name: null, coordinator_email: null, assignment_requires_attention: true }} />);
-    expect(screen.getByText(/Your request is submitted and needs ConnectSphere staff/)).toBeInTheDocument();
+    expect(screen.getByText(/waiting for a Coordinator Lead/)).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 

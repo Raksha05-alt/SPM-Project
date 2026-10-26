@@ -58,7 +58,7 @@ there is no CORS configuration to get wrong in development.
 
 ### Demo accounts
 
-`seed_demo_data` creates one user per role. All of them use the password
+`seed_demo_data` creates role accounts, including two Leads and two coordinators. All use the password
 `connectsphere-demo`.
 
 | Email | Role |
@@ -66,6 +66,9 @@ there is no CORS configuration to get wrong in development.
 | organiser@acme.example | Event Organiser (Acme Pte Ltd) |
 | organiser@globex.example | Event Organiser (Globex LLP) |
 | coordinator@connectsphere.example | Event Coordinator |
+| coordinator2@connectsphere.example | Event Coordinator |
+| lead@connectsphere.example | Event Coordinator Lead |
+| lead2@connectsphere.example | Event Coordinator Lead |
 | venue@connectsphere.example | Venue Staff |
 | tech@connectsphere.example | Technical Support Staff |
 | attendee@example.com | Attendee |
@@ -101,22 +104,25 @@ Backend tests are named after the acceptance criteria they verify. Open
 `test_ac1_...` through `test_ac6_...`, matching the six criteria on US-03.1 in
 the product backlog. That mapping is what feeds the traceability matrix.
 
-### Coordinator assignment (SCRUM-51)
+### Lead allocation and reassignment (SCRUM-89 / SCRUM-53)
 
-After applying migrations, submit a new completed request as an organiser. Open
-the submitted request to see the coordinator's name and email. Both users can
+After applying migrations, submit a complete request as an organiser. It remains
+unassigned. Sign in as a Lead, open **Unassigned requests**, select a coordinator
+and save. The organiser can then see the coordinator's name and email. Users can
 open **Notifications** in the header; messages persist across sign-ins and refresh
 every 30 seconds or when the window regains focus.
 
-Availability means an active Coordinator account with **Coordinator available**
-enabled in Django admin. This is an explicit availability flag, not a workload
-or calendar calculation. To try the no-available case, disable it for all
-coordinators and submit another request. The request remains Submitted and the
-staff queue shows **Unassigned — staff action needed**. Reassignment is outside
-SCRUM-51; changing availability does not retroactively assign old requests.
+Leads choose from active Coordinator accounts. The existing **Coordinator available**
+flag is shown for reference; allocation is manual. Inactive accounts are excluded.
+Use **Assignments** to inspect all allocations or filter to events you supervise.
+Open an event to change its coordinator; Completed and Cancelled events refuse changes.
+The previous coordinator loses event access and receives a notification, alongside
+the new coordinator and organiser. An outdated assignment form must reload before saving.
 
-See [SCRUM-51 implementation and test guide](docs/scrum-51-coordinator-assignment.md)
-for acceptance-criteria traceability and the confirmed implementation decisions.
+See the [Lead allocation implementation and test guide](docs/lead-assignment.md)
+for API contracts, AC traceability, execution evidence and review steps.
+The [SCRUM-51 guide](docs/scrum-51-coordinator-assignment.md) records the earlier
+automatic-allocation behaviour that this customer change replaces.
 
 ## Layout
 

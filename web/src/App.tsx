@@ -15,6 +15,8 @@ import { VenueCatalogue } from "./pages/VenueCatalogue";
 import { VenueDetail } from "./pages/VenueDetail";
 import { VenueAvailability } from "./pages/VenueAvailability";
 import { VenueDiscoveryPage } from "./pages/VenueDiscovery";
+import { LeadDashboard } from "./pages/lead/LeadDashboard";
+import { LeadEventDetail } from "./pages/lead/LeadEventDetail";
 
 function Home() {
   const { user, loading } = useAuth();
@@ -29,6 +31,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<Home />} />
+          <Route path="/lead" element={<RequireRole roles={["COORDINATOR_LEAD"]}><LeadDashboard /></RequireRole>} />
+          <Route path="/lead/events/:id" element={<RequireRole roles={["COORDINATOR_LEAD"]}><LeadEventDetail /></RequireRole>} />
 
           <Route
             path="/organiser"

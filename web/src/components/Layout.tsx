@@ -12,6 +12,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <span className="text-lg font-semibold text-navy-700">ConnectSphere</span>
           {user && (
             <div className="flex items-center gap-4 text-sm">
+              {user.role === "COORDINATOR_LEAD" && <Link to="/lead" className="text-navy-700 underline">Coordinator assignments</Link>}
               {["COORDINATOR", "VENUE_STAFF"].includes(user.role) && <Link to="/venues/availability" className="text-navy-700 underline">Venue availability</Link>}
               {user.role === "COORDINATOR" && (
                 <Link to="/coordinator/venues" className="text-navy-700 underline">

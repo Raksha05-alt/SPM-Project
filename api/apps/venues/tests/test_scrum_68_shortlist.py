@@ -133,7 +133,7 @@ def test_empty_shortlist_is_a_valid_empty_state(signed_in_coordinator, planning_
     assert response.data["date_blocks_integrated"] is True
 
 
-def test_unassigned_coordinator_can_read_submitted_event_but_cannot_modify_shortlist(
+def test_unassigned_coordinator_cannot_read_or_modify_shortlist(
     api, other_coordinator, planning_event, coordinator
 ):
     venue = searchable_venue()
@@ -141,12 +141,11 @@ def test_unassigned_coordinator_can_read_submitted_event_but_cannot_modify_short
         event=planning_event, venue=venue, created_by=coordinator
     )
     api.force_authenticate(other_coordinator)
-    assert api.get(url(planning_event)).status_code == 200
-    assert api.get(url(planning_event)).data["can_edit"] is False
+    assert api.get(url(planning_event)).status_code == 403
     assert add(api, planning_event, venue).status_code == 403
     assert api.delete(url(planning_event, venue)).status_code == 403
     assert VenueShortlistEntry.objects.filter(pk=entry.pk).exists()
-    assert AuditLog.objects.filter(actor=other_coordinator, allowed=False).count() == 2
+    assert AuditLog.objects.filter(actor=other_coordinator, allowed=False).count() == 3
 
 
 @pytest.mark.parametrize(

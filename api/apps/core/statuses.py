@@ -23,7 +23,7 @@ class EventStatus(models.TextChoices):
 # US-06.1 AC2 - plain language explanation of every status.
 STATUS_DESCRIPTIONS = {
     EventStatus.DRAFT: "Still being written by the client. ConnectSphere cannot see it yet.",
-    EventStatus.SUBMITTED: "Sent to ConnectSphere and waiting to be picked up by a coordinator.",
+    EventStatus.SUBMITTED: "Submitted to ConnectSphere for allocation and review.",
     EventStatus.UNDER_REVIEW: "A coordinator has asked the client for more information before continuing.",
     EventStatus.APPROVED: "ConnectSphere has agreed to plan this event.",
     EventStatus.PLANNING: "Venue, equipment and other arrangements are being made.",

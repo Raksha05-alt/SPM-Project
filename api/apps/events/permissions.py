@@ -11,7 +11,8 @@ class CanAccessEventRequest(BasePermission):
     """Object-level rules for an event request.
 
     An Event Organiser reaches only their own organisation's requests.
-    An Event Coordinator reaches anything that has been submitted, never a draft.
+    Coordinators reach only their assigned submitted events. Leads can read
+    submitted events to allocate them; their only write is assignment.
     An Attendee has read-only access to confirmed or concluded events, with
     internal planning states filtered out.
     Every refusal is written to the audit log (US-01.2 AC4).
@@ -44,12 +45,27 @@ class CanAccessEventRequest(BasePermission):
         if user.role == Role.EVENT_COORDINATOR:
             if obj.status == EventStatus.DRAFT:
                 return False, "drafts are not visible to ConnectSphere"
+            if obj.coordinator_id != user.pk:
+                return False, "event is not assigned to this coordinator"
             if getattr(view, "action", None) in ("approve", "reject", "request_clarification"):
                 # The view refuses anyone but the assigned coordinator, and audits it.
                 return True, ""
             if request.method not in SAFE_METHODS:
                 return False, "coordinator write actions arrive in sprint 2"
             return True, ""
+
+        if user.role == Role.EVENT_COORDINATOR_LEAD:
+            if obj.status == EventStatus.DRAFT:
+                return False, "drafts are not visible to ConnectSphere"
+            if (
+                request.method in SAFE_METHODS
+                or getattr(view, "action", None) == "assign_coordinator"
+            ):
+                return True, ""
+            return (
+                False,
+                "Leads allocate events; coordinator actions belong to the assigned coordinator",
+            )
 
         if user.role == Role.ATTENDEE:
             if request.method not in SAFE_METHODS:

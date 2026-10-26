@@ -368,6 +368,7 @@ export function VenueDiscoveryPage() {
   const eventId = Number(id);
   const event = useQuery({
     queryKey: ["event", eventId],
+    refetchOnWindowFocus: true,
     queryFn: () => getEvent(eventId),
     enabled: Boolean(id),
   });

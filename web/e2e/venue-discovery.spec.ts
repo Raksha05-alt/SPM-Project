@@ -60,6 +60,16 @@ test("SCRUM-64/68: search, persist, recheck real date blocks, venue status and r
     await expect(page.getByRole("link", { name: eventName })).toBeVisible();
     await page.getByRole("button", { name: "Sign out" }).click();
 
+    // SCRUM-89: requests enter the Lead's queue before coordinator planning.
+    await page.getByLabel("Email").fill("lead@connectsphere.example");
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.getByRole("link", { name: eventName }).click();
+    await page.getByLabel("Event Coordinator", { exact: true }).selectOption({ label: "Cora Coordinator (coordinator@connectsphere.example)" });
+    await page.getByRole("button", { name: "Assign coordinator", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("Coordinator assignment saved.");
+    await page.getByRole("button", { name: "Sign out" }).click();
+
     await page.getByLabel("Email").fill("coordinator@connectsphere.example");
     await page.getByLabel("Password").fill(PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
