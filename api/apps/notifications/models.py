@@ -10,8 +10,8 @@ class NotificationKind(models.TextChoices):
     REJECTED = "REJECTED", "Request rejected"
 
 
-# Sent at most once per recipient and event. Clarification rounds can repeat.
-ONE_OFF_KINDS = (NotificationKind.ASSIGNMENT, NotificationKind.APPROVED, NotificationKind.REJECTED)
+# Assignment notices are unique per occurrence, not per lifetime of an event.
+ONE_OFF_KINDS = (NotificationKind.APPROVED, NotificationKind.REJECTED)
 
 
 class Notification(models.Model):
@@ -26,6 +26,13 @@ class Notification(models.Model):
     kind = models.CharField(
         max_length=20, choices=NotificationKind.choices, default=NotificationKind.ASSIGNMENT
     )
+    assignment = models.ForeignKey(
+        "events.CoordinatorAssignment",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
     message = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -36,7 +43,10 @@ class Notification(models.Model):
                 fields=["recipient", "event", "kind"],
                 condition=models.Q(kind__in=ONE_OFF_KINDS),
                 name="unique_notification_per_kind",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["recipient", "assignment"], name="unique_assignment_notice_recipient"
+            ),
         ]
 
     def __str__(self):

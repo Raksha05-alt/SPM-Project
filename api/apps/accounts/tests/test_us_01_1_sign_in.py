@@ -27,6 +27,7 @@ def test_ac1_valid_credentials_land_on_the_role_view(api, organiser, password):
     ("fixture_name", "expected_path"),
     [
         ("coordinator", "/coordinator"),
+        ("lead", "/lead"),
         ("venue_staff", "/venues"),
         ("attendee", "/events"),
     ],

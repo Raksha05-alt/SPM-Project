@@ -44,6 +44,7 @@ class RejectionInputSerializer(serializers.Serializer):
 
 
 class EventRequestSerializer(serializers.ModelSerializer):
+    supervising_lead_name = serializers.SerializerMethodField()
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     status_description = serializers.SerializerMethodField()
     organisation_name = serializers.CharField(source="organisation.name", read_only=True)
@@ -85,6 +86,9 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "coordinator_name",
             "coordinator_email",
             "assignment_requires_attention",
+            "supervising_lead",
+            "supervising_lead_name",
+            "assignment_revision",
             "approved_by",
             "approved_by_name",
             "approved_at",
@@ -107,6 +111,8 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "created_by",
             "coordinator",
             "assignment_requires_attention",
+            "supervising_lead",
+            "assignment_revision",
             "approved_by",
             "approved_at",
             "rejected_by",
@@ -118,6 +124,9 @@ class EventRequestSerializer(serializers.ModelSerializer):
 
     # The approval decision is visible to internal users only.
     INTERNAL_ONLY_FIELDS = (
+        "supervising_lead",
+        "supervising_lead_name",
+        "assignment_revision",
         "approved_by",
         "approved_by_name",
         "approved_at",
@@ -135,6 +144,9 @@ class EventRequestSerializer(serializers.ModelSerializer):
 
     def get_approved_by_name(self, obj) -> str | None:
         return _display_name(obj.approved_by)
+
+    def get_supervising_lead_name(self, obj) -> str | None:
+        return _display_name(obj.supervising_lead)
 
     def get_rejected_by_name(self, obj) -> str | None:
         return _display_name(obj.rejected_by)

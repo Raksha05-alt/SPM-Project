@@ -70,6 +70,20 @@ def venue_staff(db):
 
 
 @pytest.fixture
+def lead(db):
+    return _make_user(
+        "lead@connectsphere.example", Role.EVENT_COORDINATOR_LEAD, first="Lee", last="Lead"
+    )
+
+
+@pytest.fixture
+def second_coordinator(db):
+    return _make_user(
+        "second@connectsphere.example", Role.EVENT_COORDINATOR, first="Casey", last="Coordinator"
+    )
+
+
+@pytest.fixture
 def attendee(db):
     return _make_user("attendee@example.com", Role.ATTENDEE, None, "Andy", "Attendee")
 

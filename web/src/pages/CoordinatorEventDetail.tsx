@@ -46,6 +46,7 @@ export function CoordinatorEventDetail() {
     isError,
   } = useQuery({
     queryKey: ["event", eventId],
+    refetchOnWindowFocus: true,
     queryFn: () => getEvent(eventId),
   });
 
@@ -55,13 +56,15 @@ export function CoordinatorEventDetail() {
     void queryClient.invalidateQueries({ queryKey: ["queue"] });
   }
 
-  const approve = useMutation({ mutationFn: approveEvent, onSuccess: onDecision });
+  const refreshOwnership = () => queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+  const approve = useMutation({ mutationFn: approveEvent, onSuccess: onDecision, onError: refreshOwnership });
 
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
   const reject = useMutation({
     mutationFn: () => rejectEvent(eventId, reason.trim()),
+    onError: refreshOwnership,
     onSuccess: (updated) => {
       onDecision(updated);
       setShowReject(false);
@@ -85,6 +88,7 @@ export function CoordinatorEventDetail() {
   const [messageError, setMessageError] = useState<string | null>(null);
   const clarify = useMutation({
     mutationFn: () => requestClarification(eventId, message.trim(), fields),
+    onError: refreshOwnership,
     onSuccess: (updated) => {
       onDecision(updated);
       setShowClarify(false);

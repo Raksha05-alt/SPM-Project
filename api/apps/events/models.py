@@ -70,6 +70,14 @@ class EventRequest(TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="approved_event_requests",
     )
+    supervising_lead = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="supervised_event_requests",
+    )
+    assignment_revision = models.PositiveIntegerField(default=0)
     rejected_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -99,6 +107,45 @@ class EventRequest(TimeStampedModel):
             for field in self.MANDATORY_FOR_SUBMISSION
             if getattr(self, field) in (None, "", 0)
         ]
+
+
+class CoordinatorAssignment(models.Model):
+    """SCRUM-53/89: immutable assignment occurrences, including A → B → A."""
+
+    event = models.ForeignKey(
+        EventRequest, on_delete=models.CASCADE, related_name="assignment_history"
+    )
+    previous_coordinator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.PROTECT,
+        related_name="previous_assignments",
+    )
+    coordinator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="assignment_occurrences"
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="assignments_made"
+    )
+    previous_supervising_lead = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.PROTECT,
+        related_name="previous_supervisions",
+    )
+    revision = models.PositiveIntegerField()
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-revision"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event", "revision"], name="unique_event_assignment_revision"
+            )
+        ]
+
+    def __str__(self):
+        return f"Event {self.event_id}: assignment {self.revision}"
 
 
 class EventStatusHistory(models.Model):

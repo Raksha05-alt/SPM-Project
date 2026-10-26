@@ -51,6 +51,10 @@ function renderGuarded(state: Partial<AuthState>, roles?: Role[]) {
 }
 
 describe("RequireRole (US-01.2 / SCRUM-1)", () => {
+  it("allows the new Lead role only where it is explicitly permitted", () => {
+    renderGuarded({ user: makeUser("COORDINATOR_LEAD") }, ["COORDINATOR_LEAD"]);
+    expect(screen.getByText(SECRET)).toBeInTheDocument();
+  });
   it("AC3: a role outside the permitted set never sees the protected content", () => {
     renderGuarded({ user: makeUser("ATTENDEE") }, ["COORDINATOR"]);
 

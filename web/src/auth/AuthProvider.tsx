@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AuthContext } from "./AuthContext";
 import * as authApi from "../api/auth";
 import { primeCsrf } from "../api/client";
 import type { User } from "../types";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -30,14 +32,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     const me = await authApi.login(email, password);
+    await queryClient.cancelQueries();
+    queryClient.clear();
     setUser(me);
     return me;
-  }, []);
+  }, [queryClient]);
 
   const signOut = useCallback(async () => {
     await authApi.logout();
+    await queryClient.cancelQueries();
+    queryClient.clear();
     setUser(null);
-  }, []);
+  }, [queryClient]);
 
   const value = useMemo(
     () => ({ user, loading, signIn, signOut }),

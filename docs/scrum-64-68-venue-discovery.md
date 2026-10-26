@@ -1,5 +1,9 @@
 # SCRUM-64/68: venue discovery and event shortlists
 
+This is the original Sprint 2 record. SCRUM-89 now restricts event and shortlist
+reads to the assigned coordinator; see [Lead allocation](lead-assignment.md).
+The original broader-read tests remain in Git history.
+
 Implementation and agent-executed integration verification: 26 October 2026.
 Branch: `feature/venue-discovery`.
 Base: updated main `3322649d409f577a100f972160f90e1a7e311bce`, including Raksha's venue catalogue, Shalika's layouts (PR #5) and Adilah's date blocks/availability (PR #6).

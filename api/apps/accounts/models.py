@@ -5,21 +5,25 @@ from apps.core.models import TimeStampedModel
 
 
 class Role(models.TextChoices):
-    """The five roles named in the customer briefing. Nothing else exists."""
+    """Release roles, including the Coordinator Lead introduced in SCRUM-89."""
 
     EVENT_ORGANISER = "ORGANISER", "Event Organiser"
     EVENT_COORDINATOR = "COORDINATOR", "Event Coordinator"
+    EVENT_COORDINATOR_LEAD = "COORDINATOR_LEAD", "Event Coordinator Lead"
     VENUE_STAFF = "VENUE_STAFF", "Venue Staff"
     TECHNICAL_SUPPORT = "TECH_SUPPORT", "Technical Support Staff"
     ATTENDEE = "ATTENDEE", "Attendee"
 
 
-INTERNAL_ROLES = frozenset({Role.EVENT_COORDINATOR, Role.VENUE_STAFF, Role.TECHNICAL_SUPPORT})
+INTERNAL_ROLES = frozenset(
+    {Role.EVENT_COORDINATOR, Role.EVENT_COORDINATOR_LEAD, Role.VENUE_STAFF, Role.TECHNICAL_SUPPORT}
+)
 
 # US-01.1 AC1/AC2 - where each role lands after signing in.
 LANDING_PATHS = {
     Role.EVENT_ORGANISER: "/organiser",
     Role.EVENT_COORDINATOR: "/coordinator",
+    Role.EVENT_COORDINATOR_LEAD: "/lead",
     Role.VENUE_STAFF: "/venues",
     Role.TECHNICAL_SUPPORT: "/equipment",
     Role.ATTENDEE: "/events",
@@ -41,7 +45,7 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.ATTENDEE)
     coordinator_available = models.BooleanField(
-        default=True, help_text="Available for automatic event assignment (coordinators only)."
+        default=True, help_text="Availability shown to the Lead when assigning coordinators."
     )
     organisation = models.ForeignKey(
         ClientOrganisation,
@@ -74,3 +78,7 @@ class User(AbstractUser):
     @property
     def is_coordinator(self) -> bool:
         return self.role == Role.EVENT_COORDINATOR
+
+    @property
+    def is_coordinator_lead(self) -> bool:
+        return self.role == Role.EVENT_COORDINATOR_LEAD
