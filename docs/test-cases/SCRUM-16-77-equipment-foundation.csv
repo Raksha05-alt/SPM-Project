@@ -1,0 +1,1161 @@
+Case ID,Story / AC,Scope,Scenario,Preconditions,Inputs / parameter specification,Steps / executable specification,Expected result,Executable selector,Agent check,Agent check date,Team reviewer,Team review date,Execution timestamp,Actual outcome,Tested source SHA256
+S3-SCRUM-16-G03-001,SCRUM-16/77 G03 catalogue maintenance and seeding,G03 foundation only; not full-story acceptance,test_catalogue_admin_updates_stock_but_keeps_code_identity,"PostgreSQL16; isolated test DB. Named fixtures: stock_admin, client, tech, db, stock. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    response = stock_admin.post(
+        f""/admin/equipment/equipmenttype/{stock.pk}/change/"",
+        {
+            ""code"": ""FORGED"",
+            ""name"": ""Projector renamed"",
+            ""description"": ""Catalogue details"",
+            ""total_quantity"": ""12"",
+            ""in_service"": ""on"",
+            ""_save"": ""Save"",
+        },
+    )
+    assert response.status_code == 302
+    stock.refresh_from_db()
+    assert stock.code == ""PROJECTOR""
+    assert stock.name == ""Projector renamed"" and stock.total_quantity == 12","assert response.status_code == 302; assert stock.code == ""PROJECTOR""; assert stock.name == ""Projector renamed"" and stock.total_quantity == 12",cd api && pytest 'apps/equipment/tests/test_admin_and_seed.py::test_catalogue_admin_updates_stock_but_keeps_code_identity',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-002,SCRUM-16/77 G03 catalogue maintenance and seeding,G03 foundation only; not full-story acceptance,test_catalogue_admin_adds_type,"PostgreSQL16; isolated test DB. Named fixtures: stock_admin, client, tech, db. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    response = stock_admin.post(
+        ""/admin/equipment/equipmenttype/add/"",
+        {
+            ""code"": ""SCREEN"",
+            ""name"": ""Projection screen"",
+            ""description"": """",
+            ""total_quantity"": ""4"",
+            ""in_service"": ""on"",
+            ""_save"": ""Save"",
+        },
+    )
+    assert response.status_code == 302
+    assert EquipmentType.objects.get(code=""SCREEN"").total_quantity == 4","assert response.status_code == 302; assert EquipmentType.objects.get(code=""SCREEN"").total_quantity == 4",cd api && pytest 'apps/equipment/tests/test_admin_and_seed.py::test_catalogue_admin_adds_type',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-003,SCRUM-16/77 G03 catalogue maintenance and seeding,G03 foundation only; not full-story acceptance,test_admin_handles_stock_conflict_without_server_error,"PostgreSQL16; isolated test DB. Named fixtures: stock_admin, client, tech, db, stock. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    with patch(
+        ""apps.equipment.admin.save_equipment_type"",
+        side_effect=ValidationError(""Stock changed; reload the catalogue.""),
+    ):
+        response = stock_admin.post(
+            f""/admin/equipment/equipmenttype/{stock.pk}/change/"",
+            {
+                ""name"": ""Projector"",
+                ""description"": """",
+                ""total_quantity"": ""8"",
+                ""in_service"": ""on"",
+                ""_save"": ""Save"",
+            },
+            follow=True,
+        )
+    assert response.status_code == 200
+    assert b""Stock changed; reload the catalogue."" in response.content
+    stock.refresh_from_db()
+    assert stock.total_quantity == 10","assert response.status_code == 200; assert b""Stock changed; reload the catalogue."" in response.content; assert stock.total_quantity == 10",cd api && pytest 'apps/equipment/tests/test_admin_and_seed.py::test_admin_handles_stock_conflict_without_server_error',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-004,SCRUM-16/77 G03 catalogue maintenance and seeding,G03 foundation only; not full-story acceptance,test_admin_records_reporter_restores_stock_and_retains_record,"PostgreSQL16; isolated test DB. Named fixtures: stock_admin, client, tech, db, stock. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    response = stock_admin.post(
+        ""/admin/equipment/equipmentunavailability/add/"",
+        {
+            ""equipment_type"": stock.pk,
+            ""quantity"": ""2"",
+            ""cause"": ""DAMAGED"",
+            ""reason"": ""Lens damaged"",
+            ""expected_return_at_0"": """",
+            ""expected_return_at_1"": """",
+            ""_save"": ""Save"",
+        },
+    )
+    assert response.status_code == 302
+    record = EquipmentUnavailability.objects.get()
+    assert record.reported_by == tech
+    assert stock.unavailable_quantity == 2
+    for _ in range(2):
+        response = stock_admin.post(
+            ""/admin/equipment/equipmentunavailability/"",
+            {
+                ""action"": ""restore_stock"",
+                ""_selected_action"": [record.pk],
+                ""index"": ""0"",
+                ""select_across"": ""0"",
+            },
+        )
+        assert response.status_code == 302
+    record.refresh_from_db()
+    assert record.restored_by == tech and record.restored_at is not None
+    assert record.reason == ""Lens damaged"" and stock.unavailable_quantity == 0
+    model_admin = EquipmentUnavailabilityAdmin(EquipmentUnavailability, admin.site)
+    request = type(""Request"", (), {""user"": tech})()
+    assert not model_admin.has_change_permission(request, record)
+    assert not model_admin.has_delete_permission(request, record)
+    assert ""equipment_type"" in model_admin.get_readonly_fields(request, record)
+    assert ""equipment_type"" not in model_admin.get_readonly_fields(request)","assert response.status_code == 302; assert record.reported_by == tech; assert stock.unavailable_quantity == 2; assert record.restored_by == tech and record.restored_at is not None; assert record.reason == ""Lens damaged"" and stock.unavailable_quantity == 0; assert not model_admin.has_change_permission(request, record); assert not model_admin.has_delete_permission(request, record); assert ""equipment_type"" in model_admin.get_readonly_fields(request, record); assert ""equipment_type"" not in model_admin.get_readonly_fields(request); assert response.status_code == 302",cd api && pytest 'apps/equipment/tests/test_admin_and_seed.py::test_admin_records_reporter_restores_stock_and_retains_record',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-005,SCRUM-16/77 G03 catalogue maintenance and seeding,G03 foundation only; not full-story acceptance,test_admin_can_edit_active_unavailability_without_forging_reporter,"PostgreSQL16; isolated test DB. Named fixtures: stock_admin, client, tech, db, stock. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    record = EquipmentUnavailability.objects.create(
+        equipment_type=stock, quantity=1, cause=""DAMAGED"", reason=""Original"", reported_by=tech
+    )
+    response = stock_admin.post(
+        f""/admin/equipment/equipmentunavailability/{record.pk}/change/"",
+        {
+            ""quantity"": ""2"",
+            ""cause"": ""MAINTENANCE"",
+            ""reason"": ""Updated cause"",
+            ""expected_return_at_0"": """",
+            ""expected_return_at_1"": """",
+            ""_save"": ""Save"",
+        },
+    )
+    assert response.status_code == 302
+    record.refresh_from_db()
+    assert record.quantity == 2 and record.reported_by == tech
+    model_admin = EquipmentTypeAdmin(EquipmentType, admin.site)
+    assert model_admin.get_readonly_fields(None) == []
+    assert model_admin.get_readonly_fields(None, stock) == [""code""]","assert response.status_code == 302; assert record.quantity == 2 and record.reported_by == tech; assert model_admin.get_readonly_fields(None) == []; assert model_admin.get_readonly_fields(None, stock) == [""code""]",cd api && pytest 'apps/equipment/tests/test_admin_and_seed.py::test_admin_can_edit_active_unavailability_without_forging_reporter',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-006,SCRUM-16/77 G03 catalogue maintenance and seeding,G03 foundation only; not full-story acceptance,test_non_staff_cannot_write_catalogue_and_workflow_admin_is_read_only,"PostgreSQL16; isolated test DB. Named fixtures: client, coordinator, db, stock. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    client.force_login(coordinator)
+    response = client.post(
+        f""/admin/equipment/equipmenttype/{stock.pk}/change/"", {""total_quantity"": 0}
+    )
+    assert response.status_code == 302 and ""/admin/login/"" in response.url
+    stock.refresh_from_db()
+    assert stock.total_quantity == 10
+    for model in [
+        EquipmentPlan,
+        EquipmentRequest,
+        EquipmentReservation,
+        TechnicalApproval,
+        EquipmentHistory,
+    ]:
+        model_admin = admin.site._registry[model]
+        assert isinstance(model_admin, ReadOnlyEquipmentAdmin)
+        assert not model_admin.has_add_permission(None)
+        assert not model_admin.has_change_permission(None)
+        assert not model_admin.has_delete_permission(None)","assert response.status_code == 302 and ""/admin/login/"" in response.url; assert stock.total_quantity == 10; assert isinstance(model_admin, ReadOnlyEquipmentAdmin); assert not model_admin.has_add_permission(None); assert not model_admin.has_change_permission(None); assert not model_admin.has_delete_permission(None)",cd api && pytest 'apps/equipment/tests/test_admin_and_seed.py::test_non_staff_cannot_write_catalogue_and_workflow_admin_is_read_only',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-007,SCRUM-16/77 G03 catalogue maintenance and seeding,G03 foundation only; not full-story acceptance,test_seed_requires_real_technical_staff,PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,{},"    with pytest.raises(CommandError, match=""Technical Support""):
+        call_command(""seed_equipment_catalogue"")
+    assert not EquipmentType.objects.exists()","pytest.raises(CommandError, match=""Technical Support""); assert not EquipmentType.objects.exists()",cd api && pytest 'apps/equipment/tests/test_admin_and_seed.py::test_seed_requires_real_technical_staff',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-008,SCRUM-16/77 G03 catalogue maintenance and seeding,G03 foundation only; not full-story acceptance,test_seed_repeatability_preserves_staff_edits_and_creates_no_fake_workflows,"PostgreSQL16; isolated test DB. Named fixtures: tech, db. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    call_command(""seed_equipment_catalogue"")
+    projector = EquipmentType.objects.get(code=""PROJECTOR"")
+    projector.total_quantity = 15
+    projector.in_service = False
+    projector.save()
+    record = projector.unavailability_records.get()
+    from apps.equipment.inventory import restore_unavailability
+
+    restore_unavailability(record, tech)
+    call_command(""seed_equipment_catalogue"")
+    projector.refresh_from_db()
+    assert EquipmentType.objects.count() == 3 and EquipmentUnavailability.objects.count() == 2
+    assert projector.total_quantity == 15 and projector.in_service is False
+    assert projector.unavailable_quantity == 0
+    assert not EquipmentPlan.objects.exists()
+    assert not EquipmentRequest.objects.exists()
+    assert not EquipmentReservation.objects.exists()
+    assert not TechnicalApproval.objects.exists()
+    assert not EquipmentHistory.objects.exists()",assert EquipmentType.objects.count() == 3 and EquipmentUnavailability.objects.count() == 2; assert projector.total_quantity == 15 and projector.in_service is False; assert projector.unavailable_quantity == 0; assert not EquipmentPlan.objects.exists(); assert not EquipmentRequest.objects.exists(); assert not EquipmentReservation.objects.exists(); assert not TechnicalApproval.objects.exists(); assert not EquipmentHistory.objects.exists(),cd api && pytest 'apps/equipment/tests/test_admin_and_seed.py::test_seed_repeatability_preserves_staff_edits_and_creates_no_fake_workflows',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-009,SCRUM-16/77 G03 catalogue maintenance and seeding,G03 foundation only; not full-story acceptance,test_demo_seed_includes_equipment_with_exact_usable_and_unavailable_examples,PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,{},"    call_command(""seed_demo_data"")
+    call_command(""seed_demo_data"")
+    projector = EquipmentType.objects.get(code=""PROJECTOR"")
+    microphone = EquipmentType.objects.get(code=""MICROPHONE"")
+    assert (projector.total_quantity, projector.unavailable_quantity) == (10, 2)
+    assert (microphone.total_quantity, microphone.unavailable_quantity) == (12, 1)
+    assert EquipmentType.objects.get(code=""SPEAKER"").unavailable_quantity == 0","assert (projector.total_quantity, projector.unavailable_quantity) == (10, 2); assert (microphone.total_quantity, microphone.unavailable_quantity) == (12, 1); assert EquipmentType.objects.get(code=""SPEAKER"").unavailable_quantity == 0",cd api && pytest 'apps/equipment/tests/test_admin_and_seed.py::test_demo_seed_includes_equipment_with_exact_usable_and_unavailable_examples',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-010,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_lock_types_orders_and_deduplicates,"PostgreSQL16; isolated test DB. Named fixtures: stock, db. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    other = EquipmentType.objects.create(code=""MIC"", name=""Microphone"", total_quantity=2)
+    assert [row.pk for row in lock_equipment_types([other.pk, stock.pk, other.pk])] == [
+        stock.pk,
+        other.pk,
+    ]
+    assert lock_equipment_types([]) == []","assert [row.pk for row in lock_equipment_types([other.pk, stock.pk, other.pk])] == [
+        stock.pk,
+        other.pk,
+    ]; assert lock_equipment_types([]) == []",cd api && pytest 'apps/equipment/tests/test_contracts.py::test_lock_types_orders_and_deduplicates',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-011,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_or_missing_type_ids[ids0],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""ids"": ""[0]""}","    with pytest.raises(ValidationError):
+        lock_equipment_types(ids)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_or_missing_type_ids[ids0]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-012,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_or_missing_type_ids[ids1],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""ids"": ""[-1]""}","    with pytest.raises(ValidationError):
+        lock_equipment_types(ids)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_or_missing_type_ids[ids1]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-013,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_or_missing_type_ids[ids2],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""ids"": ""['1']""}","    with pytest.raises(ValidationError):
+        lock_equipment_types(ids)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_or_missing_type_ids[ids2]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-014,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_or_missing_type_ids[ids3],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""ids"": ""[True]""}","    with pytest.raises(ValidationError):
+        lock_equipment_types(ids)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_or_missing_type_ids[ids3]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-015,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_or_missing_type_ids[ids4],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""ids"": ""[1, True]""}","    with pytest.raises(ValidationError):
+        lock_equipment_types(ids)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_or_missing_type_ids[ids4]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-016,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_or_missing_type_ids[ids5],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""ids"": ""[None]""}","    with pytest.raises(ValidationError):
+        lock_equipment_types(ids)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_or_missing_type_ids[ids5]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-017,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_or_missing_type_ids[ids6],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""ids"": ""[1.5]""}","    with pytest.raises(ValidationError):
+        lock_equipment_types(ids)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_or_missing_type_ids[ids6]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-018,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_or_missing_type_ids[ids7],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""ids"": ""[999999]""}","    with pytest.raises(ValidationError):
+        lock_equipment_types(ids)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_or_missing_type_ids[ids7]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-019,SCRUM-74/75 supporting request schema; SCRUM-16/77 relations,G03 foundation only; not full-story acceptance,test_request_persists_catalogue_identity_quantity_actor_and_text,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    equipment_request.refresh_from_db()
+    assert equipment_request.equipment_type == stock
+    assert equipment_request.quantity == 8
+    assert equipment_request.technical_requirements == ""HDMI input; quiet fan""
+    assert equipment_request.requested_by == coordinator
+    assert equipment_request.requested_at is not None
+    assert equipment_request.status == EquipmentRequestStatus.REQUESTED
+    assert ""quantity 8"" in str(equipment_request)","assert equipment_request.equipment_type == stock; assert equipment_request.quantity == 8; assert equipment_request.technical_requirements == ""HDMI input; quiet fan""; assert equipment_request.requested_by == coordinator; assert equipment_request.requested_at is not None; assert equipment_request.status == EquipmentRequestStatus.REQUESTED; assert ""quantity 8"" in str(equipment_request)",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_request_persists_catalogue_identity_quantity_actor_and_text',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-020,SCRUM-74/75 supporting request schema; SCRUM-16/77 relations,G03 foundation only; not full-story acceptance,test_request_quantity_enforced_in_database[0],"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db, stock, coordinator. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""quantity"": ""0""}","    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentRequest.objects.create(
+            plan=plan, equipment_type=stock, requested_by=coordinator, quantity=quantity
+        )",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_request_quantity_enforced_in_database[0]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-021,SCRUM-74/75 supporting request schema; SCRUM-16/77 relations,G03 foundation only; not full-story acceptance,test_request_quantity_enforced_in_database[-1],"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db, stock, coordinator. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""quantity"": ""-1""}","    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentRequest.objects.create(
+            plan=plan, equipment_type=stock, requested_by=coordinator, quantity=quantity
+        )",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_request_quantity_enforced_in_database[-1]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-022,SCRUM-74/75 supporting request schema; SCRUM-16/77 relations,G03 foundation only; not full-story acceptance,test_one_active_request_per_type_and_plan_with_retained_withdrawn_lines,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    data = {
+        ""plan"": equipment_request.plan,
+        ""equipment_type"": equipment_request.equipment_type,
+        ""requested_by"": coordinator,
+        ""quantity"": 3,
+    }
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentRequest.objects.create(**data)
+    equipment_request.status = EquipmentRequestStatus.WITHDRAWN
+    equipment_request.save()
+    replacement = EquipmentRequest.objects.create(**data)
+    assert replacement.pk != equipment_request.pk
+    assert EquipmentRequest.objects.count() == 2
+    assert EquipmentRequest.objects.get(pk=equipment_request.pk).quantity == 8",pytest.raises(IntegrityError); assert replacement.pk != equipment_request.pk; assert EquipmentRequest.objects.count() == 2; assert EquipmentRequest.objects.get(pk=equipment_request.pk).quantity == 8,cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_one_active_request_per_type_and_plan_with_retained_withdrawn_lines',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-023,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_plan_is_unique_per_event_and_revision_zero_is_valid,"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    plan.full_clean()
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentPlan.objects.create(event=plan.event)
+    assert plan.revision == 0
+    assert ""revision 0"" in str(plan)","pytest.raises(IntegrityError); assert plan.revision == 0; assert ""revision 0"" in str(plan)",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_plan_is_unique_per_event_and_revision_zero_is_valid',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-024,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_invalid_statuses_cannot_enter_database,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentRequest.objects.filter(pk=equipment_request.pk).update(status=""INVALID"")
+    with pytest.raises(IntegrityError), transaction.atomic():
+        reservation(equipment_request, tech, status=""INVALID"").save()
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentType.objects.create(code=""BAD"", name=""Bad"", total_quantity=-1)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentPlan.objects.filter(pk=equipment_request.plan_id).update(revision=-1)",pytest.raises(IntegrityError); pytest.raises(IntegrityError); pytest.raises(IntegrityError); pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_invalid_statuses_cannot_enter_database',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-025,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_reservation_stores_event_period_exact_quantity_and_staff,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    record = reservation(equipment_request, tech)
+    record.full_clean()
+    record.save()
+    record.refresh_from_db()
+    assert record.quantity == 5
+    assert record.starts_at == equipment_request.plan.event.preferred_start
+    assert record.ends_at == equipment_request.plan.event.preferred_end
+    assert record.reserved_by == tech and record.reserved_at is not None
+    assert record.request_id == equipment_request.pk
+    assert ""ACTIVE"" in str(record)","assert record.quantity == 5; assert record.starts_at == equipment_request.plan.event.preferred_start; assert record.ends_at == equipment_request.plan.event.preferred_end; assert record.reserved_by == tech and record.reserved_at is not None; assert record.request_id == equipment_request.pk; assert ""ACTIVE"" in str(record)",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_reservation_stores_event_period_exact_quantity_and_staff',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-026,SCRUM-74/75 supporting request schema; SCRUM-16/77 relations,G03 foundation only; not full-story acceptance,test_reservation_cannot_exceed_request,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    record = reservation(equipment_request, tech, quantity=9)
+    with pytest.raises(ValidationError, match=""cannot exceed""):
+        record.full_clean()","pytest.raises(ValidationError, match=""cannot exceed"")",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_reservation_cannot_exceed_request',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-027,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_database_reservation_constraints[zero_quantity],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""case"": ""'zero_quantity'""}","    record = reservation(equipment_request, tech)
+    if case == ""zero_quantity"":
+        record.quantity = 0
+    elif case == ""negative_quantity"":
+        record.quantity = -1
+    elif case == ""equal_period"":
+        record.ends_at = record.starts_at
+    elif case == ""reversed_period"":
+        record.ends_at = record.starts_at - timezone.timedelta(seconds=1)
+    else:
+        record.status = ReservationStatus.RELEASED
+        record.released_by = tech
+        record.released_at = timezone.now()
+        record.release_reason = ""No longer required""
+        if case == ""release_missing_user"":
+            record.released_by = None
+        elif case == ""release_missing_time"":
+            record.released_at = None
+        elif case == ""release_blank_reason"":
+            record.release_reason = "" \t\n""
+        else:
+            record.status = ReservationStatus.ACTIVE
+    with pytest.raises(IntegrityError), transaction.atomic():
+        record.save()",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_database_reservation_constraints[zero_quantity]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-028,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_database_reservation_constraints[negative_quantity],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""case"": ""'negative_quantity'""}","    record = reservation(equipment_request, tech)
+    if case == ""zero_quantity"":
+        record.quantity = 0
+    elif case == ""negative_quantity"":
+        record.quantity = -1
+    elif case == ""equal_period"":
+        record.ends_at = record.starts_at
+    elif case == ""reversed_period"":
+        record.ends_at = record.starts_at - timezone.timedelta(seconds=1)
+    else:
+        record.status = ReservationStatus.RELEASED
+        record.released_by = tech
+        record.released_at = timezone.now()
+        record.release_reason = ""No longer required""
+        if case == ""release_missing_user"":
+            record.released_by = None
+        elif case == ""release_missing_time"":
+            record.released_at = None
+        elif case == ""release_blank_reason"":
+            record.release_reason = "" \t\n""
+        else:
+            record.status = ReservationStatus.ACTIVE
+    with pytest.raises(IntegrityError), transaction.atomic():
+        record.save()",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_database_reservation_constraints[negative_quantity]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-029,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_database_reservation_constraints[equal_period],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""case"": ""'equal_period'""}","    record = reservation(equipment_request, tech)
+    if case == ""zero_quantity"":
+        record.quantity = 0
+    elif case == ""negative_quantity"":
+        record.quantity = -1
+    elif case == ""equal_period"":
+        record.ends_at = record.starts_at
+    elif case == ""reversed_period"":
+        record.ends_at = record.starts_at - timezone.timedelta(seconds=1)
+    else:
+        record.status = ReservationStatus.RELEASED
+        record.released_by = tech
+        record.released_at = timezone.now()
+        record.release_reason = ""No longer required""
+        if case == ""release_missing_user"":
+            record.released_by = None
+        elif case == ""release_missing_time"":
+            record.released_at = None
+        elif case == ""release_blank_reason"":
+            record.release_reason = "" \t\n""
+        else:
+            record.status = ReservationStatus.ACTIVE
+    with pytest.raises(IntegrityError), transaction.atomic():
+        record.save()",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_database_reservation_constraints[equal_period]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-030,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_database_reservation_constraints[reversed_period],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""case"": ""'reversed_period'""}","    record = reservation(equipment_request, tech)
+    if case == ""zero_quantity"":
+        record.quantity = 0
+    elif case == ""negative_quantity"":
+        record.quantity = -1
+    elif case == ""equal_period"":
+        record.ends_at = record.starts_at
+    elif case == ""reversed_period"":
+        record.ends_at = record.starts_at - timezone.timedelta(seconds=1)
+    else:
+        record.status = ReservationStatus.RELEASED
+        record.released_by = tech
+        record.released_at = timezone.now()
+        record.release_reason = ""No longer required""
+        if case == ""release_missing_user"":
+            record.released_by = None
+        elif case == ""release_missing_time"":
+            record.released_at = None
+        elif case == ""release_blank_reason"":
+            record.release_reason = "" \t\n""
+        else:
+            record.status = ReservationStatus.ACTIVE
+    with pytest.raises(IntegrityError), transaction.atomic():
+        record.save()",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_database_reservation_constraints[reversed_period]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-031,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_database_reservation_constraints[release_missing_user],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""case"": ""'release_missing_user'""}","    record = reservation(equipment_request, tech)
+    if case == ""zero_quantity"":
+        record.quantity = 0
+    elif case == ""negative_quantity"":
+        record.quantity = -1
+    elif case == ""equal_period"":
+        record.ends_at = record.starts_at
+    elif case == ""reversed_period"":
+        record.ends_at = record.starts_at - timezone.timedelta(seconds=1)
+    else:
+        record.status = ReservationStatus.RELEASED
+        record.released_by = tech
+        record.released_at = timezone.now()
+        record.release_reason = ""No longer required""
+        if case == ""release_missing_user"":
+            record.released_by = None
+        elif case == ""release_missing_time"":
+            record.released_at = None
+        elif case == ""release_blank_reason"":
+            record.release_reason = "" \t\n""
+        else:
+            record.status = ReservationStatus.ACTIVE
+    with pytest.raises(IntegrityError), transaction.atomic():
+        record.save()",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_database_reservation_constraints[release_missing_user]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-032,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_database_reservation_constraints[release_missing_time],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""case"": ""'release_missing_time'""}","    record = reservation(equipment_request, tech)
+    if case == ""zero_quantity"":
+        record.quantity = 0
+    elif case == ""negative_quantity"":
+        record.quantity = -1
+    elif case == ""equal_period"":
+        record.ends_at = record.starts_at
+    elif case == ""reversed_period"":
+        record.ends_at = record.starts_at - timezone.timedelta(seconds=1)
+    else:
+        record.status = ReservationStatus.RELEASED
+        record.released_by = tech
+        record.released_at = timezone.now()
+        record.release_reason = ""No longer required""
+        if case == ""release_missing_user"":
+            record.released_by = None
+        elif case == ""release_missing_time"":
+            record.released_at = None
+        elif case == ""release_blank_reason"":
+            record.release_reason = "" \t\n""
+        else:
+            record.status = ReservationStatus.ACTIVE
+    with pytest.raises(IntegrityError), transaction.atomic():
+        record.save()",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_database_reservation_constraints[release_missing_time]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-033,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_database_reservation_constraints[release_blank_reason],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""case"": ""'release_blank_reason'""}","    record = reservation(equipment_request, tech)
+    if case == ""zero_quantity"":
+        record.quantity = 0
+    elif case == ""negative_quantity"":
+        record.quantity = -1
+    elif case == ""equal_period"":
+        record.ends_at = record.starts_at
+    elif case == ""reversed_period"":
+        record.ends_at = record.starts_at - timezone.timedelta(seconds=1)
+    else:
+        record.status = ReservationStatus.RELEASED
+        record.released_by = tech
+        record.released_at = timezone.now()
+        record.release_reason = ""No longer required""
+        if case == ""release_missing_user"":
+            record.released_by = None
+        elif case == ""release_missing_time"":
+            record.released_at = None
+        elif case == ""release_blank_reason"":
+            record.release_reason = "" \t\n""
+        else:
+            record.status = ReservationStatus.ACTIVE
+    with pytest.raises(IntegrityError), transaction.atomic():
+        record.save()",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_database_reservation_constraints[release_blank_reason]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-034,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_database_reservation_constraints[active_has_release_data],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""case"": ""'active_has_release_data'""}","    record = reservation(equipment_request, tech)
+    if case == ""zero_quantity"":
+        record.quantity = 0
+    elif case == ""negative_quantity"":
+        record.quantity = -1
+    elif case == ""equal_period"":
+        record.ends_at = record.starts_at
+    elif case == ""reversed_period"":
+        record.ends_at = record.starts_at - timezone.timedelta(seconds=1)
+    else:
+        record.status = ReservationStatus.RELEASED
+        record.released_by = tech
+        record.released_at = timezone.now()
+        record.release_reason = ""No longer required""
+        if case == ""release_missing_user"":
+            record.released_by = None
+        elif case == ""release_missing_time"":
+            record.released_at = None
+        elif case == ""release_blank_reason"":
+            record.release_reason = "" \t\n""
+        else:
+            record.status = ReservationStatus.ACTIVE
+    with pytest.raises(IntegrityError), transaction.atomic():
+        record.save()",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_database_reservation_constraints[active_has_release_data]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-035,SCRUM-77 AC2 / 75 AC4 supporting history schema,G03 foundation only; not full-story acceptance,test_only_one_active_reservation_but_released_history_can_repeat,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    original = reservation(equipment_request, tech)
+    original.save()
+    with pytest.raises(IntegrityError), transaction.atomic():
+        reservation(equipment_request, tech, quantity=3).save()
+    original.status = ReservationStatus.RELEASED
+    original.released_by = tech
+    original.released_at = timezone.now()
+    original.release_reason = ""Plan changed""
+    original.full_clean()
+    original.save()
+    replacement = reservation(equipment_request, tech, quantity=3)
+    replacement.save()
+    original.refresh_from_db()
+    assert original.quantity == 5 and original.release_reason == ""Plan changed""
+    assert original.released_by == tech and original.released_at is not None
+    assert list(EquipmentReservation.objects.active()) == [replacement]","pytest.raises(IntegrityError); assert original.quantity == 5 and original.release_reason == ""Plan changed""; assert original.released_by == tech and original.released_at is not None; assert list(EquipmentReservation.objects.active()) == [replacement]",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_only_one_active_reservation_but_released_history_can_repeat',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-036,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_half_open_overlap_and_cancelled_event_exclusion,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    record = reservation(equipment_request, tech)
+    record.save()
+    start, end = record.starts_at, record.ends_at
+    assert list(EquipmentReservation.objects.active().overlapping(start, end)) == [record]
+    assert (
+        not EquipmentReservation.objects.active()
+        .overlapping(end, end + timezone.timedelta(hours=1))
+        .exists()
+    )
+    assert (
+        not EquipmentReservation.objects.active()
+        .overlapping(start - timezone.timedelta(hours=1), start)
+        .exists()
+    )
+    assert list(
+        EquipmentReservation.objects.active().overlapping(
+            end - timezone.timedelta(seconds=1), end + timezone.timedelta(seconds=1)
+        )
+    ) == [record]
+    cancelled = make_event(organiser, status=EventStatus.CANCELLED)
+    other_plan = EquipmentPlan.objects.create(event=cancelled)
+    other_request = EquipmentRequest.objects.create(
+        plan=other_plan, equipment_type=stock, quantity=8, requested_by=coordinator
+    )
+    ignored = reservation(other_request, tech, starts_at=start, ends_at=end)
+    ignored.save()
+    assert not EquipmentReservation.objects.active().filter(pk=ignored.pk).exists()
+    assert list(EquipmentReservation.objects.active().overlapping(start, end)) == [record]","assert list(EquipmentReservation.objects.active().overlapping(start, end)) == [record]; assert (
+        not EquipmentReservation.objects.active()
+        .overlapping(end, end + timezone.timedelta(hours=1))
+        .exists()
+    ); assert (
+        not EquipmentReservation.objects.active()
+        .overlapping(start - timezone.timedelta(hours=1), start)
+        .exists()
+    ); assert list(
+        EquipmentReservation.objects.active().overlapping(
+            end - timezone.timedelta(seconds=1), end + timezone.timedelta(seconds=1)
+        )
+    ) == [record]; assert not EquipmentReservation.objects.active().filter(pk=ignored.pk).exists(); assert list(EquipmentReservation.objects.active().overlapping(start, end)) == [record]",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_half_open_overlap_and_cancelled_event_exclusion',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-037,SCRUM-16 AC6 / 90 supporting technical-approval schema,G03 foundation only; not full-story acceptance,test_technical_approval_is_explicit_and_old_approval_is_retained,"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    assert not plan.technical_approvals.exists()
+    ambiguous = TechnicalApproval(plan=plan, plan_revision=0, approved_by=tech)
+    with pytest.raises(ValidationError, match=""Explicitly acknowledge""):
+        ambiguous.full_clean()
+    approval = TechnicalApproval(
+        plan=plan, plan_revision=0, approved_by=tech, no_equipment_required=True
+    )
+    approval.full_clean()
+    approval.save()
+    with pytest.raises(IntegrityError), transaction.atomic():
+        TechnicalApproval.objects.create(
+            plan=plan, plan_revision=0, approved_by=tech, no_equipment_required=True
+        )
+    approval.status = TechnicalApprovalStatus.SUPERSEDED
+    approval.superseded_at = timezone.now()
+    approval.full_clean()
+    approval.save()
+    plan.revision = 1
+    plan.save()
+    current = TechnicalApproval(
+        plan=plan, plan_revision=1, approved_by=tech, no_equipment_required=True
+    )
+    current.full_clean()
+    current.save()
+    assert plan.technical_approvals.count() == 2
+    assert approval.approved_by == tech and approval.approved_at is not None
+    assert ""revision 0"" in str(approval)","pytest.raises(ValidationError, match=""Explicitly acknowledge""); pytest.raises(IntegrityError); assert not plan.technical_approvals.exists(); assert plan.technical_approvals.count() == 2; assert approval.approved_by == tech and approval.approved_at is not None; assert ""revision 0"" in str(approval)",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_technical_approval_is_explicit_and_old_approval_is_retained',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-038,SCRUM-16 AC6 / 90 supporting technical-approval schema,G03 foundation only; not full-story acceptance,test_current_approval_rejects_stale_revision_or_false_no_equipment,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    plan = equipment_request.plan
+    stale = TechnicalApproval(plan=plan, plan_revision=1, approved_by=tech)
+    with pytest.raises(ValidationError, match=""current equipment revision""):
+        stale.full_clean()
+    false_empty = TechnicalApproval(
+        plan=plan, plan_revision=0, approved_by=tech, no_equipment_required=True
+    )
+    with pytest.raises(ValidationError, match=""still has equipment requests""):
+        false_empty.full_clean()
+    # Record validation is not the future technical-readiness workflow.
+    valid_record = TechnicalApproval(plan=plan, plan_revision=0, approved_by=tech)
+    valid_record.full_clean()","pytest.raises(ValidationError, match=""current equipment revision""); pytest.raises(ValidationError, match=""still has equipment requests"")",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_current_approval_rejects_stale_revision_or_false_no_equipment',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-039,SCRUM-16 AC6 / 90 supporting technical-approval schema,G03 foundation only; not full-story acceptance,test_approval_state_timestamp_database_constraint[APPROVED-True],"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""status"": ""'APPROVED'"", ""timestamp"": ""True""}","    with pytest.raises(IntegrityError), transaction.atomic():
+        TechnicalApproval.objects.create(
+            plan=plan,
+            plan_revision=0,
+            approved_by=tech,
+            status=status,
+            superseded_at=timezone.now() if timestamp else None,
+        )",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_approval_state_timestamp_database_constraint[APPROVED-True]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-040,SCRUM-16 AC6 / 90 supporting technical-approval schema,G03 foundation only; not full-story acceptance,test_approval_state_timestamp_database_constraint[SUPERSEDED-False],"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""status"": ""'SUPERSEDED'"", ""timestamp"": ""False""}","    with pytest.raises(IntegrityError), transaction.atomic():
+        TechnicalApproval.objects.create(
+            plan=plan,
+            plan_revision=0,
+            approved_by=tech,
+            status=status,
+            superseded_at=timezone.now() if timestamp else None,
+        )",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_approval_state_timestamp_database_constraint[SUPERSEDED-False]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-041,SCRUM-16 AC6 / 90 supporting technical-approval schema,G03 foundation only; not full-story acceptance,test_approval_state_timestamp_database_constraint[INVALID-False],"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""status"": ""'INVALID'"", ""timestamp"": ""False""}","    with pytest.raises(IntegrityError), transaction.atomic():
+        TechnicalApproval.objects.create(
+            plan=plan,
+            plan_revision=0,
+            approved_by=tech,
+            status=status,
+            superseded_at=timezone.now() if timestamp else None,
+        )",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_approval_state_timestamp_database_constraint[INVALID-False]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-042,SCRUM-74/75 supporting request schema; SCRUM-16/77 relations,G03 foundation only; not full-story acceptance,test_history_snapshots_survive_future_request_changes,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    record = reservation(equipment_request, tech)
+    record.save()
+    history = EquipmentHistory(
+        plan=equipment_request.plan,
+        request=equipment_request,
+        reservation=record,
+        action=""AMENDED"",
+        plan_revision=0,
+        before={""quantity"": 5},
+        after={""quantity"": 3},
+        actor=tech,
+        reason=""Two fewer projectors"",
+    )
+    history.full_clean()
+    history.save()
+    equipment_request.quantity = 3
+    equipment_request.save()
+    history.refresh_from_db()
+    assert history.before == {""quantity"": 5} and history.after == {""quantity"": 3}
+    assert history.actor == tech and history.created_at is not None
+    assert history.reason == ""Two fewer projectors""
+    assert ""Amended"" in str(history)
+    with pytest.raises(ProtectedError):
+        tech.delete()
+    with pytest.raises(ProtectedError):
+        equipment_request.plan.event.delete()
+    with pytest.raises(ProtectedError):
+        equipment_request.equipment_type.delete()
+    with pytest.raises(ProtectedError):
+        equipment_request.delete()
+    with pytest.raises(ProtectedError):
+        record.delete()","pytest.raises(ProtectedError); pytest.raises(ProtectedError); pytest.raises(ProtectedError); pytest.raises(ProtectedError); pytest.raises(ProtectedError); assert history.before == {""quantity"": 5} and history.after == {""quantity"": 3}; assert history.actor == tech and history.created_at is not None; assert history.reason == ""Two fewer projectors""; assert ""Amended"" in str(history)",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_history_snapshots_survive_future_request_changes',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-043,SCRUM-77 AC2 / 75 AC4 supporting history schema,G03 foundation only; not full-story acceptance,test_history_requires_object_snapshots[None],"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""snapshot"": ""None""}","    history = EquipmentHistory(
+        plan=plan, action=""APPROVED"", plan_revision=0, actor=tech, before=snapshot
+    )
+    with pytest.raises(ValidationError, match=""JSON objects""):
+        history.full_clean()","pytest.raises(ValidationError, match=""JSON objects"")",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_history_requires_object_snapshots[None]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-044,SCRUM-77 AC2 / 75 AC4 supporting history schema,G03 foundation only; not full-story acceptance,test_history_requires_object_snapshots[snapshot1],"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""snapshot"": ""[]""}","    history = EquipmentHistory(
+        plan=plan, action=""APPROVED"", plan_revision=0, actor=tech, before=snapshot
+    )
+    with pytest.raises(ValidationError, match=""JSON objects""):
+        history.full_clean()","pytest.raises(ValidationError, match=""JSON objects"")",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_history_requires_object_snapshots[snapshot1]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-045,SCRUM-77 AC2 / 75 AC4 supporting history schema,G03 foundation only; not full-story acceptance,test_history_requires_object_snapshots[invalid],"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""snapshot"": ""'invalid'""}","    history = EquipmentHistory(
+        plan=plan, action=""APPROVED"", plan_revision=0, actor=tech, before=snapshot
+    )
+    with pytest.raises(ValidationError, match=""JSON objects""):
+        history.full_clean()","pytest.raises(ValidationError, match=""JSON objects"")",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_history_requires_object_snapshots[invalid]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-046,SCRUM-77 AC2 / 75 AC4 supporting history schema,G03 foundation only; not full-story acceptance,test_history_rejects_cross_plan_and_mismatched_reservation,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    other_plan = EquipmentPlan.objects.create(
+        event=make_event(organiser, status=EventStatus.SUBMITTED)
+    )
+    other_req = EquipmentRequest.objects.create(
+        plan=other_plan, equipment_type=stock, quantity=8, requested_by=coordinator
+    )
+    record = reservation(other_req, tech)
+    record.save()
+    history = EquipmentHistory(
+        plan=equipment_request.plan,
+        request=other_req,
+        action=""AMENDED"",
+        plan_revision=0,
+        actor=tech,
+    )
+    with pytest.raises(ValidationError, match=""request must belong""):
+        history.full_clean()
+    history.request = equipment_request
+    history.reservation = record
+    with pytest.raises(ValidationError, match=""reservation must match""):
+        history.full_clean()
+    history.plan = other_plan
+    with pytest.raises(ValidationError):
+        history.full_clean()
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentHistory.objects.create(
+            plan=other_plan, action=""INVALID"", plan_revision=0, actor=tech
+        )","pytest.raises(ValidationError, match=""request must belong""); pytest.raises(ValidationError, match=""reservation must match""); pytest.raises(ValidationError); pytest.raises(IntegrityError)",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_history_rejects_cross_plan_and_mismatched_reservation',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-047,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_unavailability_string,"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    record = EquipmentUnavailability(
+        equipment_type=stock, quantity=2, cause=""DAMAGED"", reason=""Broken"", reported_by=tech
+    )
+    assert str(record) == f""{stock.pk}: 2 Damaged""","assert str(record) == f""{stock.pk}: 2 Damaged""",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_unavailability_string',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-048,SCRUM-16 AC6 / 90 supporting technical-approval schema,G03 foundation only; not full-story acceptance,test_approval_validation_uses_fresh_plan_revision,"PostgreSQL16; isolated test DB. Named fixtures: plan, submitted_event, organiser, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    approval = TechnicalApproval(
+        plan=plan, plan_revision=0, approved_by=tech, no_equipment_required=True
+    )
+    EquipmentPlan.objects.filter(pk=plan.pk).update(revision=1)
+    with pytest.raises(ValidationError, match=""current equipment revision""):
+        approval.full_clean()","pytest.raises(ValidationError, match=""current equipment revision"")",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_approval_validation_uses_fresh_plan_revision',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-049,SCRUM-74/75 supporting request schema; SCRUM-16/77 relations,G03 foundation only; not full-story acceptance,test_reservation_validation_uses_fresh_request_quantity,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    record = reservation(equipment_request, tech, quantity=5)
+    EquipmentRequest.objects.filter(pk=equipment_request.pk).update(quantity=3)
+    with pytest.raises(ValidationError, match=""cannot exceed""):
+        record.full_clean()","pytest.raises(ValidationError, match=""cannot exceed"")",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_reservation_validation_uses_fresh_request_quantity',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-050,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_invalid_related_id_is_a_validation_error[unavailability],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""model"": ""'unavailability'""}","    if model == ""unavailability"":
+        record = EquipmentUnavailability(
+            equipment_type_id=999999, quantity=1, cause=""DAMAGED"", reason=""Broken"", reported_by=tech
+        )
+    elif model == ""reservation"":
+        record = reservation(equipment_request, tech)
+        record.request_id = 999999
+    elif model == ""approval"":
+        record = TechnicalApproval(plan_id=999999, plan_revision=0, approved_by=tech)
+    elif model == ""history_request"":
+        record = EquipmentHistory(
+            plan=equipment_request.plan,
+            request_id=999999,
+            action=""AMENDED"",
+            plan_revision=0,
+            actor=tech,
+        )
+    else:
+        record = EquipmentHistory(
+            plan=equipment_request.plan,
+            reservation_id=999999,
+            action=""AMENDED"",
+            plan_revision=0,
+            actor=tech,
+        )
+    with pytest.raises(ValidationError):
+        record.full_clean()",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_invalid_related_id_is_a_validation_error[unavailability]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-051,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_invalid_related_id_is_a_validation_error[reservation],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""model"": ""'reservation'""}","    if model == ""unavailability"":
+        record = EquipmentUnavailability(
+            equipment_type_id=999999, quantity=1, cause=""DAMAGED"", reason=""Broken"", reported_by=tech
+        )
+    elif model == ""reservation"":
+        record = reservation(equipment_request, tech)
+        record.request_id = 999999
+    elif model == ""approval"":
+        record = TechnicalApproval(plan_id=999999, plan_revision=0, approved_by=tech)
+    elif model == ""history_request"":
+        record = EquipmentHistory(
+            plan=equipment_request.plan,
+            request_id=999999,
+            action=""AMENDED"",
+            plan_revision=0,
+            actor=tech,
+        )
+    else:
+        record = EquipmentHistory(
+            plan=equipment_request.plan,
+            reservation_id=999999,
+            action=""AMENDED"",
+            plan_revision=0,
+            actor=tech,
+        )
+    with pytest.raises(ValidationError):
+        record.full_clean()",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_invalid_related_id_is_a_validation_error[reservation]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-052,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_invalid_related_id_is_a_validation_error[approval],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""model"": ""'approval'""}","    if model == ""unavailability"":
+        record = EquipmentUnavailability(
+            equipment_type_id=999999, quantity=1, cause=""DAMAGED"", reason=""Broken"", reported_by=tech
+        )
+    elif model == ""reservation"":
+        record = reservation(equipment_request, tech)
+        record.request_id = 999999
+    elif model == ""approval"":
+        record = TechnicalApproval(plan_id=999999, plan_revision=0, approved_by=tech)
+    elif model == ""history_request"":
+        record = EquipmentHistory(
+            plan=equipment_request.plan,
+            request_id=999999,
+            action=""AMENDED"",
+            plan_revision=0,
+            actor=tech,
+        )
+    else:
+        record = EquipmentHistory(
+            plan=equipment_request.plan,
+            reservation_id=999999,
+            action=""AMENDED"",
+            plan_revision=0,
+            actor=tech,
+        )
+    with pytest.raises(ValidationError):
+        record.full_clean()",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_invalid_related_id_is_a_validation_error[approval]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-053,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_invalid_related_id_is_a_validation_error[history_request],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""model"": ""'history_request'""}","    if model == ""unavailability"":
+        record = EquipmentUnavailability(
+            equipment_type_id=999999, quantity=1, cause=""DAMAGED"", reason=""Broken"", reported_by=tech
+        )
+    elif model == ""reservation"":
+        record = reservation(equipment_request, tech)
+        record.request_id = 999999
+    elif model == ""approval"":
+        record = TechnicalApproval(plan_id=999999, plan_revision=0, approved_by=tech)
+    elif model == ""history_request"":
+        record = EquipmentHistory(
+            plan=equipment_request.plan,
+            request_id=999999,
+            action=""AMENDED"",
+            plan_revision=0,
+            actor=tech,
+        )
+    else:
+        record = EquipmentHistory(
+            plan=equipment_request.plan,
+            reservation_id=999999,
+            action=""AMENDED"",
+            plan_revision=0,
+            actor=tech,
+        )
+    with pytest.raises(ValidationError):
+        record.full_clean()",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_invalid_related_id_is_a_validation_error[history_request]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-054,SCRUM-16/77 supporting reservation/plan schema,G03 foundation only; not full-story acceptance,test_invalid_related_id_is_a_validation_error[history_reservation],"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""model"": ""'history_reservation'""}","    if model == ""unavailability"":
+        record = EquipmentUnavailability(
+            equipment_type_id=999999, quantity=1, cause=""DAMAGED"", reason=""Broken"", reported_by=tech
+        )
+    elif model == ""reservation"":
+        record = reservation(equipment_request, tech)
+        record.request_id = 999999
+    elif model == ""approval"":
+        record = TechnicalApproval(plan_id=999999, plan_revision=0, approved_by=tech)
+    elif model == ""history_request"":
+        record = EquipmentHistory(
+            plan=equipment_request.plan,
+            request_id=999999,
+            action=""AMENDED"",
+            plan_revision=0,
+            actor=tech,
+        )
+    else:
+        record = EquipmentHistory(
+            plan=equipment_request.plan,
+            reservation_id=999999,
+            action=""AMENDED"",
+            plan_revision=0,
+            actor=tech,
+        )
+    with pytest.raises(ValidationError):
+        record.full_clean()",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_invalid_related_id_is_a_validation_error[history_reservation]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-055,SCRUM-74/75 supporting request schema; SCRUM-16/77 relations,G03 foundation only; not full-story acceptance,test_history_refuses_different_request_of_same_plan,"PostgreSQL16; isolated test DB. Named fixtures: equipment_request, plan, submitted_event, organiser, db, stock, coordinator, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    other_type = EquipmentType.objects.create(code=""SCREEN"", name=""Screen"", total_quantity=4)
+    other_request = EquipmentRequest.objects.create(
+        plan=equipment_request.plan, equipment_type=other_type, quantity=4, requested_by=coordinator
+    )
+    record = reservation(other_request, tech, quantity=3)
+    record.save()
+    history = EquipmentHistory(
+        plan=equipment_request.plan,
+        request=equipment_request,
+        reservation=record,
+        action=""RELEASED"",
+        plan_revision=0,
+        actor=tech,
+    )
+    with pytest.raises(ValidationError, match=""reservation must match""):
+        history.full_clean()","pytest.raises(ValidationError, match=""reservation must match"")",cd api && pytest 'apps/equipment/tests/test_equipment_models.py::test_history_refuses_different_request_of_same_plan',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-056,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_stock_counts_damage_and_maintenance_without_auto_restoring_expired_estimate,"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    damaged = save_unavailability(
+        unavailable(stock, tech, expected_return_at=timezone.now() - timezone.timedelta(days=1))
+    )
+    maintenance = unavailable(stock, tech)
+    maintenance.cause = UnavailabilityCause.MAINTENANCE
+    save_unavailability(maintenance)
+    stock.refresh_from_db()
+    assert stock.total_quantity == 10
+    assert stock.unavailable_quantity == 2
+    assert stock.total_quantity - stock.unavailable_quantity == 8
+    damaged.refresh_from_db()
+    assert damaged.reason == ""Lens cracked"" and damaged.restored_at is None
+    assert damaged.reported_by == tech","assert stock.total_quantity == 10; assert stock.unavailable_quantity == 2; assert stock.total_quantity - stock.unavailable_quantity == 8; assert damaged.reason == ""Lens cracked"" and damaged.restored_at is None; assert damaged.reported_by == tech",cd api && pytest 'apps/equipment/tests/test_inventory.py::test_stock_counts_damage_and_maintenance_without_auto_restoring_expired_estimate',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-057,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_new_empty_stock_and_valid_stock_update,PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,{},"    item = EquipmentType(code=""NEW"", name=""New type"", total_quantity=0)
+    assert item.unavailable_quantity == 0
+    save_equipment_type(item)
+    item.total_quantity = 5
+    save_equipment_type(item)
+    item.refresh_from_db()
+    assert item.total_quantity == 5 and item.unavailable_quantity == 0",assert item.unavailable_quantity == 0; assert item.total_quantity == 5 and item.unavailable_quantity == 0,cd api && pytest 'apps/equipment/tests/test_inventory.py::test_new_empty_stock_and_valid_stock_update',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-058,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_total_can_equal_unavailable_but_cannot_be_below_it,"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    save_unavailability(unavailable(stock, tech, 2))
+    stock.total_quantity = 2
+    save_equipment_type(stock)
+    stock.total_quantity = 1
+    with pytest.raises(ValidationError, match=""below recorded unavailable""):
+        save_equipment_type(stock)
+    stock.refresh_from_db()
+    assert stock.total_quantity == stock.unavailable_quantity == 2","pytest.raises(ValidationError, match=""below recorded unavailable""); assert stock.total_quantity == stock.unavailable_quantity == 2",cd api && pytest 'apps/equipment/tests/test_inventory.py::test_total_can_equal_unavailable_but_cannot_be_below_it',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-059,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_unavailable_total_rechecked_against_fresh_locked_stock,"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    EquipmentType.objects.filter(pk=stock.pk).update(total_quantity=1)
+    record = unavailable(stock, tech, 2)
+    with pytest.raises(ValidationError, match=""cannot exceed""):
+        save_unavailability(record)
+    assert not EquipmentUnavailability.objects.exists()","pytest.raises(ValidationError, match=""cannot exceed""); assert not EquipmentUnavailability.objects.exists()",cd api && pytest 'apps/equipment/tests/test_inventory.py::test_unavailable_total_rechecked_against_fresh_locked_stock',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-060,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_updating_existing_record_excludes_its_own_quantity,"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    record = save_unavailability(unavailable(stock, tech, 6))
+    record.quantity = 10
+    save_unavailability(record)
+    record.refresh_from_db()
+    assert record.quantity == stock.unavailable_quantity == 10",assert record.quantity == stock.unavailable_quantity == 10,cd api && pytest 'apps/equipment/tests/test_inventory.py::test_updating_existing_record_excludes_its_own_quantity',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-061,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_invalid_unavailable_quantity_has_no_partial_write[0],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""quantity"": ""0""}","    with pytest.raises(ValidationError):
+        save_unavailability(unavailable(stock, tech, quantity))
+    assert not EquipmentUnavailability.objects.exists()",pytest.raises(ValidationError); assert not EquipmentUnavailability.objects.exists(),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_invalid_unavailable_quantity_has_no_partial_write[0]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-062,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_invalid_unavailable_quantity_has_no_partial_write[-1],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""quantity"": ""-1""}","    with pytest.raises(ValidationError):
+        save_unavailability(unavailable(stock, tech, quantity))
+    assert not EquipmentUnavailability.objects.exists()",pytest.raises(ValidationError); assert not EquipmentUnavailability.objects.exists(),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_invalid_unavailable_quantity_has_no_partial_write[-1]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-063,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_invalid_unavailable_quantity_has_no_partial_write[11],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""quantity"": ""11""}","    with pytest.raises(ValidationError):
+        save_unavailability(unavailable(stock, tech, quantity))
+    assert not EquipmentUnavailability.objects.exists()",pytest.raises(ValidationError); assert not EquipmentUnavailability.objects.exists(),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_invalid_unavailable_quantity_has_no_partial_write[11]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-064,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_reason_required[],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""reason"": ""''""}","    record = unavailable(stock, tech)
+    record.reason = reason
+    with pytest.raises(ValidationError):
+        save_unavailability(record)
+    assert not EquipmentUnavailability.objects.exists()",pytest.raises(ValidationError); assert not EquipmentUnavailability.objects.exists(),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_reason_required[]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-065,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_reason_required[   ],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""reason"": ""'   '""}","    record = unavailable(stock, tech)
+    record.reason = reason
+    with pytest.raises(ValidationError):
+        save_unavailability(record)
+    assert not EquipmentUnavailability.objects.exists()",pytest.raises(ValidationError); assert not EquipmentUnavailability.objects.exists(),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_reason_required[   ]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-066,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_reason_required[None],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""reason"": ""None""}","    record = unavailable(stock, tech)
+    record.reason = reason
+    with pytest.raises(ValidationError):
+        save_unavailability(record)
+    assert not EquipmentUnavailability.objects.exists()",pytest.raises(ValidationError); assert not EquipmentUnavailability.objects.exists(),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_reason_required[None]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-067,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_reason_required[12],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""reason"": ""12""}","    record = unavailable(stock, tech)
+    record.reason = reason
+    with pytest.raises(ValidationError):
+        save_unavailability(record)
+    assert not EquipmentUnavailability.objects.exists()",pytest.raises(ValidationError); assert not EquipmentUnavailability.objects.exists(),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_reason_required[12]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-068,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_naive_return_estimate_refused,"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    with pytest.raises(ValidationError, match=""timezone-aware""):
+        save_unavailability(unavailable(stock, tech, expected_return_at=datetime(2027, 3, 1)))
+    assert not EquipmentUnavailability.objects.exists()","pytest.raises(ValidationError, match=""timezone-aware""); assert not EquipmentUnavailability.objects.exists()",cd api && pytest 'apps/equipment/tests/test_inventory.py::test_naive_return_estimate_refused',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-069,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_record_cannot_move_type_or_be_edited_after_restore,"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    record = save_unavailability(unavailable(stock, tech))
+    other = EquipmentType.objects.create(code=""OTHER"", name=""Other"", total_quantity=10)
+    record.equipment_type = other
+    with pytest.raises(ValidationError, match=""cannot change""):
+        save_unavailability(record)
+    record.refresh_from_db()
+    restore_unavailability(record, tech)
+    record.reason = ""Rewrite history""
+    with pytest.raises(ValidationError, match=""cannot be edited""):
+        save_unavailability(record)","pytest.raises(ValidationError, match=""cannot change""); pytest.raises(ValidationError, match=""cannot be edited"")",cd api && pytest 'apps/equipment/tests/test_inventory.py::test_record_cannot_move_type_or_be_edited_after_restore',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-070,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_restore_retains_record_actor_time_and_is_idempotent,"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    record = save_unavailability(unavailable(stock, tech, 2))
+    restore_unavailability(record, tech)
+    first_time = record.restored_at
+    restore_unavailability(record, tech)
+    record.refresh_from_db()
+    assert record.restored_by == tech and record.restored_at == first_time
+    assert record.quantity == 2 and record.reason == ""Lens cracked""
+    assert stock.unavailable_quantity == 0 and stock.total_quantity == 10
+    assert EquipmentUnavailability.objects.count() == 1","assert record.restored_by == tech and record.restored_at == first_time; assert record.quantity == 2 and record.reason == ""Lens cracked""; assert stock.unavailable_quantity == 0 and stock.total_quantity == 10; assert EquipmentUnavailability.objects.count() == 1",cd api && pytest 'apps/equipment/tests/test_inventory.py::test_restore_retains_record_actor_time_and_is_idempotent',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-071,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_database_refuses_invalid_unavailability_records[changes0],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""changes"": ""{'quantity': 0}""}","    data = {
+        ""equipment_type"": stock,
+        ""quantity"": 1,
+        ""cause"": ""DAMAGED"",
+        ""reason"": ""Broken"",
+        ""reported_by"": tech,
+    }
+    if changes.get(""restored_by""):
+        changes = {""restored_by"": tech}
+    data.update(changes)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentUnavailability.objects.create(**data)",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_database_refuses_invalid_unavailability_records[changes0]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-072,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_database_refuses_invalid_unavailability_records[changes1],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""changes"": ""{'quantity': -1}""}","    data = {
+        ""equipment_type"": stock,
+        ""quantity"": 1,
+        ""cause"": ""DAMAGED"",
+        ""reason"": ""Broken"",
+        ""reported_by"": tech,
+    }
+    if changes.get(""restored_by""):
+        changes = {""restored_by"": tech}
+    data.update(changes)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentUnavailability.objects.create(**data)",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_database_refuses_invalid_unavailability_records[changes1]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-073,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_database_refuses_invalid_unavailability_records[changes2],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""changes"": ""{'cause': 'UNKNOWN'}""}","    data = {
+        ""equipment_type"": stock,
+        ""quantity"": 1,
+        ""cause"": ""DAMAGED"",
+        ""reason"": ""Broken"",
+        ""reported_by"": tech,
+    }
+    if changes.get(""restored_by""):
+        changes = {""restored_by"": tech}
+    data.update(changes)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentUnavailability.objects.create(**data)",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_database_refuses_invalid_unavailability_records[changes2]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-074,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_database_refuses_invalid_unavailability_records[changes3],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""changes"": ""{'reason': ' \\t\\n'}""}","    data = {
+        ""equipment_type"": stock,
+        ""quantity"": 1,
+        ""cause"": ""DAMAGED"",
+        ""reason"": ""Broken"",
+        ""reported_by"": tech,
+    }
+    if changes.get(""restored_by""):
+        changes = {""restored_by"": tech}
+    data.update(changes)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentUnavailability.objects.create(**data)",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_database_refuses_invalid_unavailability_records[changes3]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-075,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_database_refuses_invalid_unavailability_records[changes4],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""changes"": ""{'restored_at': aware timestamp generated at test collection}""}","    data = {
+        ""equipment_type"": stock,
+        ""quantity"": 1,
+        ""cause"": ""DAMAGED"",
+        ""reason"": ""Broken"",
+        ""reported_by"": tech,
+    }
+    if changes.get(""restored_by""):
+        changes = {""restored_by"": tech}
+    data.update(changes)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentUnavailability.objects.create(**data)",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_database_refuses_invalid_unavailability_records[changes4]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-076,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_database_refuses_invalid_unavailability_records[changes5],"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.","{""changes"": ""{'restored_by': True}""}","    data = {
+        ""equipment_type"": stock,
+        ""quantity"": 1,
+        ""cause"": ""DAMAGED"",
+        ""reason"": ""Broken"",
+        ""reported_by"": tech,
+    }
+    if changes.get(""restored_by""):
+        changes = {""restored_by"": tech}
+    data.update(changes)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        EquipmentUnavailability.objects.create(**data)",pytest.raises(IntegrityError),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_database_refuses_invalid_unavailability_records[changes5]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-077,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_lock_requires_callers_transaction,"PostgreSQL16; isolated test DB. Named fixtures: stock, db. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    with pytest.raises(transaction.TransactionManagementError):
+        lock_equipment_types([stock.pk])",pytest.raises(transaction.TransactionManagementError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_lock_requires_callers_transaction',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-078,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_concurrent_unavailability_cannot_exceed_stock,"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    barrier = Barrier(2)
+
+    def attempt(_):
+        close_old_connections()
+        try:
+            item = EquipmentType.objects.get(pk=stock.pk)
+            record = unavailable(item, tech, 6)
+            barrier.wait(timeout=10)
+            try:
+                save_unavailability(record)
+                return ""saved""
+            except ValidationError:
+                return ""refused""
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(attempt, range(2)))
+    assert sorted(results) == [""refused"", ""saved""]
+    assert stock.unavailable_quantity == 6
+    assert EquipmentUnavailability.objects.count() == 1","assert sorted(results) == [""refused"", ""saved""]; assert stock.unavailable_quantity == 6; assert EquipmentUnavailability.objects.count() == 1",cd api && pytest 'apps/equipment/tests/test_inventory.py::test_concurrent_unavailability_cannot_exceed_stock',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-079,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_stock_reduction_and_new_unavailability_serialize,"PostgreSQL16; isolated test DB. Named fixtures: stock, db, tech. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    save_unavailability(unavailable(stock, tech, 6))
+    barrier = Barrier(2)
+
+    def attempt(reduce_stock):
+        close_old_connections()
+        try:
+            item = EquipmentType.objects.get(pk=stock.pk)
+            barrier.wait(timeout=10)
+            try:
+                if reduce_stock:
+                    item.total_quantity = 6
+                    save_equipment_type(item)
+                else:
+                    save_unavailability(unavailable(item, tech, 4))
+                return ""saved""
+            except ValidationError:
+                return ""refused""
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(attempt, [True, False]))
+    assert sorted(results) == [""refused"", ""saved""]
+    stock.refresh_from_db()
+    assert (stock.total_quantity, stock.unavailable_quantity) in {(6, 6), (10, 10)}","assert sorted(results) == [""refused"", ""saved""]; assert (stock.total_quantity, stock.unavailable_quantity) in {(6, 6), (10, 10)}",cd api && pytest 'apps/equipment/tests/test_inventory.py::test_stock_reduction_and_new_unavailability_serialize',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-080,SCRUM-16 AC4 / 12 AC4 / 76 AC2 supporting stock records,G03 foundation only; not full-story acceptance,test_type_lock_is_held_until_callers_transaction_ends,"PostgreSQL16; isolated test DB. Named fixtures: stock, db. stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.",{},"    def competing_lock():
+        close_old_connections()
+        try:
+            with transaction.atomic():
+                EquipmentType.objects.select_for_update(nowait=True).get(pk=stock.pk)
+        finally:
+            close_old_connections()
+
+    with transaction.atomic():
+        lock_equipment_types([stock.pk])
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with pytest.raises(OperationalError):
+                pool.submit(competing_lock).result(timeout=10)",pytest.raises(OperationalError),cd api && pytest 'apps/equipment/tests/test_inventory.py::test_type_lock_is_held_until_callers_transaction_ends',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-081,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_positive_whole_quantity_contract[1],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""value"": ""1""}",    validate_quantity(value),,cd api && pytest 'apps/equipment/tests/test_contracts.py::test_positive_whole_quantity_contract[1]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-082,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_positive_whole_quantity_contract[3],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""value"": ""3""}",    validate_quantity(value),,cd api && pytest 'apps/equipment/tests/test_contracts.py::test_positive_whole_quantity_contract[3]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-083,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_positive_whole_quantity_contract[1000],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""value"": ""1000""}",    validate_quantity(value),,cd api && pytest 'apps/equipment/tests/test_contracts.py::test_positive_whole_quantity_contract[1000]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-084,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_quantity_contract[0],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""value"": ""0""}","    with pytest.raises(ValidationError, match=""positive whole""):
+        validate_quantity(value)","pytest.raises(ValidationError, match=""positive whole"")",cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_quantity_contract[0]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-085,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_quantity_contract[-1],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""value"": ""-1""}","    with pytest.raises(ValidationError, match=""positive whole""):
+        validate_quantity(value)","pytest.raises(ValidationError, match=""positive whole"")",cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_quantity_contract[-1]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-086,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_quantity_contract[True],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""value"": ""True""}","    with pytest.raises(ValidationError, match=""positive whole""):
+        validate_quantity(value)","pytest.raises(ValidationError, match=""positive whole"")",cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_quantity_contract[True]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-087,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_quantity_contract[False],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""value"": ""False""}","    with pytest.raises(ValidationError, match=""positive whole""):
+        validate_quantity(value)","pytest.raises(ValidationError, match=""positive whole"")",cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_quantity_contract[False]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-088,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_quantity_contract[1.5],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""value"": ""1.5""}","    with pytest.raises(ValidationError, match=""positive whole""):
+        validate_quantity(value)","pytest.raises(ValidationError, match=""positive whole"")",cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_quantity_contract[1.5]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-089,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_quantity_contract[3],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""value"": ""'3'""}","    with pytest.raises(ValidationError, match=""positive whole""):
+        validate_quantity(value)","pytest.raises(ValidationError, match=""positive whole"")",cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_quantity_contract[3]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-090,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_quantity_contract[None],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""value"": ""None""}","    with pytest.raises(ValidationError, match=""positive whole""):
+        validate_quantity(value)","pytest.raises(ValidationError, match=""positive whole"")",cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_quantity_contract[None]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-091,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_aware_positive_period_contract,PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,{},"    start = datetime(2027, 3, 1, 2, tzinfo=UTC)
+    validate_period(start, start + timedelta(seconds=1))",,cd api && pytest 'apps/equipment/tests/test_contracts.py::test_aware_positive_period_contract',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-092,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_period_contract[missing_start],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""case"": ""'missing_start'""}","    start = datetime(2027, 3, 1, 2, tzinfo=UTC)
+    end = start + timedelta(hours=2)
+    if case == ""missing_start"":
+        start = None
+    elif case == ""missing_end"":
+        end = None
+    elif case == ""string"":
+        start = ""2027-03-01""
+    elif case == ""naive_start"":
+        start = start.replace(tzinfo=None)
+    elif case == ""naive_end"":
+        end = end.replace(tzinfo=None)
+    elif case == ""equal"":
+        end = start
+    else:
+        end = start - timedelta(seconds=1)
+    with pytest.raises(ValidationError):
+        validate_period(start, end)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_period_contract[missing_start]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-093,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_period_contract[missing_end],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""case"": ""'missing_end'""}","    start = datetime(2027, 3, 1, 2, tzinfo=UTC)
+    end = start + timedelta(hours=2)
+    if case == ""missing_start"":
+        start = None
+    elif case == ""missing_end"":
+        end = None
+    elif case == ""string"":
+        start = ""2027-03-01""
+    elif case == ""naive_start"":
+        start = start.replace(tzinfo=None)
+    elif case == ""naive_end"":
+        end = end.replace(tzinfo=None)
+    elif case == ""equal"":
+        end = start
+    else:
+        end = start - timedelta(seconds=1)
+    with pytest.raises(ValidationError):
+        validate_period(start, end)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_period_contract[missing_end]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-094,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_period_contract[string],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""case"": ""'string'""}","    start = datetime(2027, 3, 1, 2, tzinfo=UTC)
+    end = start + timedelta(hours=2)
+    if case == ""missing_start"":
+        start = None
+    elif case == ""missing_end"":
+        end = None
+    elif case == ""string"":
+        start = ""2027-03-01""
+    elif case == ""naive_start"":
+        start = start.replace(tzinfo=None)
+    elif case == ""naive_end"":
+        end = end.replace(tzinfo=None)
+    elif case == ""equal"":
+        end = start
+    else:
+        end = start - timedelta(seconds=1)
+    with pytest.raises(ValidationError):
+        validate_period(start, end)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_period_contract[string]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-095,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_period_contract[naive_start],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""case"": ""'naive_start'""}","    start = datetime(2027, 3, 1, 2, tzinfo=UTC)
+    end = start + timedelta(hours=2)
+    if case == ""missing_start"":
+        start = None
+    elif case == ""missing_end"":
+        end = None
+    elif case == ""string"":
+        start = ""2027-03-01""
+    elif case == ""naive_start"":
+        start = start.replace(tzinfo=None)
+    elif case == ""naive_end"":
+        end = end.replace(tzinfo=None)
+    elif case == ""equal"":
+        end = start
+    else:
+        end = start - timedelta(seconds=1)
+    with pytest.raises(ValidationError):
+        validate_period(start, end)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_period_contract[naive_start]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-096,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_period_contract[naive_end],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""case"": ""'naive_end'""}","    start = datetime(2027, 3, 1, 2, tzinfo=UTC)
+    end = start + timedelta(hours=2)
+    if case == ""missing_start"":
+        start = None
+    elif case == ""missing_end"":
+        end = None
+    elif case == ""string"":
+        start = ""2027-03-01""
+    elif case == ""naive_start"":
+        start = start.replace(tzinfo=None)
+    elif case == ""naive_end"":
+        end = end.replace(tzinfo=None)
+    elif case == ""equal"":
+        end = start
+    else:
+        end = start - timedelta(seconds=1)
+    with pytest.raises(ValidationError):
+        validate_period(start, end)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_period_contract[naive_end]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-097,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_period_contract[equal],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""case"": ""'equal'""}","    start = datetime(2027, 3, 1, 2, tzinfo=UTC)
+    end = start + timedelta(hours=2)
+    if case == ""missing_start"":
+        start = None
+    elif case == ""missing_end"":
+        end = None
+    elif case == ""string"":
+        start = ""2027-03-01""
+    elif case == ""naive_start"":
+        start = start.replace(tzinfo=None)
+    elif case == ""naive_end"":
+        end = end.replace(tzinfo=None)
+    elif case == ""equal"":
+        end = start
+    else:
+        end = start - timedelta(seconds=1)
+    with pytest.raises(ValidationError):
+        validate_period(start, end)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_period_contract[equal]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-098,SCRUM-16/77 input and locking contract,G03 foundation only; not full-story acceptance,test_invalid_period_contract[reversed],PostgreSQL16; isolated test DB. Named fixtures: . stock=Projector/10; request quantity=8/HDMI input; quiet fan; plan event=Submitted; stock_admin grants staff/superuser for admin-only cases. Only requested fixtures are populated; remaining setup is in steps.,"{""case"": ""'reversed'""}","    start = datetime(2027, 3, 1, 2, tzinfo=UTC)
+    end = start + timedelta(hours=2)
+    if case == ""missing_start"":
+        start = None
+    elif case == ""missing_end"":
+        end = None
+    elif case == ""string"":
+        start = ""2027-03-01""
+    elif case == ""naive_start"":
+        start = start.replace(tzinfo=None)
+    elif case == ""naive_end"":
+        end = end.replace(tzinfo=None)
+    elif case == ""equal"":
+        end = start
+    else:
+        end = start - timedelta(seconds=1)
+    with pytest.raises(ValidationError):
+        validate_period(start, end)",pytest.raises(ValidationError),cd api && pytest 'apps/equipment/tests/test_contracts.py::test_invalid_period_contract[reversed]',Codex agent; inspected source and executed automated tests,2026-10-27,Pending team correctness reviewer,,2026-10-27T17:34:59.594404+08:00,Passed: all executable assertions met,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-DEFERRED-AC1,SCRUM-16 AC1,"Full-story integration, scheduled later","Reserve requested stock through a Technical Support action, persist reservation and coordinator notice","Needs real dependencies: G04, G14, G15, G16a",See Sprint 3 guide,Execute real action/API/browser journey after listed gates,"Reserve requested stock through a Technical Support action, persist reservation and coordinator notice",Not yet implemented at G03,Not executed at this gate,2026-10-27,Pending team correctness reviewer,,,Blocked: required workflow belongs to later gates,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-DEFERRED-AC2,SCRUM-16 AC2,"Full-story integration, scheduled later",Real reservation reduces period availability by the correct concurrent quantity,Needs real dependencies: G15 and G16a integration,See Sprint 3 guide,Execute real action/API/browser journey after listed gates,Real reservation reduces period availability by the correct concurrent quantity,Not yet implemented at G03,Not executed at this gate,2026-10-27,Pending team correctness reviewer,,,Blocked: required workflow belongs to later gates,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-DEFERRED-AC3,SCRUM-16 AC3,"Full-story integration, scheduled later",Excess allocation returns refusal and current available quantity with no partial write,Needs real dependencies: G15 and G16a,See Sprint 3 guide,Execute real action/API/browser journey after listed gates,Excess allocation returns refusal and current available quantity with no partial write,Not yet implemented at G03,Not executed at this gate,2026-10-27,Pending team correctness reviewer,,,Blocked: required workflow belongs to later gates,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-DEFERRED-AC4,SCRUM-16 AC4,"Full-story integration, scheduled later",Real reservation action refuses damaged/maintenance stock,Needs real dependencies: G15 and G16a; stock records tested at G03,See Sprint 3 guide,Execute real action/API/browser journey after listed gates,Real reservation action refuses damaged/maintenance stock,Not yet implemented at G03,Not executed at this gate,2026-10-27,Pending team correctness reviewer,,,Blocked: required workflow belongs to later gates,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-DEFERRED-AC5,SCRUM-16 AC5,"Full-story integration, scheduled later",Real reservation action derives reserving user and timestamp from authenticated staff,Needs real dependencies: G16a; data persistence tested at G03,See Sprint 3 guide,Execute real action/API/browser journey after listed gates,Real reservation action derives reserving user and timestamp from authenticated staff,Not yet implemented at G03,Not executed at this gate,2026-10-27,Pending team correctness reviewer,,,Blocked: required workflow belongs to later gates,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-16-G03-DEFERRED-AC6,SCRUM-16 AC6,"Full-story integration, scheduled later",Actual equipment mutation supersedes persisted Safety approval,Needs real dependencies: G04 and G16a; no no-op hook exists,See Sprint 3 guide,Execute real action/API/browser journey after listed gates,Actual equipment mutation supersedes persisted Safety approval,Not yet implemented at G03,Not executed at this gate,2026-10-27,Pending team correctness reviewer,,,Blocked: required workflow belongs to later gates,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-77-G03-DEFERRED-AC1,SCRUM-77 AC1,"Full-story integration, scheduled later",Cancellation releases real equipment and venue occupancy atomically,"Needs real dependencies: G11, G16a, G16b",See Sprint 3 guide,Execute real action/API/browser journey after listed gates,Cancellation releases real equipment and venue occupancy atomically,Not yet implemented at G03,Not executed at this gate,2026-10-27,Pending team correctness reviewer,,,Blocked: required workflow belongs to later gates,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-77-G03-DEFERRED-AC2,SCRUM-77 AC2,"Full-story integration, scheduled later",Technical Support manual reservation release records actor/reason/time,Needs real dependencies: G16b; release metadata shape tested at G03,See Sprint 3 guide,Execute real action/API/browser journey after listed gates,Technical Support manual reservation release records actor/reason/time,Not yet implemented at G03,Not executed at this gate,2026-10-27,Pending team correctness reviewer,,,Blocked: required workflow belongs to later gates,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-77-G03-DEFERRED-AC3,SCRUM-77 AC3,"Full-story integration, scheduled later",Fresh period availability reflects actual released reservations,"Needs real dependencies: G15, G16a and G16b",See Sprint 3 guide,Execute real action/API/browser journey after listed gates,Fresh period availability reflects actual released reservations,Not yet implemented at G03,Not executed at this gate,2026-10-27,Pending team correctness reviewer,,,Blocked: required workflow belongs to later gates,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
+S3-SCRUM-77-G03-DEFERRED-AC4,SCRUM-77 AC4,"Full-story integration, scheduled later",Release after event time is refused through the real authorised action,Needs real dependencies: G16b,See Sprint 3 guide,Execute real action/API/browser journey after listed gates,Release after event time is refused through the real authorised action,Not yet implemented at G03,Not executed at this gate,2026-10-27,Pending team correctness reviewer,,,Blocked: required workflow belongs to later gates,61ed547ea1da901a620f07c0cfb9bb68a33969a8fb1e9a1dbb9aeecf6feba2cc
