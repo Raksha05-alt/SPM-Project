@@ -16,6 +16,24 @@ DESCRIBED_FIELDS = (
 )
 
 
+def is_facility_list(value) -> bool:
+    return isinstance(value, list) and all(isinstance(v, str) for v in value)
+
+
+def normalise_facilities(names: list[str]) -> list[str]:
+    """Trim names, drop blanks and repeat entries (ignoring case), keeping first spelling.
+
+    Shared by venue records and venue booking requirements so both tidy facility
+    names the same way.
+    """
+    cleaned = []
+    for item in names:
+        item = item.strip()
+        if item and item.casefold() not in {c.casefold() for c in cleaned}:
+            cleaned.append(item)
+    return cleaned
+
+
 def _name(user):
     if user is None:
         return None
@@ -123,14 +141,9 @@ class VenueSerializer(serializers.ModelSerializer):
         return sorted(set(value), key=RoomLayout.values.index)
 
     def validate_facilities(self, value):
-        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        if not is_facility_list(value):
             raise serializers.ValidationError("Facilities must be a list of names.")
-        cleaned = []
-        for item in value:
-            item = item.strip()
-            if item and item.casefold() not in {c.casefold() for c in cleaned}:
-                cleaned.append(item)
-        return cleaned
+        return normalise_facilities(value)
 
     def validate_operating_days(self, value):
         if not isinstance(value, list) or any(
