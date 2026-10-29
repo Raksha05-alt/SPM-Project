@@ -17,6 +17,8 @@ import { VenueAvailability } from "./pages/VenueAvailability";
 import { VenueDiscoveryPage } from "./pages/VenueDiscovery";
 import { LeadDashboard } from "./pages/lead/LeadDashboard";
 import { LeadEventDetail } from "./pages/lead/LeadEventDetail";
+import { SafetyCheckReview } from "./pages/safety/SafetyCheckReview";
+import { SafetyQueue } from "./pages/safety/SafetyQueue";
 
 function Home() {
   const { user, loading } = useAuth();
@@ -130,7 +132,15 @@ export default function App() {
             path="/safety"
             element={
               <RequireRole roles={["SAFETY_OFFICER"]}>
-                <PlaceholderPage title="Safety checks" sprint="gate G20" />
+                <SafetyQueue />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/safety/checks/:id"
+            element={
+              <RequireRole roles={["SAFETY_OFFICER"]}>
+                <SafetyCheckReview />
               </RequireRole>
             }
           />

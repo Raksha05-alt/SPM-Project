@@ -100,6 +100,18 @@ the merge migration joining the block and shortlist tables. See the
 [implementation and AC/test map](docs/scrum-64-68-venue-discovery.md) for tested
 behaviour, the remaining cases and the demo procedure.
 
+### Operational Safety Check (SCRUM-90)
+
+Once an event in Planning has an approved venue booking and a current
+Technical Support approval, its coordinator requests a safety check from the
+event page. Safety Officers (`safety@connectsphere.example`) land on
+**Operational safety checks**, review attendance, venues (capacity, layout,
+emergency access, known restrictions, accessibility) and equipment, then
+approve, request changes or reject; a comment is required for the last two.
+An event cannot move to Confirmed without a current approved check, and any
+later change to its venue, equipment, date, time or attendance makes the
+approval stale. See the [safety check guide](docs/safety-check.md).
+
 ### Running the test suites
 
 ```bash

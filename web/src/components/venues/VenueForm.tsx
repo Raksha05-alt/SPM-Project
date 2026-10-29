@@ -47,6 +47,8 @@ const EMPTY: VenueInput = {
   layouts: [],
   wheelchair_access: null,
   accessibility_notes: "",
+  emergency_access: "",
+  known_restrictions: "",
   opens_at: null,
   closes_at: null,
   operating_days: [0, 1, 2, 3, 4, 5, 6],
@@ -279,6 +281,32 @@ export function VenueForm({
           className={inputClass}
           value={form.accessibility_notes}
           onChange={(e) => set("accessibility_notes", e.target.value)}
+        />
+      </Field>
+      <Field
+        label="Emergency access"
+        htmlFor="v-emergency"
+        hint="Exits, evacuation routes and assembly points. Safety Officers review this."
+        error={errors.emergency_access}
+      >
+        <textarea
+          id="v-emergency"
+          className={inputClass}
+          value={form.emergency_access}
+          onChange={(e) => set("emergency_access", e.target.value)}
+        />
+      </Field>
+      <Field
+        label="Known restrictions"
+        htmlFor="v-restrictions"
+        hint="For example load limits, no open flames or noise curfews."
+        error={errors.known_restrictions}
+      >
+        <textarea
+          id="v-restrictions"
+          className={inputClass}
+          value={form.known_restrictions}
+          onChange={(e) => set("known_restrictions", e.target.value)}
         />
       </Field>
 

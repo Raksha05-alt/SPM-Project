@@ -19,6 +19,8 @@ const HALL: Venue = {
   layout_labels: ["Theatre", "Banquet"],
   wheelchair_access: true,
   accessibility_notes: "Step-free entrance",
+  emergency_access: "Two fire exits to the stairwell",
+  known_restrictions: "No open flames",
   opens_at: "08:00:00",
   closes_at: "22:00:00",
   operating_days: [0, 1, 2, 3, 4],
@@ -154,5 +156,14 @@ describe("VenueDetail (SCRUM-9)", () => {
       "href",
       "/venues",
     );
+  });
+
+  it("SCRUM-90: shows emergency access and known restrictions, naming them when missing", async () => {
+    vi.mocked(getVenue).mockResolvedValue({ ...HALL, known_restrictions: "" });
+    renderAt();
+
+    expect(await screen.findByText("Two fire exits to the stairwell")).toBeInTheDocument();
+    expect(detail("Emergency access")).toHaveTextContent("Two fire exits to the stairwell");
+    expect(detail("Known restrictions")).toHaveTextContent("Not provided");
   });
 });

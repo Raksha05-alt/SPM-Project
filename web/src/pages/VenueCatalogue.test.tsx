@@ -24,6 +24,8 @@ const HALL: Venue = {
   layout_labels: ["Theatre"],
   wheelchair_access: true,
   accessibility_notes: "Step-free entrance.",
+  emergency_access: "",
+  known_restrictions: "",
   opens_at: "08:00:00",
   closes_at: "22:00:00",
   operating_days: [0, 1, 2, 3, 4],
@@ -122,6 +124,8 @@ describe("VenueCatalogue (SCRUM-65)", () => {
     await user.click(screen.getByLabelText("Boardroom"));
     await user.selectOptions(screen.getByLabelText("Wheelchair access"), "true");
     await user.type(screen.getByLabelText("Accessibility information"), "Lift to level 30.");
+    await user.type(screen.getByLabelText("Emergency access"), "Exit via east stairs.");
+    await user.type(screen.getByLabelText("Known restrictions"), "No smoke machines.");
     await user.click(screen.getByRole("button", { name: "Save venue" }));
 
     expect(createVenue).toHaveBeenCalledWith({
@@ -132,6 +136,8 @@ describe("VenueCatalogue (SCRUM-65)", () => {
       layouts: ["BOARDROOM"],
       wheelchair_access: true,
       accessibility_notes: "Lift to level 30.",
+      emergency_access: "Exit via east stairs.",
+      known_restrictions: "No smoke machines.",
       opens_at: "08:00",
       closes_at: "20:00",
       operating_days: [0, 1, 2, 3, 4],

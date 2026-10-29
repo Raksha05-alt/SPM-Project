@@ -55,6 +55,8 @@ def make_venue(name="Harbour Hall", **overrides):
         "facilities": ["Projector"],
         "wheelchair_access": True,
         "accessibility_notes": "Step-free entrance.",
+        "emergency_access": "Two fire exits to the stairwell; assembly at the promenade.",
+        "known_restrictions": "No open flames. Stage load limit 500 kg.",
         "opens_at": datetime.time(7),
         "closes_at": datetime.time(23),
     }

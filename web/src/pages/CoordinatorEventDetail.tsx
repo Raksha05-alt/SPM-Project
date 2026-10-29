@@ -7,6 +7,7 @@ import { ApprovalNote } from "../components/ApprovalNote";
 import { CLARIFIABLE_FIELDS, ClarificationHistory } from "../components/Clarifications";
 import { inputClass } from "../components/Field";
 import { RejectionNotice } from "../components/RejectionNotice";
+import { SafetyCheckPanel } from "../components/safety/SafetyCheckPanel";
 import { StatusBadge } from "../components/StatusBadge";
 import type { EventRequest, EventStatus } from "../types";
 
@@ -335,6 +336,8 @@ export function CoordinatorEventDetail() {
           )}
         </div>
       )}
+
+      {isAssigned && <SafetyCheckPanel eventId={event.id} status={event.status} />}
 
       <ClarificationHistory clarifications={event.clarifications ?? []} />
     </div>

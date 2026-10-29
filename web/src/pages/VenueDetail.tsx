@@ -84,6 +84,8 @@ export function VenueDetail() {
         <Detail label="Maximum capacity" value={`${venue.capacity} people`} />
         <Detail label="Facilities" value={venue.facilities.join(", ") || null} />
         <Detail label="Accessibility information" value={accessibility(venue)} />
+        <Detail label="Emergency access" value={venue.emergency_access || null} />
+        <Detail label="Known restrictions" value={venue.known_restrictions || null} />
         <Detail label="Supported room layouts" value={venue.layout_labels.join(", ") || null} />
         <Detail label="Operating hours" value={venue.operating_hours} />
       </dl>

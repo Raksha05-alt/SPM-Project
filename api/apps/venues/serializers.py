@@ -79,6 +79,8 @@ class VenueSerializer(serializers.ModelSerializer):
             "layout_labels",
             "wheelchair_access",
             "accessibility_notes",
+            "emergency_access",
+            "known_restrictions",
             "opens_at",
             "closes_at",
             "operating_days",

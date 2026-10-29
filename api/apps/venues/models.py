@@ -36,6 +36,13 @@ class Venue(TimeStampedModel):
     layouts = models.JSONField(default=list, blank=True)
     wheelchair_access = models.BooleanField(null=True, blank=True)
     accessibility_notes = models.TextField(blank=True)
+    # SCRUM-90 AC2 - what the Safety Officer reviews before an event is confirmed.
+    emergency_access = models.TextField(
+        blank=True, help_text="Emergency exits, evacuation routes and assembly points."
+    )
+    known_restrictions = models.TextField(
+        blank=True, help_text="Known safety restrictions, such as load limits or no open flames."
+    )
     opens_at = models.TimeField(null=True, blank=True)
     closes_at = models.TimeField(null=True, blank=True)
     operating_days = models.JSONField(default=every_day, blank=True)

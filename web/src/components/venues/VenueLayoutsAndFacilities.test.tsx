@@ -15,6 +15,8 @@ const HALL: Venue = {
   layout_labels: ["Theatre"],
   wheelchair_access: null,
   accessibility_notes: "",
+  emergency_access: "",
+  known_restrictions: "",
   opens_at: "08:00:00",
   closes_at: "22:00:00",
   operating_days: [0, 1, 2, 3, 4],

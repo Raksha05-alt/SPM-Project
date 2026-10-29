@@ -58,8 +58,72 @@ Run on 29 October 2026 by Claude (AI assistant) for Jerom, on local PostgreSQL 1
 | Seeded fault: `is_stale` always False | Caught by C02-04, C02-08 |
 | Seeded fault: block overlap `<` changed to `<=` | Caught by C01-05 |
 
+## G20 workflow
+
+### API
+
+| Method and path | Who | Behaviour |
+| --- | --- | --- |
+| `GET /api/events/<id>/safety-checks/` | Assigned coordinator, Leads, Safety Officers | The event's checks (newest first), `arrangement_gaps`, `confirmation_gaps` and `can_request` |
+| `POST /api/events/<id>/safety-checks/` | Assigned coordinator only | AC1. 201 with the new check; 409 with `arrangement_gaps` when arrangements are missing, the event is not in Planning, or a current check already stands |
+| `GET /api/safety-checks/?status=PENDING` | Safety Officers and Leads: all; coordinators: their events | The queue; `status` accepts a comma-separated list |
+| `GET /api/safety-checks/<id>/` | As above | AC2. `facts` (snapshot at request time) and, while pending, `current_facts` |
+| `POST /api/safety-checks/<id>/decide/` | Active Safety Officers only | AC3. `{decision: APPROVED / REJECTED / CHANGES_REQUESTED, comment}`. A comment is required for the last two. 409 if already decided, or if the arrangements changed since the request (the check is then superseded) |
+
+Every refusal, including role refusals by `HasAnyRole`, is written to the audit log (AC7). Organisers, Attendees, Venue Staff and Technical Support cannot read checks. Leads can read but not decide.
+
+### Behaviour
+
+- **Requesting** uses `arrangement_gaps`, never `confirmation_gaps`. Ownership is reread under the event lock, so a reassigned coordinator's open page cannot request.
+- **Review facts** (AC2): expected attendance, accessibility requirements, each approved venue's capacity, booked attendance, layout, wheelchair access, accessibility notes, emergency access and known restrictions, plus the equipment to be placed and the technical approval. Missing venue information shows as "Not recorded". `concerns` lists what the recorded facts already show, such as over capacity, missing emergency information, or no wheelchair access when the event needs it. The system never approves on its own.
+- **Decisions** keep the officer, time and comment. Rejected and Changes requested leave the event in Planning, notify the coordinator and supervising Lead, and allow a new request. Earlier checks stay in the history.
+- **Stale checks**: a pending check whose arrangement version changed cannot be decided. It is superseded and the officer is told to wait for a new request. An approved check that is stale is superseded when the coordinator requests a new one.
+- **Venue safety information** (supporting task): `Venue.emergency_access` and `Venue.known_restrictions` are maintained by Venue Staff on the venue form and shown on the venue page.
+
+### Screens
+
+| Route | Role | Content |
+| --- | --- | --- |
+| `/safety` | Safety Officer (landing page) | Queue with "Awaiting decision" and "All checks" |
+| `/safety/checks/:id` | Safety Officer | Review facts, points to check, coordinator's note, decision form; decided checks show the recorded decision |
+| `/coordinator/events/:id` | Assigned coordinator | "Operational safety check" panel: latest check and decision comment, gaps, request / request-again with a note, earlier checks |
+| `/venues/:id` and venue form | Venue Staff | Emergency access and known restrictions |
+
+### Migration
+
+`venues/0005_venue_safety_information` adds two blank text fields. Shalika currently owns venue migrations (G05). If her layout-catalogue migration merges first, rename this file or add a merge migration; do not delete either.
+
+## Test evidence (G20)
+
+Tests: `api/apps/safety/tests/test_cr_06_safety_check.py` (42 cases) and the G04 file (49 cases). Web: `web/src/pages/safety/SafetyCheck.test.tsx`, `web/src/components/safety/SafetyCheckPanel.test.tsx`, plus updated venue page and form tests.
+
+Run on 29 October 2026 by Claude (AI assistant) for Jerom, on the same local base as G04.
+
+| Check | Result |
+| --- | --- |
+| Backend lint, format, `check`, `makemigrations --check` | Clean |
+| Full backend suite | 683 passed |
+| `apps/safety` statements / branches | 100% / 100%, no exclusions |
+| Production-only coverage, whole API | 99% |
+| PostgreSQL race: two officers decide at once | Exactly one 200 and one 409; one notice. Stable over 5 repeated runs |
+| Seeded fault: request skips the assigned-coordinator reread | Caught by AC1-06 |
+| `venues/0005` on the seeded baseline database | Applied; existing venues show the new fields as blank, never invented |
+| Web: `npm run lint`, `npm run test`, `npm run build` | Clean; 128 tests passed; build succeeded |
+| Agent browser check (Chromium, real API and database) | Coordinator requests with a note; officer sees the queue and the facts; blank comment refused; changes requested; coordinator sees the comment and can request again; organiser gets 403 from the API |
+
+The browser check used a throwaway database. Its approved booking and equipment reservation were set from a Django shell because the G10/G16a actions do not exist yet. It shows the screens work; it is **not** evidence for journey J4.
+
+### Not yet executed
+
+| Item | Status | Why |
+| --- | --- | --- |
+| J4 `web/e2e/sprint3-plan-safety-confirm.spec.ts` | Blocked | Needs real venue approval (G10), equipment reservation (G16a) and the confirm action (G21). Raksha and Jerom write it at G21 |
+| J5 stale Safety approval cannot confirm (browser) | Blocked | Same dependencies |
+| Teammate code and test review | Pending | Record the real reviewer and date |
+| Manual check as `safety@connectsphere.example` | Pending | The FAQ asks a team member to do this themselves |
+
 ## Scope boundaries
 
 - **AC5 endpoint.** The confirm action is SCRUM-58 (Raksha, G21). G04 proves the guard at service level. The endpoint-level refusal test belongs to G21.
 - **AC6 producers.** Real withdrawal (SCRUM-67, G11) and equipment actions (G16a/G17) must call the service. SCRUM-80's approved change requests are Sprint 4.
-- **Design records.** The C4 diagrams in `docs/c4` still need the Safety Officer actor and `safety` component added.
+- **Design records.** The C4 diagrams in `docs/c4` and the sequence diagram (Lead → coordinator → venue/technical staff → Safety → confirmation) still need the Safety Officer actor and `safety` component added.

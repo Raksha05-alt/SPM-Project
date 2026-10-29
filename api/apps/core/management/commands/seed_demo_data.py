@@ -115,6 +115,9 @@ class Command(BaseCommand):
                 "layouts": ["THEATRE", "BANQUET"],
                 "wheelchair_access": True,
                 "accessibility_notes": "Step-free entrance and accessible toilets on level 2.",
+                "emergency_access": "Two fire exits to the Marina Wing stairwell; assembly "
+                "point at the waterfront promenade.",
+                "known_restrictions": "No open flames or pyrotechnics. Stage load limit 500 kg.",
             },
             {
                 "name": "Skyline Room",
