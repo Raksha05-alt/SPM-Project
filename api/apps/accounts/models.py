@@ -5,7 +5,7 @@ from apps.core.models import TimeStampedModel
 
 
 class Role(models.TextChoices):
-    """Release roles, including the Coordinator Lead introduced in SCRUM-89."""
+    """Release roles, including the Coordinator Lead (SCRUM-89) and Safety Officer (SCRUM-90)."""
 
     EVENT_ORGANISER = "ORGANISER", "Event Organiser"
     EVENT_COORDINATOR = "COORDINATOR", "Event Coordinator"
@@ -13,10 +13,17 @@ class Role(models.TextChoices):
     VENUE_STAFF = "VENUE_STAFF", "Venue Staff"
     TECHNICAL_SUPPORT = "TECH_SUPPORT", "Technical Support Staff"
     ATTENDEE = "ATTENDEE", "Attendee"
+    SAFETY_OFFICER = "SAFETY_OFFICER", "Safety Officer"
 
 
 INTERNAL_ROLES = frozenset(
-    {Role.EVENT_COORDINATOR, Role.EVENT_COORDINATOR_LEAD, Role.VENUE_STAFF, Role.TECHNICAL_SUPPORT}
+    {
+        Role.EVENT_COORDINATOR,
+        Role.EVENT_COORDINATOR_LEAD,
+        Role.VENUE_STAFF,
+        Role.TECHNICAL_SUPPORT,
+        Role.SAFETY_OFFICER,
+    }
 )
 
 # US-01.1 AC1/AC2 - where each role lands after signing in.
@@ -27,6 +34,7 @@ LANDING_PATHS = {
     Role.VENUE_STAFF: "/venues",
     Role.TECHNICAL_SUPPORT: "/equipment",
     Role.ATTENDEE: "/events",
+    Role.SAFETY_OFFICER: "/safety",
 }
 
 
@@ -82,3 +90,7 @@ class User(AbstractUser):
     @property
     def is_coordinator_lead(self) -> bool:
         return self.role == Role.EVENT_COORDINATOR_LEAD
+
+    @property
+    def is_safety_officer(self) -> bool:
+        return self.role == Role.SAFETY_OFFICER

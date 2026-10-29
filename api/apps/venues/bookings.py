@@ -13,7 +13,9 @@ request action (SCRUM-11, gate G09) adds the assigned-coordinator, suitability
 and withdrawal (SCRUM-67) add theirs before calling ``transition_booking``.
 
 Lock order for cross-resource actions: event row, venue rows in ID order, then
-booking rows.
+booking rows. A move into or out of Approved calls
+``apps.safety.services.arrangements_changed`` (SCRUM-90), so callers should
+already hold the event row lock.
 """
 
 from django.db import transaction
@@ -191,5 +193,15 @@ def transition_booking(booking: VenueBooking, target: str, actor, reason: str = 
         reason=reason,
         changed_at=now,
     )
+    if BookingStatus.APPROVED in (previous, target):
+        # SCRUM-90 AC6 - a venue is added to or removed from the event's
+        # arrangements, so any safety check no longer describes it.
+        from apps.safety.services import arrangements_changed
+
+        arrangements_changed(
+            locked.event,
+            f"The booking for {locked.venue.name} is now {BookingStatus(target).label.lower()}.",
+            actor,
+        )
     booking.refresh_from_db()
     return booking

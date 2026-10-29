@@ -4,7 +4,8 @@ export type Role =
   | "COORDINATOR_LEAD"
   | "VENUE_STAFF"
   | "TECH_SUPPORT"
-  | "ATTENDEE";
+  | "ATTENDEE"
+  | "SAFETY_OFFICER";
 
 export interface User {
   id: number;

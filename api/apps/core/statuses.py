@@ -86,7 +86,11 @@ ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     ),
     EventStatus.APPROVED: frozenset({EventStatus.PLANNING, EventStatus.CANCELLED}),
     EventStatus.PLANNING: frozenset({EventStatus.CONFIRMED, EventStatus.CANCELLED}),
-    EventStatus.CONFIRMED: frozenset({EventStatus.COMPLETED, EventStatus.CANCELLED}),
+    # SCRUM-90 AC6 - a change to a confirmed event's venue or equipment
+    # arrangements sends it back to planning for a new safety check.
+    EventStatus.CONFIRMED: frozenset(
+        {EventStatus.PLANNING, EventStatus.COMPLETED, EventStatus.CANCELLED}
+    ),
     EventStatus.COMPLETED: frozenset(),
     EventStatus.CANCELLED: frozenset(),
     EventStatus.REJECTED: frozenset(),

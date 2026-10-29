@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "apps.equipment",
     "apps.registrations",
     "apps.notifications",
+    "apps.safety",
 ]
 
 MIDDLEWARE = [

@@ -25,6 +25,7 @@ PEOPLE = [
     ("venue@connectsphere.example", Role.VENUE_STAFF, "Vera", "Venue", None),
     ("tech@connectsphere.example", Role.TECHNICAL_SUPPORT, "Tariq", "Tech", None),
     ("attendee@example.com", Role.ATTENDEE, "Andy", "Attendee", None),
+    ("safety@connectsphere.example", Role.SAFETY_OFFICER, "Sam", "Safety", None),
 ]
 
 
