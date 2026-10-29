@@ -4,6 +4,7 @@ Run with:  python manage.py seed_demo_data
 Safe to run more than once; it updates rather than duplicating.
 """
 
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -92,6 +93,7 @@ class Command(BaseCommand):
                 )
 
         venues = self._seed_venues(users["venue@connectsphere.example"])
+        call_command("seed_equipment_catalogue", stdout=self.stdout)
 
         self.stdout.write(
             self.style.SUCCESS(

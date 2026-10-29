@@ -77,6 +77,14 @@ Sign in as both organisers to see that neither can reach the other's events.
 
 ## Tests
 
+### Equipment foundation (SCRUM-16/77, G03)
+
+Run migrations and seed_demo_data to add shared equipment records and stock
+examples. Authorised staff can maintain stock and damaged/maintenance records
+in Django admin. Equipment workflows and Safety integration follow in later
+gates; no request/reservation HTTP action is added here.
+See the [equipment contract and handoff](docs/equipment-contract.md).
+
 ### Venue discovery and shortlists (SCRUM-64/68 implementation slice)
 
 After migrating, sign in as a coordinator and use **Venue search**, or open an
