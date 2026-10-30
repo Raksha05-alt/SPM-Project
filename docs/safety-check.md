@@ -58,6 +58,20 @@ Run on 29 October 2026 by Claude (AI assistant) for Jerom, on local PostgreSQL 1
 | Seeded fault: `is_stale` always False | Caught by C02-04, C02-08 |
 | Seeded fault: block overlap `<` changed to `<=` | Caught by C01-05 |
 
+### Re-run after merging main (G04 PR)
+
+Run on 30 October 2026 by Claude (AI assistant) for Jerom, after merging `origin/main` `2c4a467` (PR #9, G03) into `feature/safety-contract`. Same local PostgreSQL 16 / Python 3.12 / Node setup. Still an agent run; teammate review pending.
+
+| Check | Result |
+| --- | --- |
+| `manage.py check`, `makemigrations --check`, `ruff check .`, `ruff format --check .` | Clean |
+| Full backend suite (`pytest`) | 641 passed |
+| `apps/safety` statements / branches | 100% / 100% |
+| Production-only coverage, whole API | 99% |
+| `npm run lint`, `npm run test`, `npm run build` | Clean; 116 tests passed; build succeeded |
+| Migrations on a fresh database | All applied |
+| Migrations on a database seeded from main `2c4a467` (9 users, 3 events, 4 venues, 3 equipment types) | `accounts.0004`, `notifications.0006`, `safety.0001` applied; existing records unchanged |
+
 ## Scope boundaries
 
 - **AC5 endpoint.** The confirm action is SCRUM-58 (Raksha, G21). G04 proves the guard at service level. The endpoint-level refusal test belongs to G21.
