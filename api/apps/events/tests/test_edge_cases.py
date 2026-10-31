@@ -17,7 +17,11 @@ EVENTS = "/api/events/"
 
 
 @pytest.mark.django_db
-def test_a_coordinator_can_open_a_submitted_request(signed_in_coordinator, submitted_event):
+def test_a_coordinator_can_open_an_assigned_submitted_request(
+    signed_in_coordinator, submitted_event, coordinator
+):
+    submitted_event.coordinator = coordinator
+    submitted_event.save(update_fields=["coordinator"])
     response = signed_in_coordinator.get(f"{EVENTS}{submitted_event.pk}/")
 
     assert response.status_code == 200
@@ -32,22 +36,35 @@ def test_a_coordinator_cannot_open_a_clients_draft(signed_in_coordinator, comple
 
 
 @pytest.mark.django_db
-def test_a_coordinator_cannot_edit_a_request_in_this_release(
-    signed_in_coordinator, submitted_event
+def test_only_the_assigned_coordinator_can_edit_a_request(
+    api, submitted_event, coordinator, second_coordinator
 ):
-    response = signed_in_coordinator.patch(
+    # SCRUM-61 replaced the Sprint 1 rule that no coordinator could edit: the
+    # assigned coordinator now can (AC5); any other coordinator still cannot (AC2).
+    submitted_event.coordinator = coordinator
+    submitted_event.save(update_fields=["coordinator"])
+
+    api.force_authenticate(second_coordinator)
+    refused = api.patch(
+        f"{EVENTS}{submitted_event.pk}/", {"name": "Renamed by someone else"}, format="json"
+    )
+    api.force_authenticate(coordinator)
+    allowed = api.patch(
         f"{EVENTS}{submitted_event.pk}/", {"name": "Renamed by ConnectSphere"}, format="json"
     )
 
-    assert response.status_code == 403
+    assert refused.status_code == 403
+    assert allowed.status_code == 200
     submitted_event.refresh_from_db()
-    assert submitted_event.name == "Regional Partner Conference"
+    assert submitted_event.name == "Renamed by ConnectSphere"
 
 
 @pytest.mark.django_db
 def test_a_coordinator_sees_submitted_requests_in_the_main_list(
-    signed_in_coordinator, complete_draft, submitted_event
+    signed_in_coordinator, complete_draft, submitted_event, coordinator
 ):
+    submitted_event.coordinator = coordinator
+    submitted_event.save(update_fields=["coordinator"])
     response = signed_in_coordinator.get(EVENTS)
 
     ids = [row["id"] for row in response.data]
@@ -97,14 +114,16 @@ def test_a_role_with_no_event_access_gets_an_empty_queryset(api, venue_staff, su
 
 @pytest.mark.django_db
 def test_an_unassigned_request_reports_no_coordinator(
-    signed_in_coordinator, submitted_event, coordinator
+    signed_in_coordinator, submitted_event, coordinator, api, organiser
 ):
-    unassigned = signed_in_coordinator.get(f"{EVENTS}{submitted_event.pk}/")
+    api.force_authenticate(organiser)
+    unassigned = api.get(f"{EVENTS}{submitted_event.pk}/")
     assert unassigned.data["coordinator_name"] is None
 
     submitted_event.coordinator = coordinator
     submitted_event.save(update_fields=["coordinator"])
 
+    api.force_authenticate(coordinator)
     assigned = signed_in_coordinator.get(f"{EVENTS}{submitted_event.pk}/")
     assert assigned.data["coordinator_name"] == "Cora Coordinator"
     queue_row = signed_in_coordinator.get(f"{EVENTS}queue/").data[0]

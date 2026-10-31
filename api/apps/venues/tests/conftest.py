@@ -1,3 +1,5 @@
+from datetime import time
+
 import pytest
 
 from apps.accounts.models import Role, User
@@ -19,6 +21,14 @@ def make_venue(**overrides):
 @pytest.fixture
 def venue(db):
     return make_venue()
+
+
+@pytest.fixture
+def open_venue(venue):
+    venue.opens_at = time(8)
+    venue.closes_at = time(22)
+    venue.save()
+    return venue
 
 
 @pytest.fixture

@@ -58,7 +58,7 @@ there is no CORS configuration to get wrong in development.
 
 ### Demo accounts
 
-`seed_demo_data` creates one user per role. All of them use the password
+`seed_demo_data` creates role accounts, including two Leads and two coordinators. All use the password
 `connectsphere-demo`.
 
 | Email | Role |
@@ -66,13 +66,41 @@ there is no CORS configuration to get wrong in development.
 | organiser@acme.example | Event Organiser (Acme Pte Ltd) |
 | organiser@globex.example | Event Organiser (Globex LLP) |
 | coordinator@connectsphere.example | Event Coordinator |
+| coordinator2@connectsphere.example | Event Coordinator |
+| lead@connectsphere.example | Event Coordinator Lead |
+| lead2@connectsphere.example | Event Coordinator Lead |
 | venue@connectsphere.example | Venue Staff |
 | tech@connectsphere.example | Technical Support Staff |
 | attendee@example.com | Attendee |
+| safety@connectsphere.example | Safety Officer |
 
 Sign in as both organisers to see that neither can reach the other's events.
 
 ## Tests
+
+### Equipment foundation (SCRUM-16/77, G03)
+
+Run migrations and seed_demo_data to add shared equipment records and stock
+examples. Authorised staff can maintain stock and damaged/maintenance records
+in Django admin. Equipment workflows and Safety integration follow in later
+gates; no request/reservation HTTP action is added here.
+See the [equipment contract and handoff](docs/equipment-contract.md).
+
+### Venue discovery and shortlists (SCRUM-64/68 implementation slice)
+
+After migrating, sign in as a coordinator and use **Venue search**, or open an
+assigned event and choose **Venue search and shortlist**. Filters cover recorded
+capacity, layouts, facilities, operating hours and recorded date-specific blocks.
+Shortlists persist per event and recheck current venue data when reopened.
+
+Search and shortlist checks share the merged SCRUM-13/17 date-block rules and
+SCRUM-5 layout query. Booking/hold occupancy still requires the booking workflow;
+results retain an unverified availability notice. Run all migrations, including
+the merge migration joining the block and shortlist tables. See the
+[implementation and AC/test map](docs/scrum-64-68-venue-discovery.md) for tested
+behaviour, the remaining cases and the demo procedure.
+
+### Running the test suites
 
 ```bash
 cd api  && pytest                 # coverage gate at 80%
@@ -85,22 +113,25 @@ Backend tests are named after the acceptance criteria they verify. Open
 `test_ac1_...` through `test_ac6_...`, matching the six criteria on US-03.1 in
 the product backlog. That mapping is what feeds the traceability matrix.
 
-### Coordinator assignment (SCRUM-51)
+### Lead allocation and reassignment (SCRUM-89 / SCRUM-53)
 
-After applying migrations, submit a new completed request as an organiser. Open
-the submitted request to see the coordinator's name and email. Both users can
+After applying migrations, submit a complete request as an organiser. It remains
+unassigned. Sign in as a Lead, open **Unassigned requests**, select a coordinator
+and save. The organiser can then see the coordinator's name and email. Users can
 open **Notifications** in the header; messages persist across sign-ins and refresh
 every 30 seconds or when the window regains focus.
 
-Availability means an active Coordinator account with **Coordinator available**
-enabled in Django admin. This is an explicit availability flag, not a workload
-or calendar calculation. To try the no-available case, disable it for all
-coordinators and submit another request. The request remains Submitted and the
-staff queue shows **Unassigned — staff action needed**. Reassignment is outside
-SCRUM-51; changing availability does not retroactively assign old requests.
+Leads choose from active Coordinator accounts. The existing **Coordinator available**
+flag is shown for reference; allocation is manual. Inactive accounts are excluded.
+Use **Assignments** to inspect all allocations or filter to events you supervise.
+Open an event to change its coordinator; Completed and Cancelled events refuse changes.
+The previous coordinator loses event access and receives a notification, alongside
+the new coordinator and organiser. An outdated assignment form must reload before saving.
 
-See [SCRUM-51 implementation and test guide](docs/scrum-51-coordinator-assignment.md)
-for acceptance-criteria traceability and the confirmed implementation decisions.
+See the [Lead allocation implementation and test guide](docs/lead-assignment.md)
+for API contracts, AC traceability, execution evidence and review steps.
+The [SCRUM-51 guide](docs/scrum-51-coordinator-assignment.md) records the earlier
+automatic-allocation behaviour that this customer change replaces.
 
 ## Layout
 
@@ -115,6 +146,7 @@ api/
     equipment/            EP-15 to EP-17   (sprint 4)
     registrations/        EP-18            (sprint 4)
     notifications/        EP-20            (sprint 4)
+    safety/               EP-21  SCRUM-90 operational safety check (docs/safety-check.md)
 web/
   src/api/                fetch wrapper, CSRF handling, endpoints
   src/auth/               session context and route guards

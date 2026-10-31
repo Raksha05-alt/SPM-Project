@@ -24,7 +24,7 @@ export function CoordinatorAssignment({ event }: { event: Assignment }) {
       ) : (
         <p className="text-amber-900">
           {event.assignment_requires_attention
-            ? "No coordinator is currently available. Your request is submitted and needs ConnectSphere staff to arrange an assignment."
+            ? "Your request is submitted and waiting for a Coordinator Lead to assign a coordinator."
             : "A coordinator has not been assigned yet."}
         </p>
       )}

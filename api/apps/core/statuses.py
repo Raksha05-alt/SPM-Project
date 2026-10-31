@@ -23,7 +23,7 @@ class EventStatus(models.TextChoices):
 # US-06.1 AC2 - plain language explanation of every status.
 STATUS_DESCRIPTIONS = {
     EventStatus.DRAFT: "Still being written by the client. ConnectSphere cannot see it yet.",
-    EventStatus.SUBMITTED: "Sent to ConnectSphere and waiting to be picked up by a coordinator.",
+    EventStatus.SUBMITTED: "Submitted to ConnectSphere for allocation and review.",
     EventStatus.UNDER_REVIEW: "A coordinator has asked the client for more information before continuing.",
     EventStatus.APPROVED: "ConnectSphere has agreed to plan this event.",
     EventStatus.PLANNING: "Venue, equipment and other arrangements are being made.",
@@ -86,7 +86,11 @@ ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
     ),
     EventStatus.APPROVED: frozenset({EventStatus.PLANNING, EventStatus.CANCELLED}),
     EventStatus.PLANNING: frozenset({EventStatus.CONFIRMED, EventStatus.CANCELLED}),
-    EventStatus.CONFIRMED: frozenset({EventStatus.COMPLETED, EventStatus.CANCELLED}),
+    # SCRUM-90 AC6 - a change to a confirmed event's venue or equipment
+    # arrangements sends it back to planning for a new safety check.
+    EventStatus.CONFIRMED: frozenset(
+        {EventStatus.PLANNING, EventStatus.COMPLETED, EventStatus.CANCELLED}
+    ),
     EventStatus.COMPLETED: frozenset(),
     EventStatus.CANCELLED: frozenset(),
     EventStatus.REJECTED: frozenset(),

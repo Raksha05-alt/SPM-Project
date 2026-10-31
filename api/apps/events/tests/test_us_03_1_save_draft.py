@@ -61,8 +61,10 @@ def test_ac3_reopening_a_draft_shows_every_value_unchanged(signed_in_organiser):
 
 @pytest.mark.django_db
 def test_ac4_a_draft_never_appears_in_the_coordinator_queue(
-    signed_in_coordinator, complete_draft, submitted_event
+    signed_in_coordinator, complete_draft, submitted_event, coordinator
 ):
+    submitted_event.coordinator = coordinator
+    submitted_event.save(update_fields=["coordinator"])
     response = signed_in_coordinator.get(f"{EVENTS}queue/")
 
     assert response.status_code == 200

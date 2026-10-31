@@ -1,12 +1,12 @@
 from django.db import transaction
 from rest_framework import status as http
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from apps.accounts.models import Role
+from apps.accounts.models import Role, User
 from apps.core.audit import record_denied
 from apps.core.permissions import HasAnyRole
 from apps.core.statuses import (
@@ -17,28 +17,56 @@ from apps.core.statuses import (
     InvalidTransition,
     describe,
 )
+from apps.events.lead_serializers import (
+    AssignmentInputSerializer,
+    CoordinatorChoiceSerializer,
+    LeadEventSerializer,
+    LeadQueueSerializer,
+)
 from apps.events.models import EventRequest
 from apps.events.permissions import CanAccessEventRequest
 from apps.events.serializers import (
     AssignedEventSerializer,
     AttendeeEventSerializer,
     ClarificationInputSerializer,
+    ClarificationNoteInputSerializer,
     EventQueueSerializer,
     EventRequestSerializer,
     RejectionInputSerializer,
 )
 from apps.events.services import (
+    AssignmentConflict,
+    EmptyClarificationNote,
+    InvalidCoordinator,
     MissingClarificationDetails,
     MissingMandatoryFields,
     MissingRejectionReason,
+    NoOpenClarification,
     NotAssignedCoordinator,
+    NotClarificationParty,
+    NotCoordinatorLead,
+    add_clarification_comment,
     approve_event,
+    assign_coordinator,
+    record_event_edit,
     reject_event,
     request_clarification,
+    resume_review,
+    snapshot_for_edit,
     submit_event,
 )
+from apps.venues.layouts import LayoutChoiceError, claim_layouts
 
 QUEUE_EXCLUDED = (EventStatus.DRAFT, EventStatus.REJECTED)
+
+
+def _claim_required_layout(validated_data, *, keep):
+    """SCRUM-91 - recheck the chosen layout under a catalogue row lock before saving."""
+    if layout := validated_data.get("required_layout"):
+        try:
+            claim_layouts([layout], keep=keep)
+        except LayoutChoiceError as exc:
+            raise ValidationError({"required_layout": [exc.message]}) from None
 
 
 class EventRequestViewSet(ModelViewSet):
@@ -48,23 +76,34 @@ class EventRequestViewSet(ModelViewSet):
     # audit row (US-01.2 AC4). With IsAuthenticated first, an anonymous request
     # would be refused before anything recorded the attempt.
     permission_classes = [HasAnyRole, IsAuthenticated, CanAccessEventRequest]
-    allowed_roles = frozenset({Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR, Role.ATTENDEE})
+    allowed_roles = frozenset(
+        {Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR, Role.EVENT_COORDINATOR_LEAD, Role.ATTENDEE}
+    )
 
     def get_serializer_class(self):
         if self.request.user.role == Role.ATTENDEE:
             return AttendeeEventSerializer
+        if self.request.user.is_coordinator_lead:
+            return LeadQueueSerializer if self.action == "list" else LeadEventSerializer
         return EventRequestSerializer
 
     def get_queryset(self):
         user = self.request.user
         base = EventRequest.objects.select_related(
-            "organisation", "created_by", "coordinator", "approved_by", "rejected_by"
+            "organisation",
+            "created_by",
+            "coordinator",
+            "supervising_lead",
+            "approved_by",
+            "rejected_by",
         ).prefetch_related("clarifications__requested_by")
         if user.role == Role.EVENT_ORGANISER:
             # US-02.3 / US-03.1 AC5 - a client sees only their own organisation.
             return base.filter(organisation_id=user.organisation_id)
         if user.role == Role.EVENT_COORDINATOR:
             # US-03.1 AC4 - drafts never reach ConnectSphere.
+            return base.filter(coordinator=user).exclude(status=EventStatus.DRAFT)
+        if user.role == Role.EVENT_COORDINATOR_LEAD:
             return base.exclude(status=EventStatus.DRAFT)
         if user.role == Role.ATTENDEE:
             return base.filter(status__in=ATTENDEE_VISIBLE_STATUSES)
@@ -75,7 +114,12 @@ class EventRequestViewSet(ModelViewSet):
         is refused and audited (US-01.2 AC1) rather than silently returning 404."""
         obj = (
             EventRequest.objects.select_related(
-                "organisation", "created_by", "coordinator", "approved_by", "rejected_by"
+                "organisation",
+                "created_by",
+                "coordinator",
+                "supervising_lead",
+                "approved_by",
+                "rejected_by",
             )
             .prefetch_related("clarifications__requested_by")
             .filter(pk=self.kwargs["pk"])
@@ -97,7 +141,9 @@ class EventRequestViewSet(ModelViewSet):
             raise PermissionDenied("Only an Event Organiser can create an event request.")
         if user.organisation_id is None:
             raise PermissionDenied("Your account is not linked to a client organisation.")
-        serializer.save(created_by=user, organisation=user.organisation)
+        with transaction.atomic():
+            _claim_required_layout(serializer.validated_data, keep=[])
+            serializer.save(created_by=user, organisation=user.organisation)
 
     def perform_update(self, serializer):
         """Serialize organiser saves with submissions and coordinator decisions."""
@@ -117,7 +163,11 @@ class EventRequestViewSet(ModelViewSet):
                     locked, data=serializer.initial_data, partial=serializer.partial
                 )
                 current.is_valid(raise_exception=True)
+                _claim_required_layout(current.validated_data, keep=[locked.required_layout])
+                before = snapshot_for_edit(locked)
                 serializer.instance = current.save()
+                # SCRUM-61 AC4 - who changed which fields, in the same transaction.
+                record_event_edit(serializer.instance, before, self.request.user)
         if denied is not None:
             raise denied
 
@@ -259,6 +309,74 @@ class EventRequestViewSet(ModelViewSet):
         event.refresh_from_db()
         return Response(self.get_serializer(event).data)
 
+    @action(detail=True, methods=["post"], url_path="resume-review")
+    def resume_review(self, request, pk=None):
+        """SCRUM-92 AC4 - return an answered request to review."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/resume-review/"
+        try:
+            if not request.user.is_coordinator:
+                raise NotAssignedCoordinator
+            resume_review(event, request.user)
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the assigned coordinator may resume review",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can resume its review."
+            ) from None
+        except InvalidTransition as exc:
+            record_denied(request.user, action=action_name, obj=event, detail=str(exc))
+            return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        except MissingMandatoryFields as exc:
+            return Response(
+                {
+                    "detail": "The request is missing information it needs before review.",
+                    "missing_fields": exc.fields,
+                },
+                status=http.HTTP_400_BAD_REQUEST,
+            )
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["post"], url_path="clarification-notes")
+    def clarification_notes(self, request, pk=None):
+        """SCRUM-92 AC1/AC2 - record a note from an offline clarification conversation."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/clarification-notes/"
+        payload = ClarificationNoteInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            add_clarification_comment(event, request.user, payload.validated_data.get("body", ""))
+        except NotClarificationParty:
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the client and the assigned coordinator may add notes",
+            )
+            raise PermissionDenied(
+                "Only the client and the assigned coordinator can add clarification notes."
+            ) from None
+        except NoOpenClarification:
+            return Response(
+                {"detail": "This request has no clarification awaiting an answer."},
+                status=http.HTTP_409_CONFLICT,
+            )
+        except EmptyClarificationNote:
+            return Response(
+                {
+                    "detail": "Write the note before saving it.",
+                    "body": ["This field may not be blank."],
+                },
+                status=http.HTTP_400_BAD_REQUEST,
+            )
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data, status=http.HTTP_201_CREATED)
+
     @action(detail=False, methods=["get"])
     def queue(self, request):
         """US-04.1 - the coordinator's queue of incoming requests."""
@@ -271,10 +389,74 @@ class EventRequestViewSet(ModelViewSet):
             raise PermissionDenied("Only an Event Coordinator can open the queue.")
         queryset = (
             EventRequest.objects.select_related("organisation", "coordinator", "approved_by")
+            .filter(coordinator=request.user)
             .exclude(status__in=QUEUE_EXCLUDED)
             .order_by("submitted_at")  # AC2 - oldest first
         )
         return Response(EventQueueSerializer(queryset, many=True).data)
+
+    @action(detail=False, methods=["get"], allowed_roles=frozenset({Role.EVENT_COORDINATOR_LEAD}))
+    def unassigned(self, request):
+        events = (
+            self.get_queryset()
+            .filter(coordinator__isnull=True, status=EventStatus.SUBMITTED)
+            .order_by("submitted_at", "pk")
+        )
+        return Response(LeadQueueSerializer(events, many=True).data)
+
+    @action(detail=False, methods=["get"], allowed_roles=frozenset({Role.EVENT_COORDINATOR_LEAD}))
+    def assignments(self, request):
+        supervised = request.query_params.get("supervised_by", "")
+        active = request.query_params.get("active", "true")
+        if supervised not in {"", "me"} or active not in {"true", "false"}:
+            return Response(
+                {"detail": "Use supervised_by=me and active=true or false."}, status=400
+            )
+        events = self.get_queryset().order_by("submitted_at", "pk")
+        if supervised:
+            events = events.filter(supervising_lead=request.user)
+        if active == "true":
+            events = events.exclude(
+                status__in=[
+                    EventStatus.COMPLETED,
+                    EventStatus.CANCELLED,
+                    EventStatus.REJECTED,
+                ]
+            )
+        return Response(LeadQueueSerializer(events, many=True).data)
+
+    @action(detail=False, methods=["get"], allowed_roles=frozenset({Role.EVENT_COORDINATOR_LEAD}))
+    def coordinators(self, request):
+        users = User.objects.filter(role=Role.EVENT_COORDINATOR, is_active=True).order_by(
+            "first_name", "last_name", "pk"
+        )
+        return Response(CoordinatorChoiceSerializer(users, many=True).data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="assign-coordinator",
+        allowed_roles=frozenset({Role.EVENT_COORDINATOR_LEAD}),
+    )
+    def assign_coordinator(self, request, pk=None):
+        event = self.get_object()
+        payload = AssignmentInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            # Serialize the successful response within the same transaction.
+            with transaction.atomic():
+                assign_coordinator(event, user=request.user, **payload.validated_data)
+                return Response(LeadEventSerializer(event, context={"request": request}).data)
+        except NotCoordinatorLead:
+            record_denied(
+                request.user, f"POST {request.path}", obj=event, detail="not an active Lead"
+            )
+            raise PermissionDenied("Only a Coordinator Lead can assign events.") from None
+        except (AssignmentConflict, InvalidCoordinator) as exc:
+            record_denied(request.user, f"POST {request.path}", obj=event, detail=str(exc))
+            return Response(
+                {"detail": str(exc)}, status=409 if isinstance(exc, AssignmentConflict) else 400
+            )
 
     @action(detail=False, methods=["get"])
     def mine(self, request):

@@ -1,6 +1,7 @@
+from django.utils import timezone
 from rest_framework import serializers
 
-from apps.events.models import RoomLayout
+from apps.venues.layouts import LayoutChoiceError, cached_label_map, check_choice
 from apps.venues.models import Venue
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -13,6 +14,24 @@ DESCRIBED_FIELDS = (
     ("layouts", "Supported room layouts"),
     ("operating_hours", "Operating hours"),
 )
+
+
+def is_facility_list(value) -> bool:
+    return isinstance(value, list) and all(isinstance(v, str) for v in value)
+
+
+def normalise_facilities(names: list[str]) -> list[str]:
+    """Trim names, drop blanks and repeat entries (ignoring case), keeping first spelling.
+
+    Shared by venue records and venue booking requirements so both tidy facility
+    names the same way.
+    """
+    cleaned = []
+    for item in names:
+        item = item.strip()
+        if item and item.casefold() not in {c.casefold() for c in cleaned}:
+            cleaned.append(item)
+    return cleaned
 
 
 def _name(user):
@@ -85,13 +104,22 @@ class VenueSerializer(serializers.ModelSerializer):
         }
 
     def get_layout_labels(self, obj) -> list[str]:
-        return [RoomLayout(value).label for value in obj.layouts if value in RoomLayout.values]
+        # SCRUM-91 AC2 - current catalogue names, looked up once per response.
+        labels = cached_label_map(self.context)
+        return [labels[value] for value in obj.layouts if value in labels]
 
     def get_operating_hours(self, obj) -> str | None:
         return describe_hours(obj)
 
     def get_operational_status(self, obj) -> str:
         # SCRUM-9 AC4.
+        now = timezone.now()
+        if "blocks" in getattr(obj, "_prefetched_objects_cache", {}):
+            blocked = any(b.starts_at <= now < b.ends_at for b in obj.blocks.all())
+        else:
+            blocked = obj.blocks.filter(starts_at__lte=now, ends_at__gt=now).exists()
+        if blocked:
+            return "Blocked"
         return "In service" if obj.in_service else "Out of service"
 
     def get_missing_information(self, obj) -> list[str]:
@@ -104,25 +132,18 @@ class VenueSerializer(serializers.ModelSerializer):
         return _name(obj.updated_by)
 
     def validate_layouts(self, value):
-        if not isinstance(value, list):
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             raise serializers.ValidationError("Layouts must be a list.")
-        unknown = [v for v in value if v not in RoomLayout.values]
-        if unknown:
-            raise serializers.ValidationError(
-                f"Unknown layout: {', '.join(map(str, unknown))}. "
-                f"Choose from {', '.join(RoomLayout.labels)}."
-            )
-        return sorted(set(value), key=RoomLayout.values.index)
+        keep = self.instance.layouts if self.instance is not None else []
+        try:
+            return check_choice(value, keep=keep)
+        except LayoutChoiceError as exc:
+            raise serializers.ValidationError(exc.message) from None
 
     def validate_facilities(self, value):
-        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        if not is_facility_list(value):
             raise serializers.ValidationError("Facilities must be a list of names.")
-        cleaned = []
-        for item in value:
-            item = item.strip()
-            if item and item.casefold() not in {c.casefold() for c in cleaned}:
-                cleaned.append(item)
-        return cleaned
+        return normalise_facilities(value)
 
     def validate_operating_days(self, value):
         if not isinstance(value, list) or any(

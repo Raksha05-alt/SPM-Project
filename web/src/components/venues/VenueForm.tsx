@@ -3,16 +3,34 @@ import { ApiError } from "../../api/client";
 import type { VenueInput } from "../../api/venues";
 import type { Venue } from "../../types";
 import { Field, inputClass } from "../Field";
-
-const LAYOUTS: [string, string][] = [
-  ["CLASSROOM", "Classroom"],
-  ["THEATRE", "Theatre"],
-  ["BOARDROOM", "Boardroom"],
-  ["BANQUET", "Banquet"],
-  ["EXHIBITION", "Exhibition"],
-];
+import { selectableLayouts, useLayouts } from "../layouts/useLayouts";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** SCRUM-5 AC2 - one-click choices for the facilities coordinators ask about most. */
+export const COMMON_FACILITIES = [
+  "Video conferencing",
+  "Hearing loop",
+  "Step-free access",
+  "Accessible toilet",
+];
+
+function splitFacilities(text: string): string[] {
+  return text
+    .split(",")
+    .map((f) => f.trim())
+    .filter(Boolean);
+}
+
+/** Add or remove one facility from the comma-separated text, ignoring case. */
+export function toggleFacility(text: string, facility: string): string {
+  const current = splitFacilities(text);
+  const present = current.some((f) => f.toLowerCase() === facility.toLowerCase());
+  const next = present
+    ? current.filter((f) => f.toLowerCase() !== facility.toLowerCase())
+    : [...current, facility];
+  return next.join(", ");
+}
 
 const EMPTY: VenueInput = {
   name: "",
@@ -77,6 +95,9 @@ export function VenueForm({
   onCancel: () => void;
 }) {
   const [form, setForm] = useState<VenueInput>(() => toInput(venue));
+  // SCRUM-91 - layouts come from the catalogue; retired ones stay if already saved.
+  const { layouts, isLoading: layoutsLoading } = useLayouts();
+  const layoutChoices = selectableLayouts(layouts, venue?.layouts ?? []);
   const [facilities, setFacilities] = useState(form.facilities.join(", "));
   const errors = fieldErrors(error);
   const set = <K extends keyof VenueInput>(key: K, value: VenueInput[K]) =>
@@ -90,10 +111,7 @@ export function VenueForm({
     event.preventDefault();
     onSave({
       ...form,
-      facilities: facilities
-        .split(",")
-        .map((f) => f.trim())
-        .filter(Boolean),
+      facilities: splitFacilities(facilities),
       opens_at: form.opens_at || null,
       closes_at: form.closes_at || null,
     });
@@ -154,6 +172,20 @@ export function VenueForm({
             value={facilities}
             onChange={(e) => setFacilities(e.target.value)}
           />
+          <div className="mt-2 flex flex-wrap gap-3 text-sm" aria-label="Common facilities">
+            {COMMON_FACILITIES.map((facility) => (
+              <label key={facility} className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={splitFacilities(facilities).some(
+                    (f) => f.toLowerCase() === facility.toLowerCase(),
+                  )}
+                  onChange={() => setFacilities((text) => toggleFacility(text, facility))}
+                />
+                {facility}
+              </label>
+            ))}
+          </div>
         </Field>
         <Field label="Opens at" htmlFor="v-opens" error={errors.opens_at}>
           <input
@@ -201,14 +233,16 @@ export function VenueForm({
       <fieldset className="mb-4">
         <legend className="mb-1 text-sm font-medium text-slate-700">Supported room layouts</legend>
         <div className="flex flex-wrap gap-3 text-sm">
-          {LAYOUTS.map(([value, label]) => (
-            <label key={value} className="flex items-center gap-1">
+          {layoutsLoading && <span className="text-slate-500">Loading layouts…</span>}
+          {layoutChoices.map((layout) => (
+            <label key={layout.code} className="flex items-center gap-1">
               <input
                 type="checkbox"
-                checked={form.layouts.includes(value)}
-                onChange={() => set("layouts", toggle(form.layouts, value) as string[])}
+                checked={form.layouts.includes(layout.code)}
+                onChange={() => set("layouts", toggle(form.layouts, layout.code) as string[])}
               />
-              {label}
+              {layout.name}
+              {!layout.is_active && <span className="text-xs text-slate-500">(retired)</span>}
             </label>
           ))}
         </div>

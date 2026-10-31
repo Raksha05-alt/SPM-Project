@@ -11,8 +11,13 @@ import { EventRequestForm } from "./pages/EventRequestForm";
 import { LoginPage } from "./pages/LoginPage";
 import { OrganiserDashboard } from "./pages/OrganiserDashboard";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { RoomLayouts } from "./pages/RoomLayouts";
 import { VenueCatalogue } from "./pages/VenueCatalogue";
 import { VenueDetail } from "./pages/VenueDetail";
+import { VenueAvailability } from "./pages/VenueAvailability";
+import { VenueDiscoveryPage } from "./pages/VenueDiscovery";
+import { LeadDashboard } from "./pages/lead/LeadDashboard";
+import { LeadEventDetail } from "./pages/lead/LeadEventDetail";
 
 function Home() {
   const { user, loading } = useAuth();
@@ -27,6 +32,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<Home />} />
+          <Route path="/lead" element={<RequireRole roles={["COORDINATOR_LEAD"]}><LeadDashboard /></RequireRole>} />
+          <Route path="/lead/events/:id" element={<RequireRole roles={["COORDINATOR_LEAD"]}><LeadEventDetail /></RequireRole>} />
 
           <Route
             path="/organiser"
@@ -77,12 +84,40 @@ export default function App() {
             }
           />
           <Route
+            path="/coordinator/venues"
+            element={
+              <RequireRole roles={["COORDINATOR"]}>
+                <VenueDiscoveryPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/coordinator/events/:id/venues"
+            element={
+              <RequireRole roles={["COORDINATOR"]}>
+                <VenueDiscoveryPage />
+              </RequireRole>
+            }
+          />
+          <Route
             path="/venues"
             element={
               <RequireRole roles={["VENUE_STAFF"]}>
                 <VenueCatalogue />
               </RequireRole>
             }
+          />
+          <Route
+            path="/venues/layouts"
+            element={
+              <RequireRole roles={["VENUE_STAFF"]}>
+                <RoomLayouts />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/venues/availability"
+            element={<RequireRole roles={["COORDINATOR", "VENUE_STAFF"]}><VenueAvailability /></RequireRole>}
           />
           <Route
             path="/venues/:id"
@@ -97,6 +132,14 @@ export default function App() {
             element={
               <RequireRole roles={["TECH_SUPPORT"]}>
                 <PlaceholderPage title="Equipment" sprint="sprint 4" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/safety"
+            element={
+              <RequireRole roles={["SAFETY_OFFICER"]}>
+                <PlaceholderPage title="Safety checks" sprint="gate G20" />
               </RequireRole>
             }
           />
