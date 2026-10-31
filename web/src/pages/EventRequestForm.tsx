@@ -5,6 +5,7 @@ import { ApiError } from "../api/client";
 import { createDraft, getEvent, submitEvent, updateDraft } from "../api/events";
 import type { EventDraft } from "../api/events";
 import { Field, inputClass } from "../components/Field";
+import { selectableLayouts, useLayouts } from "../components/layouts/useLayouts";
 import { StatusBadge } from "../components/StatusBadge";
 import { CoordinatorAssignment } from "../components/CoordinatorAssignment";
 import { RejectionNotice } from "../components/RejectionNotice";
@@ -38,6 +39,7 @@ export function EventRequestForm() {
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState<EventDraft>(EMPTY);
+  const { layouts } = useLayouts();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
@@ -233,11 +235,12 @@ export function EventRequestForm() {
               onChange={(e) => set("required_layout", e.target.value)}
             >
               <option value="">No preference</option>
-              <option value="CLASSROOM">Classroom</option>
-              <option value="THEATRE">Theatre</option>
-              <option value="BOARDROOM">Boardroom</option>
-              <option value="BANQUET">Banquet</option>
-              <option value="EXHIBITION">Exhibition</option>
+              {/* SCRUM-91 - catalogue layouts; a retired one stays if already chosen. */}
+              {selectableLayouts(layouts, [existing?.required_layout ?? ""]).map((layout) => (
+                <option key={layout.code} value={layout.code}>
+                  {layout.is_active ? layout.name : `${layout.name} (retired)`}
+                </option>
+              ))}
             </select>
           </Field>
         </div>

@@ -13,10 +13,12 @@ from apps.venues.discovery_views import (
     EventVenueShortlistView,
     VenueSearchView,
 )
+from apps.venues.layout_views import LayoutTypeViewSet
 from apps.venues.views import VenueViewSet
 
 router = SimpleRouter()
 router.register("venues", VenueViewSet, basename="venue")
+router.register("layouts", LayoutTypeViewSet, basename="layout-type")
 
 urlpatterns = [
     path("venues/available/", AvailableVenuesView.as_view()),

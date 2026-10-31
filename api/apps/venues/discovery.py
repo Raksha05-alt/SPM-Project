@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 from apps.core.audit import record
 from apps.core.statuses import TERMINAL_STATUSES
 from apps.venues.availability import availability, within_operating_hours
+from apps.venues.layouts import label_map
 from apps.venues.models import Venue, VenueShortlistEntry
 
 AVAILABILITY_LIMITATION = (
@@ -19,7 +20,7 @@ AVAILABILITY_LIMITATION = (
 )
 
 
-def assess_venue(venue, criteria):
+def assess_venue(venue, criteria, labels=None):
     """Re-evaluate current venue data against saved/entered search criteria."""
     checks = []
 
@@ -47,7 +48,8 @@ def assess_venue(venue, criteria):
             f"Required: {attendance}; recorded capacity: {venue.capacity}.",
         )
     if layout := criteria.get("layout"):
-        check("layout", "Room layout", layout in venue.layouts, f"Required layout: {layout}.")
+        name = (label_map() if labels is None else labels).get(layout, layout)
+        check("layout", "Room layout", layout in venue.layouts, f"Required layout: {name}.")
     if facilities := criteria.get("facilities"):
         offered = {item.strip().casefold() for item in venue.facilities}
         missing = [item for item in facilities if item.casefold() not in offered]
@@ -110,12 +112,14 @@ def search_venues(criteria):
     )
     if criteria.get("attendance") is not None:
         venues = venues.filter(capacity__gte=criteria["attendance"])
+    labels = {}
     if criteria.get("layout"):
         venues = venues.supporting_layout(criteria["layout"])
+        labels = label_map()
     return [
         match
         for venue in venues
-        if (match := assess_venue(venue, criteria))["matches_recorded_requirements"]
+        if (match := assess_venue(venue, criteria, labels))["matches_recorded_requirements"]
     ]
 
 

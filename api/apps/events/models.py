@@ -5,14 +5,6 @@ from apps.core.models import TimeStampedModel
 from apps.core.statuses import EventStatus
 
 
-class RoomLayout(models.TextChoices):
-    CLASSROOM = "CLASSROOM", "Classroom"
-    THEATRE = "THEATRE", "Theatre"
-    BOARDROOM = "BOARDROOM", "Boardroom"
-    BANQUET = "BANQUET", "Banquet"
-    EXHIBITION = "EXHIBITION", "Exhibition"
-
-
 class EventRequest(TimeStampedModel):
     """An event request raised by a client.
 
@@ -37,7 +29,8 @@ class EventRequest(TimeStampedModel):
     preferred_end = models.DateTimeField(null=True, blank=True)
     expected_attendance = models.PositiveIntegerField(null=True, blank=True)
 
-    required_layout = models.CharField(max_length=20, choices=RoomLayout.choices, blank=True)
+    # A LayoutType code from the SCRUM-91 catalogue; blank means no preference.
+    required_layout = models.CharField(max_length=20, blank=True)
     accessibility_needs = models.TextField(blank=True)
     equipment_notes = models.TextField(blank=True)
     registration_required = models.BooleanField(default=False)

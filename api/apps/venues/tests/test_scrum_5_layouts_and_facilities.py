@@ -11,8 +11,7 @@ guide before it can be implemented or tested.
 import pytest
 
 from apps.core.models import AuditLog
-from apps.events.models import RoomLayout
-from apps.venues.models import Venue
+from apps.venues.models import LayoutType, Venue
 from apps.venues.tests.conftest import make_venue
 
 VENUES = "/api/venues/"
@@ -40,9 +39,9 @@ def test_ac1_venue_staff_select_the_layouts_a_venue_supports(signed_in_venue_sta
 
 @pytest.mark.django_db
 def test_ac1_every_layout_on_the_agreed_list_can_be_recorded(signed_in_venue_staff, venue):
-    response = signed_in_venue_staff.patch(
-        venue_url(venue), {"layouts": list(RoomLayout.values)}, format="json"
-    )
+    # SCRUM-91 replaced the fixed list with the catalogue, seeded with these five.
+    seeded = list(LayoutType.objects.filter(is_active=True).values_list("code", flat=True))
+    response = signed_in_venue_staff.patch(venue_url(venue), {"layouts": seeded}, format="json")
 
     assert response.status_code == 200
     venue.refresh_from_db()

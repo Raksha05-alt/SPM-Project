@@ -147,3 +147,15 @@ export interface Venue {
   created_at: string;
   updated_at: string;
 }
+
+/** SCRUM-91 - one entry in the room layout catalogue. */
+export interface LayoutType {
+  code: string;
+  name: string;
+  description: string;
+  is_active: boolean;
+  sort_order: number;
+  updated_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}

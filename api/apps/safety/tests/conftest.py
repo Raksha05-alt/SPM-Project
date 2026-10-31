@@ -23,7 +23,6 @@ from apps.equipment.models import (
     EquipmentType,
     TechnicalApproval,
 )
-from apps.events.models import RoomLayout
 from apps.safety.models import SafetyCheck, SafetyStatus
 from apps.safety.services import arrangement_version
 from apps.venues.bookings import create_booking_record, transition_booking
@@ -51,7 +50,8 @@ def make_venue(name="Harbour Hall", **overrides):
         "name": name,
         "location": "Level 2, Marina Wing",
         "capacity": 200,
-        "layouts": [RoomLayout.THEATRE, RoomLayout.BANQUET],
+        # SCRUM-91: layouts are catalogue codes (seeded THEATRE and BANQUET).
+        "layouts": ["THEATRE", "BANQUET"],
         "facilities": ["Projector"],
         "wheelchair_access": True,
         "accessibility_notes": "Step-free entrance.",
@@ -74,12 +74,12 @@ def planning_event(organiser, coordinator, lead):
         status=EventStatus.PLANNING,
         coordinator=coordinator,
         supervising_lead=lead,
-        required_layout=RoomLayout.THEATRE,
+        required_layout="THEATRE",
         accessibility_needs="Two wheelchair users.",
     )
 
 
-def approve_venue(event, venue, approver, *, attendance=120, layout=RoomLayout.THEATRE):
+def approve_venue(event, venue, approver, *, attendance=120, layout="THEATRE"):
     booking = create_booking_record(
         requested_by=event.coordinator,
         event=event,

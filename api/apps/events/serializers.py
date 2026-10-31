@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from apps.core.statuses import COORDINATOR_NEXT_ACTIONS, STATUS_DESCRIPTIONS, EventStatus
 from apps.events.models import ClarificationRequest, EventRequest
+from apps.venues.layouts import LayoutChoiceError, check_choice
 
 
 class ClarificationSerializer(serializers.ModelSerializer):
@@ -173,6 +174,18 @@ class EventRequestSerializer(serializers.ModelSerializer):
     def validate_expected_attendance(self, value):
         if value is not None and value <= 0:
             raise serializers.ValidationError("Expected attendance must be at least one person.")
+        return value
+
+    def validate_required_layout(self, value):
+        # SCRUM-91 AC4 - a retired or unknown layout cannot be chosen; a layout
+        # already on this request stays allowed if it was retired since.
+        if not value:
+            return ""
+        keep = [self.instance.required_layout] if self.instance is not None else []
+        try:
+            check_choice([value], keep=keep)
+        except LayoutChoiceError as exc:
+            raise serializers.ValidationError(exc.message) from None
         return value
 
     def validate_preferred_start(self, value):

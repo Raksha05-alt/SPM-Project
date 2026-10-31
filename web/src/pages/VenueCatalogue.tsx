@@ -42,13 +42,18 @@ export function VenueCatalogue() {
     <div>
       <div className="mb-6 flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold text-navy-700">Venues</h1>
-        <button
-          type="button"
-          onClick={() => open(null)}
-          className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white"
-        >
-          Add venue
-        </button>
+        <div className="flex items-baseline gap-4">
+          <Link to="/venues/layouts" className="text-sm text-navy-700 underline">
+            Room layouts
+          </Link>
+          <button
+            type="button"
+            onClick={() => open(null)}
+            className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white"
+          >
+            Add venue
+          </button>
+        </div>
       </div>
 
       {saved && (

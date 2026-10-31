@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework import status as http
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
@@ -47,8 +47,18 @@ from apps.events.services import (
     request_clarification,
     submit_event,
 )
+from apps.venues.layouts import LayoutChoiceError, claim_layouts
 
 QUEUE_EXCLUDED = (EventStatus.DRAFT, EventStatus.REJECTED)
+
+
+def _claim_required_layout(validated_data, *, keep):
+    """SCRUM-91 - recheck the chosen layout under a catalogue row lock before saving."""
+    if layout := validated_data.get("required_layout"):
+        try:
+            claim_layouts([layout], keep=keep)
+        except LayoutChoiceError as exc:
+            raise ValidationError({"required_layout": [exc.message]}) from None
 
 
 class EventRequestViewSet(ModelViewSet):
@@ -123,7 +133,9 @@ class EventRequestViewSet(ModelViewSet):
             raise PermissionDenied("Only an Event Organiser can create an event request.")
         if user.organisation_id is None:
             raise PermissionDenied("Your account is not linked to a client organisation.")
-        serializer.save(created_by=user, organisation=user.organisation)
+        with transaction.atomic():
+            _claim_required_layout(serializer.validated_data, keep=[])
+            serializer.save(created_by=user, organisation=user.organisation)
 
     def perform_update(self, serializer):
         """Serialize organiser saves with submissions and coordinator decisions."""
@@ -143,6 +155,7 @@ class EventRequestViewSet(ModelViewSet):
                     locked, data=serializer.initial_data, partial=serializer.partial
                 )
                 current.is_valid(raise_exception=True)
+                _claim_required_layout(current.validated_data, keep=[locked.required_layout])
                 serializer.instance = current.save()
         if denied is not None:
             raise denied
