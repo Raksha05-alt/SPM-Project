@@ -13,6 +13,9 @@ class NotificationKind(models.TextChoices):
     SAFETY_DECIDED = "SAFETY_DECIDED", "Safety check decided"
     SAFETY_SUPERSEDED = "SAFETY_SUPERSEDED", "Safety check no longer applies"
     PLANNING_REOPENED = "PLANNING_REOPENED", "Event returned to planning"
+    # SCRUM-92 - offline clarification notes and resuming review.
+    CLARIFICATION_NOTE = "CLARIFICATION_NOTE", "Clarification note added"
+    REVIEW_RESUMED = "REVIEW_RESUMED", "Review resumed"
 
 
 # Assignment notices are unique per occurrence, not per lifetime of an event.

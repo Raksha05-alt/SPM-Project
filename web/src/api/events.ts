@@ -29,6 +29,21 @@ export const createDraft = (draft: EventDraft) =>
 export const updateDraft = (id: number, draft: EventDraft) =>
   request<EventRequest>(`/api/events/${id}/`, { method: "PATCH", body: draft });
 
+/** SCRUM-61 - the assigned coordinator edits a request up to Planning. */
+export const updateEvent = (id: number, changes: EventDraft) =>
+  request<EventRequest>(`/api/events/${id}/`, { method: "PATCH", body: changes });
+
+/** SCRUM-92 AC4 - the assigned coordinator returns an answered request to review. */
+export const resumeReview = (id: number) =>
+  request<EventRequest>(`/api/events/${id}/resume-review/`, { method: "POST" });
+
+/** SCRUM-92 AC1 - record a note from an offline clarification conversation. */
+export const addClarificationNote = (id: number, body: string) =>
+  request<EventRequest>(`/api/events/${id}/clarification-notes/`, {
+    method: "POST",
+    body: { body },
+  });
+
 export const deleteDraft = (id: number) =>
   request<void>(`/api/events/${id}/`, { method: "DELETE" });
 
