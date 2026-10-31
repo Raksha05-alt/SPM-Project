@@ -1,62 +1,75 @@
 # SCRUM-71 - Flag venues that do not meet the event's requirements
 
-Owner: Jerom. Branch: `feature/venue-suitability`, based on `main` at `156fc22`
-(the approved baseline `e50c746` plus the merged SCRUM-65/SCRUM-9 venue model, PR #4).
+Owner: Jerom. Branch: `feature/venue-suitability`. Sprint 3 gate **G07**.
 
-Scope: the **original** acceptance criteria AC1-AC5 from the 7 October snapshot
-(`sprint-2-implementation-guide.md`, Appendix A). The live-Jira AC6 (setup/turnaround
-buffer warning) belongs to SCRUM-85 and is not implemented here.
+History: the first slice (commit `17f8b79`, 23 October 2026) was built on main `156fc22` and covered the original AC1–AC5. For G07, current main `9b33974` (G02–G06) was merged in on 1 November 2026, and the assessment was reconciled with the layout catalogue (SCRUM-91), the shared operating-hours rule and assigned-coordinator ownership (SCRUM-89).
 
-## What was built
+## Scope in Sprint 3
 
-| Part | Location |
+| AC | Sprint 3 obligation | Status in this gate |
+| --- | --- | --- |
+| AC1 | Attendance above capacity is flagged with the reason | Implemented and tested |
+| AC2 | Unsupported layout or a missing required accessibility facility is flagged with the reason | Implemented and tested |
+| AC3 | Timing outside operating hours is flagged with the reason | Implemented and tested |
+| AC4 | Requesting an unsuitable venue is blocked, stating the unmet requirements | **Guard published and tested** (`ensure_suitable`, using the booking request's stored requirements). The request endpoint is SCRUM-11 (Shalika, **G09**), which must call it; the end-to-end refusal test completes there. Not passed yet |
+| AC5 | A venue meeting every requirement is suitable with no warnings | Implemented and tested |
+| AC6 | Buffer-only warning (Week 7 change 1) | **Scheduled for Sprint 4** (SCRUM-85). Not implemented and not passed |
+
+The verification checklist's `buffer_warnings` belongs to that Sprint 4 work.
+
+## Shared contract
+
+Module: `api/apps/venues/suitability.py`.
+
+| Name | Meaning | Who calls it |
+| --- | --- | --- |
+| `Requirements.for_event(event, required_facilities=(), wheelchair_access_required=False)` | The event's attendance, layout and preferred period, plus what the coordinator says is required | The coordinator's check (this gate) |
+| `Requirements.for_booking(booking)` | A booking request's stored attendance, layout, required facilities, wheelchair access and period. Also accepts cleaned values before saving | SCRUM-11 request action (G09), SCRUM-72 decisions (G10) |
+| `assess(venue, requirements, labels=None)` | Every unmet requirement, as `Reason(requirement, message)`, in a fixed order | All of the above; SCRUM-66 later |
+| `ensure_suitable(venue, requirements)` | AC4 guard: raises `VenueUnsuitable` (with `.reasons`) unless suitable. Call it inside the action's transaction, after locking the venue row | G09 request, G10 decision |
+| `check_suitability(event, venue, ...)` | Convenience wrapper for an event | Existing callers |
+
+**Requirement codes:** `CAPACITY`, `LAYOUT`, `ACCESSIBILITY` (wheelchair access), `FACILITY` (each required facility), `OPERATING_HOURS`.
+
+### Rules
+
+- **Capacity** equal to attendance fits.
+- **Layouts** are catalogue codes. Reasons use the layout's current name, a retired layout already on an event is still assessed, and a newly added layout works like any other.
+- **Wheelchair access** is met when the venue records it, or when the venue's access is unrecorded but its facilities list "Wheelchair access". A venue recorded as without access is not suitable. Typing "Wheelchair access" as a facility is the same requirement as the checkbox.
+- **Required facilities** match ignoring case and surrounding spaces. Free-text accessibility notes are kept for staff and are not interpreted.
+- **Operating hours** come from `apps.venues.availability.operating_hours_problem`, the one rule now shared by availability, discovery and suitability. It uses Singapore time; opening and closing times are inclusive; one second outside fails; unrecorded hours, closed days, overnight and reversed periods fail. `within_operating_hours` is now `operating_hours_problem(...) is None`. Its yes/no answer is unchanged, except that a reversed period now fails.
+- **Suitability is not availability.** Bookings, blocks and out-of-service status are not suitability reasons. The API says so (`not_checked`) and shows `in_service` beside each result.
+
+## API
+
+`GET /api/events/<event_id>/venue-suitability/` (every venue) and `.../<venue_id>/` (one venue).
+
+- **Query:** `facilities` (repeated or comma-separated) and `wheelchair=true|false`. Any other `wheelchair` value gets a 400.
+- **Response:** `requirements` (what was checked, with the layout's current name), `not_checked`, and for each venue `suitable`, `reasons` and `in_service`.
+- **Access:** only the event's currently assigned coordinator. Other coordinators, reassigned coordinators, Leads, Organisers, Attendees, Venue Staff, Technical Support, Safety Officers, anonymous callers and drafts are refused with 403, and each refusal is audited. Unknown events and venues return 404.
+
+**UI:** the "Venue suitability" panel on the assigned coordinator's event page. It has a wheelchair checkbox and a required-facilities box, and shows what was checked, each venue's reasons, an "Out of service" tag and a "Not checked here" note.
+
+## Test evidence
+
+Records: [`test-cases/S3-SCRUM-71-suitability.csv`](../test-cases/S3-SCRUM-71-suitability.csv). API tests: `api/apps/venues/tests/test_scrum_71_suitability.py`. Component tests: `web/src/components/venues/VenueSuitability.test.tsx`.
+
+Run on 1 November 2026 by Claude (AI assistant) for Jerom, on local PostgreSQL 16, Python 3.12 and Node 22 (CI uses Node 20). The base was main `9b33974` merged into this branch. This is an agent run, not a teammate's correctness review.
+
+| Check | Result |
 | --- | --- |
-| Suitability rules | `api/apps/venues/suitability.py` (`check_suitability`) |
-| API | `GET /api/events/<event_id>/venue-suitability/` (every venue) and `.../<venue_id>/` (one venue); optional `?facilities=` repeated or comma separated. Event Coordinators only; refusals are audited. |
-| UI | "Venue suitability" section on the coordinator's event page: `web/src/components/venues/VenueSuitability.tsx` |
-| API tests | `api/apps/venues/tests/test_scrum_71_suitability.py` |
-| UI tests | `web/src/components/venues/VenueSuitability.test.tsx` |
+| `manage.py check`, `makemigrations --check`, `ruff check .`, `ruff format --check .` | Clean |
+| Venue and safety suites | 412 passed |
+| Full backend suite (`pytest --cov-branch`) | 795 passed; `suitability.py`, `suitability_views.py`, `availability.py`, `discovery.py` 100% statements and branches; production-only coverage 99% |
+| `npm run lint`, `npm run test`, `npm run build` | Clean; 142 tests passed; build succeeded |
+| Agent browser check (Chromium, real API and database; event assigned through the real Lead assignment service) | Assigned coordinator ran the check with wheelchair access and two facilities; every reason and the "Not checked here" note shown; a second coordinator got 403 |
+| Seeded fault: capacity `<=` changed to `<` | Caught by the capacity-60-equal case and AC5 |
+| Seeded fault: hours boundary `<` changed to `<=` | Caught by the exactly-opening-to-closing case |
+| Seeded fault: assigned-coordinator check removed | Caught by the other-coordinator and reassigned-coordinator cases |
 
-## Acceptance criteria to tests
+### Not yet done
 
-| AC | Expected behaviour | Cases (selector in the API test file unless noted) | Level | Result |
-| --- | --- | --- | --- | --- |
-| AC1 | Attendance above capacity is flagged with the reason | `test_ac1_attendance_above_capacity_is_flagged[one-below-capacity, exactly-capacity, one-above-capacity]`, `test_ac1_the_capacity_reason_states_both_numbers`, UI `AC1-AC2 shows each unsuitable venue…` | Unit, component | Pass |
-| AC2 | Unsupported layout or missing required accessibility facility is flagged with the reason | `test_ac2_an_unsupported_layout_is_flagged_with_its_name`, `…no_layouts_recorded…`, `…no_layout_preference_is_not_checked`, `…missing_accessibility_facility_is_flagged_by_name`, `…match_regardless_of_case_or_spacing`, `…wheelchair_access_uses_the_venue_record[step-free, not-step-free, not-recorded]`, `…each_missing_facility_gets_its_own_reason`, `test_api_required_facilities_come_from_the_query[repeated, comma-separated]`, UI `AC2 sends the required accessibility facilities…` | Unit, API, component | Pass |
-| AC3 | Event timing outside operating hours is flagged with the reason | `test_ac3_an_event_inside_operating_hours_passes[exactly-opening-to-closing, well-inside]`, `test_ac3_an_event_outside_operating_hours_is_flagged[starts-before-opening, ends-after-closing, closed-day, overnight]`, `…compared_in_singapore_time`, `…unrecorded_hours_cannot_confirm_the_timing[3 cases]`, `…event_without_times_is_not_checked_for_hours` | Unit | Pass |
-| AC1-3 | Every unmet requirement is stated together | `test_every_unmet_requirement_is_stated_at_once` | Unit | Pass |
-| AC4 | Requesting an unsuitable venue is blocked, stating the unmet requirements | **Not implemented.** No venue-request/booking action exists on `main` (SCRUM-11/72/69 are outside Sprint 2). `check_suitability` is ready to guard that action. | — | **Blocked** |
-| AC5 | A venue meeting every requirement is suitable with no warnings | `test_ac5_a_venue_meeting_every_requirement_has_no_warnings`, `test_api_ac5_a_suitable_venue_has_no_reasons`, UI `AC5 shows a suitable venue with no warnings` | Unit, API, component | Pass |
-
-Supporting checks: coordinator-only access with audited refusals for Organiser, Attendee,
-Venue Staff, Technical Support and anonymous callers; drafts hidden from coordinators; unknown
-venue returns 404; the check changes no venue or event record; UI does not call the API until
-asked, and shows an error message when the check fails.
-
-## Executed run
-
-| Field | Value |
-| --- | --- |
-| Base SHA | `156fc22` plus this branch's commit |
-| Environment | Linux, Python 3.13, PostgreSQL 16, Node 22 (CI uses Python 3.12 / Node 20) |
-| Date | 23 October 2026 |
-| API | `manage.py check` clean; `makemigrations --check` no changes; `ruff check` and `ruff format --check` clean; `pytest`: **274 passed**, total coverage 99.70%; `suitability.py` and `suitability_views.py` 100% |
-| Web | `npm run lint` clean; `npm run test`: **71 passed**; `npm run build` succeeded |
-| Not run | Playwright E2E (no SCRUM-71 journey written; AC4 journey cannot exist yet) |
-
-## Provisional decisions awaiting the team
-
-1. **Required accessibility facilities.** `EventRequest.accessibility_needs` is free text, so
-   the coordinator enters the required facilities when running the check. "Wheelchair access"
-   is met by `Venue.wheelchair_access = True`; other names must appear in `Venue.facilities`
-   (case-insensitive). If the team adds a structured field to the event, only
-   `required_facilities()` in the view needs to change.
-2. **Unrecorded operating hours** are flagged as unsuitable, because the timing cannot be
-   confirmed.
-3. **Boundaries and time zone.** Starting exactly at opening and ending exactly at closing
-   passes. Times are compared in `Asia/Singapore`. Overnight events and closed days fail.
-4. **AC4 integration.** Agree the owner and minimum venue-request slice; that action should call
-   `check_suitability` and refuse with HTTP 4xx and the reasons, creating no booking.
-
-Not yet done for the Definition of Done: teammate PR review, merge with green CI, manual check
-with demo data, and sprint-review demo.
+- **AC4 end-to-end refusal** through the SCRUM-11 request endpoint: Blocked until G09.
+- **J2 browser journey** (`web/e2e/sprint3-venue-planning.spec.ts`): Blocked until G09/G10 exist.
+- **Teammate code and test review**, and a team member's manual check with demo data: pending.
+- **AC6:** scheduled for Sprint 4 (SCRUM-85).

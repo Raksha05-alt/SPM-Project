@@ -10,13 +10,26 @@ vi.mock("../../api/suitability", () => ({ getEventSuitability: vi.fn() }));
 
 const RESULT: EventSuitability = {
   event: 9,
-  required_facilities: [],
+  requirements: {
+    attendance: 120,
+    layout: "THEATRE",
+    layout_name: "Theatre",
+    required_facilities: [],
+    wheelchair_access_required: false,
+    starts_at: "2026-11-02T01:00:00Z",
+    ends_at: "2026-11-02T09:00:00Z",
+  },
+  not_checked: [
+    "Whether the venue is free: bookings, blocks and operational status are checked separately (venue availability).",
+    "Setup and turnaround buffers: added in Sprint 4 (SCRUM-85).",
+  ],
   venues: [
-    { venue: 1, venue_name: "Harbour Hall", suitable: true, reasons: [] },
+    { venue: 1, venue_name: "Harbour Hall", suitable: true, reasons: [], in_service: true },
     {
       venue: 2,
       venue_name: "Skyline Room",
       suitable: false,
+      in_service: true,
       reasons: [
         {
           requirement: "CAPACITY",
@@ -28,6 +41,7 @@ const RESULT: EventSuitability = {
         },
       ],
     },
+    { venue: 3, venue_name: "Garden Pavilion", suitable: true, reasons: [], in_service: false },
   ],
 };
 
@@ -41,16 +55,15 @@ function renderSection() {
 }
 
 describe("parseFacilities", () => {
-  it("cleans, de-duplicates and puts wheelchair access first", () => {
-    expect(parseFacilities(" Hearing loop, , hearing LOOP,Braille", true)).toEqual([
-      "Wheelchair access",
+  it("cleans and de-duplicates names, ignoring case", () => {
+    expect(parseFacilities(" Hearing loop, , hearing LOOP,Stage")).toEqual([
       "Hearing loop",
-      "Braille",
+      "Stage",
     ]);
   });
 
   it("returns nothing when no facility is required", () => {
-    expect(parseFacilities("  ", false)).toEqual([]);
+    expect(parseFacilities("  ")).toEqual([]);
   });
 });
 
@@ -94,16 +107,44 @@ describe("VenueSuitability (SCRUM-71)", () => {
     expect(within(harbour).queryAllByRole("listitem")).toHaveLength(0);
   });
 
-  it("AC2 sends the required accessibility facilities with the check", async () => {
-    vi.mocked(getEventSuitability).mockResolvedValue({ ...RESULT, venues: [] });
+  it("states what was checked and what was not, so suitable is not read as free", async () => {
+    vi.mocked(getEventSuitability).mockResolvedValue(RESULT);
+    renderSection();
+
+    await userEvent.click(screen.getByRole("button", { name: "Check venues" }));
+
+    expect(
+      await screen.findByText("Checked against: 120 attendees · Theatre layout"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("Whether the venue is free");
+    const garden = screen.getByRole("listitem", { name: "Garden Pavilion" });
+    expect(within(garden).getByText("Out of service")).toBeInTheDocument();
+    expect(within(garden).getByText("Suitable")).toBeInTheDocument();
+  });
+
+  it("AC2 sends wheelchair access and the required facilities with the check", async () => {
+    vi.mocked(getEventSuitability).mockResolvedValue({
+      ...RESULT,
+      requirements: {
+        ...RESULT.requirements,
+        wheelchair_access_required: true,
+        required_facilities: ["Hearing loop"],
+      },
+      venues: [],
+    });
     renderSection();
 
     await userEvent.click(screen.getByRole("checkbox", { name: "Step-free wheelchair access" }));
-    await userEvent.type(screen.getByLabelText(/Other facilities/), "Hearing loop");
+    await userEvent.type(screen.getByLabelText(/Required facilities/), "Hearing loop, hearing loop");
     await userEvent.click(screen.getByRole("button", { name: "Check venues" }));
 
-    expect(getEventSuitability).toHaveBeenCalledWith(9, ["Wheelchair access", "Hearing loop"]);
+    expect(getEventSuitability).toHaveBeenCalledWith(9, ["Hearing loop"], true);
     expect(await screen.findByText("No venues have been recorded yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Checked against: 120 attendees · Theatre layout · wheelchair access · Hearing loop",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("says so when the check fails rather than showing a blank list", async () => {

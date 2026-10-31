@@ -417,7 +417,7 @@ export function CoordinatorEventDetail() {
       )}
 
       {/* SCRUM-71 - check venues against this event's requirements. */}
-      <VenueSuitability eventId={event.id} />
+      {isAssigned && <VenueSuitability eventId={event.id} />}
 
       <ClarificationHistory clarifications={event.clarifications ?? []} />
     </div>
