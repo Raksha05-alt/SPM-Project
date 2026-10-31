@@ -11,6 +11,7 @@ import { EventRequestForm } from "./pages/EventRequestForm";
 import { LoginPage } from "./pages/LoginPage";
 import { OrganiserDashboard } from "./pages/OrganiserDashboard";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { RoomLayouts } from "./pages/RoomLayouts";
 import { VenueCatalogue } from "./pages/VenueCatalogue";
 import { VenueDetail } from "./pages/VenueDetail";
 import { VenueAvailability } from "./pages/VenueAvailability";
@@ -107,6 +108,14 @@ export default function App() {
             }
           />
           <Route
+            path="/venues/layouts"
+            element={
+              <RequireRole roles={["VENUE_STAFF"]}>
+                <RoomLayouts />
+              </RequireRole>
+            }
+          />
+          <Route
             path="/venues/availability"
             element={<RequireRole roles={["COORDINATOR", "VENUE_STAFF"]}><VenueAvailability /></RequireRole>}
           />
@@ -123,6 +132,14 @@ export default function App() {
             element={
               <RequireRole roles={["TECH_SUPPORT"]}>
                 <PlaceholderPage title="Equipment" sprint="sprint 4" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/safety"
+            element={
+              <RequireRole roles={["SAFETY_OFFICER"]}>
+                <PlaceholderPage title="Safety checks" sprint="gate G20" />
               </RequireRole>
             }
           />

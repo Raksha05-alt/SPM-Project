@@ -6,17 +6,10 @@ import { useAuth } from "../auth/AuthContext";
 import { ApprovalNote } from "../components/ApprovalNote";
 import { CLARIFIABLE_FIELDS, ClarificationHistory } from "../components/Clarifications";
 import { inputClass } from "../components/Field";
+import { layoutName, useLayouts } from "../components/layouts/useLayouts";
 import { RejectionNotice } from "../components/RejectionNotice";
 import { StatusBadge } from "../components/StatusBadge";
 import type { EventRequest, EventStatus } from "../types";
-
-const LAYOUT_LABELS: Record<string, string> = {
-  CLASSROOM: "Classroom",
-  THEATRE: "Theatre",
-  BOARDROOM: "Boardroom",
-  BANQUET: "Banquet",
-  EXHIBITION: "Exhibition",
-};
 
 /** Statuses a coordinator can approve from; the API enforces the same rule. */
 const REVIEWABLE: EventStatus[] = ["SUBMITTED", "UNDER_REVIEW"];
@@ -39,6 +32,7 @@ export function CoordinatorEventDetail() {
   const eventId = Number(id);
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { layouts } = useLayouts();
 
   const {
     data: event,
@@ -172,7 +166,7 @@ export function CoordinatorEventDetail() {
           <Detail label="Preferred start">{formatDateTime(event.preferred_start)}</Detail>
           <Detail label="Preferred end">{formatDateTime(event.preferred_end)}</Detail>
           <Detail label="Required room layout">
-            {LAYOUT_LABELS[event.required_layout] ?? "No preference"}
+            {event.required_layout ? layoutName(layouts, event.required_layout) : "No preference"}
           </Detail>
           <Detail label="Registration required">
             {event.registration_required ? "Yes" : "No"}

@@ -179,7 +179,8 @@ def test_missing_hours_cannot_establish_a_match_for_a_supplied_period(signed_in_
 def test_search_queries_do_not_grow_per_venue(signed_in_coordinator, django_assert_num_queries):
     for index in range(5):
         searchable_venue(name=f"Room {index}")
-    with django_assert_num_queries(2):
+    # SCRUM-91: +1 constant query for the layout catalogue's current names (AC2).
+    with django_assert_num_queries(3):
         response = signed_in_coordinator.get(SEARCH)
     assert len(response.data["results"]) == 5
 

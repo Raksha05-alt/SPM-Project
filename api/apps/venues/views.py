@@ -6,10 +6,19 @@ from rest_framework.viewsets import ModelViewSet
 
 from apps.core.audit import record
 from apps.core.permissions import HasAnyRole
-from apps.events.models import RoomLayout
-from apps.venues.models import Venue
+from apps.venues.layouts import LayoutChoiceError, claim_layouts
+from apps.venues.models import LayoutType, Venue
 from apps.venues.permissions import VENUE_EDITORS, VENUE_READERS
 from apps.venues.serializers import VenueSerializer
+
+
+def _claim_venue_layouts(validated_data, *, keep):
+    """SCRUM-91 - recheck chosen layouts under a catalogue row lock before saving."""
+    if "layouts" in validated_data:
+        try:
+            claim_layouts(validated_data["layouts"], keep=keep)
+        except LayoutChoiceError as exc:
+            raise ValidationError({"layouts": [exc.message]}) from None
 
 
 class VenueViewSet(ModelViewSet):
@@ -27,10 +36,8 @@ class VenueViewSet(ModelViewSet):
         layout = self.request.query_params.get("layout")
         if self.action == "list" and layout:
             # SCRUM-5 AC3 - a venue with the layout recorded is eligible to appear.
-            if layout not in RoomLayout.values:
-                raise ValidationError(
-                    {"layout": f"Unknown layout. Choose from {', '.join(RoomLayout.values)}."}
-                )
+            if not LayoutType.objects.filter(code=layout).exists():
+                raise ValidationError({"layout": "Unknown layout."})
             queryset = queryset.supporting_layout(layout)
         return queryset
 
@@ -42,7 +49,9 @@ class VenueViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        venue = serializer.save(created_by=user, updated_by=user)
+        with transaction.atomic():
+            _claim_venue_layouts(serializer.validated_data, keep=[])
+            venue = serializer.save(created_by=user, updated_by=user)
         record(user, "POST /api/venues/", allowed=True, obj=venue)
 
     def update(self, request, *args, **kwargs):
@@ -52,6 +61,7 @@ class VenueViewSet(ModelViewSet):
             venue = Venue.objects.select_for_update().get(pk=self.get_object().pk)
             serializer = self.get_serializer(venue, data=request.data, partial=partial)
             serializer.is_valid(raise_exception=True)
+            _claim_venue_layouts(serializer.validated_data, keep=venue.layouts)
             # AC2 - who changed it; updated_at records when.
             venue = serializer.save(updated_by=request.user)
             record(request.user, action_name, allowed=True, obj=venue)

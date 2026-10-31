@@ -13,9 +13,9 @@ import {
 } from "../api/venueDiscovery";
 import { useAuth } from "../auth/AuthContext";
 import { Field, inputClass } from "../components/Field";
+import { selectableLayouts, useLayouts } from "../components/layouts/useLayouts";
 import type { EventRequest } from "../types";
 
-const LAYOUTS = ["CLASSROOM", "THEATRE", "BOARDROOM", "BANQUET", "EXHIBITION"];
 const EMPTY = { start: "", end: "", attendance: "", layout: "", facilities: "" };
 
 function localInput(value: string | null | undefined) {
@@ -104,6 +104,7 @@ export function VenueDiscovery({ event }: { event?: EventRequest }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => initialForm(event));
+  const { layouts } = useLayouts();
   const [criteria, setCriteria] = useState<VenueSearchCriteria>(() =>
     toCriteria(initialForm(event)),
   );
@@ -211,9 +212,9 @@ export function VenueDiscovery({ event }: { event?: EventRequest }) {
               onChange={(e) => set("layout", e.target.value)}
             >
               <option value="">Any layout</option>
-              {LAYOUTS.map((layout) => (
-                <option key={layout} value={layout}>
-                  {layout[0] + layout.slice(1).toLowerCase()}
+              {selectableLayouts(layouts, [form.layout]).map((layout) => (
+                <option key={layout.code} value={layout.code}>
+                  {layout.name}
                 </option>
               ))}
             </select>

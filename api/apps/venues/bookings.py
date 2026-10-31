@@ -13,14 +13,16 @@ request action (SCRUM-11, gate G09) adds the assigned-coordinator, suitability
 and withdrawal (SCRUM-67) add theirs before calling ``transition_booking``.
 
 Lock order for cross-resource actions: event row, venue rows in ID order, then
-booking rows.
+booking rows. A move into or out of Approved calls
+``apps.safety.services.arrangements_changed`` (SCRUM-90), so callers should
+already hold the event row lock.
 """
 
 from django.db import transaction
 from django.utils import timezone
 
 from apps.core.statuses import EventStatus
-from apps.events.models import RoomLayout
+from apps.venues.layouts import LayoutChoiceError, check_choice, claim_layouts
 from apps.venues.models import BookingStatus, VenueBooking, VenueBookingHistory
 from apps.venues.serializers import is_facility_list, normalise_facilities
 
@@ -102,8 +104,14 @@ def validate_booking_request(
         errors["attendance"] = "Expected attendance must be a whole number of at least one."
 
     layout = layout or ""
-    if not isinstance(layout, str) or (layout and layout not in RoomLayout.values):
-        errors["layout"] = f"Unknown layout. Choose from {', '.join(RoomLayout.labels)}."
+    if not isinstance(layout, str):
+        errors["layout"] = "Choose a layout from the catalogue."
+    elif layout:
+        # SCRUM-91 AC4 - a retired or unknown layout cannot be chosen.
+        try:
+            check_choice([layout])
+        except LayoutChoiceError as exc:
+            errors["layout"] = exc.message
 
     facilities = [] if required_facilities is None else required_facilities
     if not is_facility_list(facilities):
@@ -138,6 +146,11 @@ def create_booking_record(*, requested_by, **values) -> VenueBooking:
     Callers enforce who may request and whether the venue suits and is free.
     """
     cleaned = validate_booking_request(**values)
+    if cleaned["layout"]:
+        try:
+            claim_layouts([cleaned["layout"]])
+        except LayoutChoiceError as exc:
+            raise BookingValidationError({"layout": exc.message}) from None
     now = timezone.now()
     booking = VenueBooking.objects.create(
         **cleaned,
@@ -191,5 +204,15 @@ def transition_booking(booking: VenueBooking, target: str, actor, reason: str = 
         reason=reason,
         changed_at=now,
     )
+    if BookingStatus.APPROVED in (previous, target):
+        # SCRUM-90 AC6 - a venue is added to or removed from the event's
+        # arrangements, so any safety check no longer describes it.
+        from apps.safety.services import arrangements_changed
+
+        arrangements_changed(
+            locked.event,
+            f"The booking for {locked.venue.name} is now {BookingStatus(target).label.lower()}.",
+            actor,
+        )
     booking.refresh_from_db()
     return booking

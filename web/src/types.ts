@@ -4,7 +4,8 @@ export type Role =
   | "COORDINATOR_LEAD"
   | "VENUE_STAFF"
   | "TECH_SUPPORT"
-  | "ATTENDEE";
+  | "ATTENDEE"
+  | "SAFETY_OFFICER";
 
 export interface User {
   id: number;
@@ -142,6 +143,18 @@ export interface Venue {
   /** SCRUM-9 AC3 - labels of details that have not been provided. */
   missing_information: string[];
   created_by_name: string | null;
+  updated_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** SCRUM-91 - one entry in the room layout catalogue. */
+export interface LayoutType {
+  code: string;
+  name: string;
+  description: string;
+  is_active: boolean;
+  sort_order: number;
   updated_by_name: string | null;
   created_at: string;
   updated_at: string;
