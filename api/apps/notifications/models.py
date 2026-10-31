@@ -8,6 +8,11 @@ class NotificationKind(models.TextChoices):
     CLARIFICATION = "CLARIFICATION", "Clarification requested"
     RESUBMITTED = "RESUBMITTED", "Request resubmitted"
     REJECTED = "REJECTED", "Request rejected"
+    # SCRUM-90 - the Operational Safety Check.
+    SAFETY_REQUESTED = "SAFETY_REQUESTED", "Safety check requested"
+    SAFETY_DECIDED = "SAFETY_DECIDED", "Safety check decided"
+    SAFETY_SUPERSEDED = "SAFETY_SUPERSEDED", "Safety check no longer applies"
+    PLANNING_REOPENED = "PLANNING_REOPENED", "Event returned to planning"
 
 
 # Assignment notices are unique per occurrence, not per lifetime of an event.

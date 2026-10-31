@@ -127,6 +127,14 @@ export default function App() {
             }
           />
           <Route
+            path="/safety"
+            element={
+              <RequireRole roles={["SAFETY_OFFICER"]}>
+                <PlaceholderPage title="Safety checks" sprint="gate G20" />
+              </RequireRole>
+            }
+          />
+          <Route
             path="/events"
             element={
               <RequireRole roles={["ATTENDEE"]}>

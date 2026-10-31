@@ -126,8 +126,18 @@ def assign_coordinator(event, coordinator_id, user, expected_revision):
 
 @transaction.atomic
 def transition_event(event: EventRequest, target: str, user) -> EventRequest:
-    """Move an event to ``target``, recording the change. Raises InvalidTransition."""
+    """Move an event to ``target``, recording the change.
+
+    Raises InvalidTransition, or ConfirmationBlocked (SCRUM-90 AC5) when the
+    target is Confirmed and ``confirmation_gaps`` is not empty, including a
+    missing, pending or out-of-date safety check.
+    """
     validate_transition(event.status, target)
+    if target == EventStatus.CONFIRMED:
+        # Imported here: the safety app builds on events, not the other way round.
+        from apps.safety.services import ensure_can_confirm
+
+        ensure_can_confirm(event)
     previous = event.status
     now = timezone.now()
 

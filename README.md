@@ -72,6 +72,7 @@ there is no CORS configuration to get wrong in development.
 | venue@connectsphere.example | Venue Staff |
 | tech@connectsphere.example | Technical Support Staff |
 | attendee@example.com | Attendee |
+| safety@connectsphere.example | Safety Officer |
 
 Sign in as both organisers to see that neither can reach the other's events.
 
@@ -145,6 +146,7 @@ api/
     equipment/            EP-15 to EP-17   (sprint 4)
     registrations/        EP-18            (sprint 4)
     notifications/        EP-20            (sprint 4)
+    safety/               EP-21  SCRUM-90 operational safety check (docs/safety-check.md)
 web/
   src/api/                fetch wrapper, CSRF handling, endpoints
   src/auth/               session context and route guards
