@@ -1,4 +1,9 @@
-"""Coordinator decisions must survive organiser edits already in progress."""
+"""Coordinator decisions must survive edits already in progress.
+
+SCRUM-61/92 (Sprint 3, gate G06): organisers no longer edit after submission,
+so the in-progress edit is now the assigned coordinator's own (for example a
+second browser tab). The locking and decision guarantees tested are unchanged.
+"""
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -21,14 +26,25 @@ REASON = "The requested date is unavailable."
 @pytest.mark.django_db
 @pytest.mark.parametrize("method", ["patch", "put"])
 @pytest.mark.parametrize(
-    ("decision", "expected_status", "notification_kind"),
+    ("decision", "expected_status", "notification_kind", "edit_allowed"),
     [
-        ("reject", EventStatus.REJECTED, NotificationKind.REJECTED),
-        ("approve", EventStatus.APPROVED, NotificationKind.APPROVED),
+        # A Rejected event can no longer be edited, so the late edit is refused.
+        ("reject", EventStatus.REJECTED, NotificationKind.REJECTED, False),
+        # An Approved event stays editable by its coordinator (SCRUM-61 AC5), so
+        # the late edit is saved on top of the approval without undoing it.
+        ("approve", EventStatus.APPROVED, NotificationKind.APPROVED, True),
     ],
 )
 def test_decision_finishing_before_pending_edit_is_preserved_and_edit_is_audited(
-    api, organiser, coordinator, monkeypatch, method, decision, expected_status, notification_kind
+    api,
+    organiser,
+    coordinator,
+    monkeypatch,
+    method,
+    decision,
+    expected_status,
+    notification_kind,
+    edit_allowed,
 ):
     event = make_event(organiser, status=EventStatus.UNDER_REVIEW, coordinator=coordinator)
     coordinator_client = APIClient()
@@ -36,8 +52,8 @@ def test_decision_finishing_before_pending_edit_is_preserved_and_edit_is_audited
     original_perform_update = EventRequestViewSet.perform_update
 
     def decide_before_pending_edit(view, serializer):
-        # The organiser has passed the initial permission check and validation,
-        # but its save has not started. Commit a decision through a second client.
+        # The edit has passed the initial permission check and validation, but
+        # its save has not started. Commit a decision through a second client.
         response = coordinator_client.post(
             f"/api/events/{event.pk}/{decision}/", {"reason": REASON}, format="json"
         )
@@ -45,15 +61,23 @@ def test_decision_finishing_before_pending_edit_is_preserved_and_edit_is_audited
         return original_perform_update(view, serializer)
 
     monkeypatch.setattr(EventRequestViewSet, "perform_update", decide_before_pending_edit)
-    api.force_authenticate(organiser)
-    response = getattr(api, method)(
-        f"/api/events/{event.pk}/", {"description": "Pending organiser changes"}, format="json"
-    )
+    api.force_authenticate(coordinator)
+    full = {
+        "name": event.name,
+        "purpose": event.purpose,
+        "preferred_start": event.preferred_start.isoformat(),
+        "preferred_end": event.preferred_end.isoformat(),
+        "expected_attendance": event.expected_attendance,
+    }
+    payload = {"description": "Pending coordinator changes"}
+    if method == "put":
+        payload = {**full, **payload}
+    response = getattr(api, method)(f"/api/events/{event.pk}/", payload, format="json")
 
-    assert response.status_code == 403
+    assert response.status_code == (200 if edit_allowed else 403)
     event.refresh_from_db()
     assert event.status == expected_status
-    assert event.description == ""
+    assert event.description == ("Pending coordinator changes" if edit_allowed else "")
     if decision == "reject":
         assert event.rejection_reason == REASON
         assert event.rejected_by == coordinator
@@ -63,9 +87,12 @@ def test_decision_finishing_before_pending_edit_is_preserved_and_edit_is_audited
         assert event.approved_at == event.status_changed_at
     assert EventStatusHistory.objects.filter(event=event, to_status=expected_status).count() == 1
     assert Notification.objects.filter(event=event, kind=notification_kind).count() == 1
-    assert AuditLog.objects.filter(
-        actor=organiser, action=f"{method.upper()} /api/events/{event.pk}/", allowed=False
-    ).exists()
+    assert (
+        AuditLog.objects.filter(
+            actor=coordinator, action=f"{method.upper()} /api/events/{event.pk}/", allowed=False
+        ).exists()
+        is not edit_allowed
+    )
 
 
 @pytest.mark.django_db
@@ -82,7 +109,7 @@ def test_partial_date_edit_is_validated_against_the_latest_saved_end(
         return original_perform_update(view, serializer)
 
     monkeypatch.setattr(EventRequestViewSet, "perform_update", shorten_event_before_pending_edit)
-    api.force_authenticate(organiser)
+    api.force_authenticate(coordinator)
     response = api.patch(
         f"/api/events/{event.pk}/", {"preferred_start": new_start.isoformat()}, format="json"
     )
@@ -117,7 +144,7 @@ def test_pending_edit_holds_the_event_lock_until_saved_then_rejection_preserves_
 
     def save_while_another_writer_attempts_to_lock(serializer, instance, validated_data):
         # Use a separate PostgreSQL connection to check that a decision cannot
-        # acquire this row between the organiser's permission check and save.
+        # acquire this row between the editor's permission check and save.
         with ThreadPoolExecutor(max_workers=1) as pool:
             assert pool.submit(competing_writer_is_blocked).result(timeout=10)
         return original_update(serializer, instance, validated_data)
@@ -125,7 +152,7 @@ def test_pending_edit_holds_the_event_lock_until_saved_then_rejection_preserves_
     monkeypatch.setattr(
         EventRequestSerializer, "update", save_while_another_writer_attempts_to_lock
     )
-    api.force_authenticate(organiser)
+    api.force_authenticate(coordinator)
     response = api.patch(
         f"/api/events/{event.pk}/", {"description": "Updated equipment requirements"}, format="json"
     )

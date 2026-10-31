@@ -1,10 +1,18 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { approveEvent, getEvent, rejectEvent, requestClarification } from "../api/events";
+import {
+  approveEvent,
+  getEvent,
+  rejectEvent,
+  requestClarification,
+  resumeReview,
+} from "../api/events";
 import { useAuth } from "../auth/AuthContext";
 import { ApprovalNote } from "../components/ApprovalNote";
 import { CLARIFIABLE_FIELDS, ClarificationHistory } from "../components/Clarifications";
+import { ClarificationNoteForm } from "../components/ClarificationNoteForm";
+import { CoordinatorEventEditor } from "../components/CoordinatorEventEditor";
 import { inputClass } from "../components/Field";
 import { layoutName, useLayouts } from "../components/layouts/useLayouts";
 import { RejectionNotice } from "../components/RejectionNotice";
@@ -52,6 +60,18 @@ export function CoordinatorEventDetail() {
 
   const refreshOwnership = () => queryClient.invalidateQueries({ queryKey: ["event", eventId] });
   const approve = useMutation({ mutationFn: approveEvent, onSuccess: onDecision, onError: refreshOwnership });
+
+  // SCRUM-61 - edit details; SCRUM-92 - resume review after a clarification.
+  const [showEdit, setShowEdit] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const resume = useMutation({
+    mutationFn: resumeReview,
+    onError: refreshOwnership,
+    onSuccess: (updated) => {
+      onDecision(updated);
+      setSaved("Review resumed. The request is back in the review queue.");
+    },
+  });
 
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState("");
@@ -114,6 +134,10 @@ export function CoordinatorEventDetail() {
   const canApprove = isAssigned && REVIEWABLE.includes(event.status);
   const canClarify = isAssigned && event.status === "SUBMITTED";
   const canReject = canApprove;
+  // The server decides who may edit now (assigned coordinator, Submitted to Planning).
+  const canEdit = event.is_editable;
+  const canResume = isAssigned && event.status === "UNDER_REVIEW";
+  const openClarification = (event.clarifications ?? []).find((c) => c.resolved_at === null);
   const decisionError = approve.error ?? clarify.error ?? reject.error;
 
   return (
@@ -328,6 +352,67 @@ export function CoordinatorEventDetail() {
             </button>
           )}
         </div>
+      )}
+
+      {saved && (
+        <p role="status" className="mt-6 rounded-md bg-emerald-50 p-3 text-sm text-emerald-800">
+          {saved}
+        </p>
+      )}
+      {resume.error && (
+        <p role="alert" className="mt-6 rounded-md bg-rose-50 p-3 text-sm text-rose-800">
+          {resume.error.message}
+        </p>
+      )}
+
+      {(canEdit || canResume) && !showEdit && (
+        <div className="mt-6 flex justify-end gap-3">
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setSaved(null);
+                setShowEdit(true);
+              }}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              Edit details
+            </button>
+          )}
+          {canResume && (
+            <button
+              type="button"
+              onClick={() => resume.mutate(event.id)}
+              disabled={resume.isPending}
+              className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-600 disabled:opacity-50"
+            >
+              Resume review
+            </button>
+          )}
+        </div>
+      )}
+
+      {showEdit && canEdit && (
+        <CoordinatorEventEditor
+          event={event}
+          onCancel={() => setShowEdit(false)}
+          onSaved={(updated) => {
+            onDecision(updated);
+            setShowEdit(false);
+            setSaved("Changes saved.");
+          }}
+        />
+      )}
+
+      {canResume && openClarification && (
+        <ClarificationNoteForm eventId={event.id} onSaved={onDecision} />
+      )}
+
+      {event.updated_by_name && (
+        <p className="mt-6 text-xs text-slate-500">
+          Last edited by {event.updated_by_name} ·{" "}
+          {new Date(event.updated_at).toLocaleString("en-SG")}
+        </p>
       )}
 
       <ClarificationHistory clarifications={event.clarifications ?? []} />

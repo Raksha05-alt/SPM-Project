@@ -1,17 +1,50 @@
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.accounts.models import Role
 from apps.core.statuses import COORDINATOR_NEXT_ACTIONS, STATUS_DESCRIPTIONS, EventStatus
-from apps.events.models import ClarificationRequest, EventRequest
+from apps.events.models import ClarificationComment, ClarificationRequest, EventRequest
+from apps.events.permissions import CLIENT_EDITABLE, COORDINATOR_EDITABLE
 from apps.venues.layouts import LayoutChoiceError, check_choice
+
+
+class ClarificationCommentSerializer(serializers.ModelSerializer):
+    """SCRUM-92 - a note from an offline clarification conversation."""
+
+    author_name = serializers.SerializerMethodField()
+    author_role = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClarificationComment
+        fields = ["id", "body", "author_name", "author_role", "created_at"]
+        read_only_fields = fields
+
+    def get_author_name(self, obj) -> str | None:
+        return _display_name(obj.author)
+
+    def get_author_role(self, obj) -> str | None:
+        return obj.author.get_role_display() if obj.author else None
+
+
+class ClarificationNoteInputSerializer(serializers.Serializer):
+    body = serializers.CharField(allow_blank=True, trim_whitespace=True, required=False)
 
 
 class ClarificationSerializer(serializers.ModelSerializer):
     requested_by_name = serializers.SerializerMethodField()
+    comments = ClarificationCommentSerializer(many=True, read_only=True)
 
     class Meta:
         model = ClarificationRequest
-        fields = ["id", "message", "fields", "requested_by_name", "requested_at", "resolved_at"]
+        fields = [
+            "id",
+            "message",
+            "fields",
+            "requested_by_name",
+            "requested_at",
+            "resolved_at",
+            "comments",
+        ]
         read_only_fields = fields
 
     def get_requested_by_name(self, obj) -> str | None:
@@ -59,6 +92,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
     approved_by_name = serializers.SerializerMethodField()
     rejected_by_name = serializers.SerializerMethodField()
     clarifications = ClarificationSerializer(many=True, read_only=True)
+    updated_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = EventRequest
@@ -100,6 +134,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "clarifications",
             "missing_mandatory_fields",
             "is_editable",
+            "updated_by_name",
             "created_at",
             "updated_at",
         ]
@@ -167,7 +202,19 @@ class EventRequestSerializer(serializers.ModelSerializer):
         return obj.missing_mandatory_fields()
 
     def get_is_editable(self, obj) -> bool:
-        return obj.status in (EventStatus.DRAFT, EventStatus.UNDER_REVIEW)
+        """SCRUM-61 - whether the person asking may edit this request now."""
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
+            return obj.status in CLIENT_EDITABLE
+        if user.role == Role.EVENT_ORGANISER:
+            return obj.status in CLIENT_EDITABLE and obj.organisation_id == user.organisation_id
+        if user.role == Role.EVENT_COORDINATOR:
+            return obj.status in COORDINATOR_EDITABLE and obj.coordinator_id == user.pk
+        return False
+
+    def get_updated_by_name(self, obj) -> str | None:
+        return _display_name(obj.updated_by)
 
     # --- field level rules. Only values actually supplied are checked, so that
     # --- an incomplete draft still saves (US-03.1 AC2).

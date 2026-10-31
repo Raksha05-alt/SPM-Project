@@ -32,6 +32,15 @@ export type EventStatus =
   | "REJECTED";
 
 /** SCRUM-49 - one round of a coordinator asking the client for more information. */
+/** SCRUM-92 - a note from an offline clarification conversation. */
+export interface ClarificationNote {
+  id: number;
+  body: string;
+  author_name: string | null;
+  author_role: string | null;
+  created_at: string;
+}
+
 export interface Clarification {
   id: number;
   message: string;
@@ -39,6 +48,7 @@ export interface Clarification {
   requested_by_name: string | null;
   requested_at: string;
   resolved_at: string | null;
+  comments: ClarificationNote[];
 }
 
 export interface EventRequest {
@@ -75,6 +85,8 @@ export interface EventRequest {
   missing_mandatory_fields: string[];
   is_editable: boolean;
   created_at: string;
+  /** SCRUM-61 AC4 - who last edited the request. */
+  updated_by_name?: string | null;
   updated_at: string;
 }
 

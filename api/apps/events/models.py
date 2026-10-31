@@ -78,6 +78,14 @@ class EventRequest(TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="rejected_event_requests",
     )
+    # SCRUM-61 AC4 - who last edited the request; ``updated_at`` records when.
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -182,3 +190,26 @@ class ClarificationRequest(models.Model):
     def __str__(self) -> str:
         state = "answered" if self.resolved_at else "open"
         return f"Clarification on {self.event_id} ({state})"
+
+
+class ClarificationComment(models.Model):
+    """SCRUM-92 - a note recording a clarification conversation held offline.
+
+    Notes are append-only: there is no edit or delete, so what was agreed stays
+    on the request with its author and time.
+    """
+
+    clarification = models.ForeignKey(
+        ClarificationRequest, on_delete=models.CASCADE, related_name="comments"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+
+    def __str__(self) -> str:
+        return f"Note on clarification {self.clarification_id} by {self.author_id}"

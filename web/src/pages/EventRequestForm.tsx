@@ -10,6 +10,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { CoordinatorAssignment } from "../components/CoordinatorAssignment";
 import { RejectionNotice } from "../components/RejectionNotice";
 import { ClarificationHistory, OpenClarification } from "../components/Clarifications";
+import { ClarificationNoteForm } from "../components/ClarificationNoteForm";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Event name",
@@ -58,7 +59,8 @@ export function EventRequestForm() {
   }, [existing]);
 
   const readOnly = existing ? !existing.is_editable : false;
-  // SCRUM-49 AC2 - a request awaiting clarification is open to edit and resubmit.
+  // SCRUM-92 - while a clarification is open the client records notes; the
+  // assigned coordinator makes the agreed edits and resumes review.
   const awaitingClarification = existing?.status === "UNDER_REVIEW";
   const openClarification = existing?.clarifications?.find((c) => c.resolved_at === null);
 
@@ -90,7 +92,7 @@ export function EventRequestForm() {
     },
     onSuccess: (saved) => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
-      setBanner(awaitingClarification ? "Changes saved." : "Draft saved.");
+      setBanner("Draft saved.");
       if (eventId === null) navigate(`/organiser/requests/${saved.id}`, { replace: true });
     },
     onError: handleApiError,
@@ -106,11 +108,7 @@ export function EventRequestForm() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      setBanner(
-        awaitingClarification
-          ? "Your updated request has been resubmitted to ConnectSphere."
-          : "Your request has been sent to ConnectSphere.",
-      );
+      setBanner("Your request has been sent to ConnectSphere.");
       navigate("/organiser", { replace: true });
     },
     onError: handleApiError,
@@ -136,8 +134,17 @@ export function EventRequestForm() {
       )}
       {existing && <RejectionNotice event={existing} />}
       {existing && existing.status !== "DRAFT" && <CoordinatorAssignment event={existing} />}
-      {awaitingClarification && openClarification && (
-        <OpenClarification clarification={openClarification} />
+      {awaitingClarification && openClarification && existing && (
+        <>
+          <OpenClarification clarification={openClarification} />
+          <p className="mb-2 text-sm text-slate-600">
+            Your coordinator will make the agreed changes. Record anything you discussed below.
+          </p>
+          <ClarificationNoteForm
+            eventId={existing.id}
+            onSaved={() => void queryClient.invalidateQueries({ queryKey: ["events", eventId] })}
+          />
+        </>
       )}
 
       {banner && (
@@ -283,7 +290,7 @@ export function EventRequestForm() {
             disabled={save.isPending}
             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
           >
-            {awaitingClarification ? "Save changes" : "Save draft"}
+            Save draft
           </button>
           <button
             type="button"
@@ -291,7 +298,7 @@ export function EventRequestForm() {
             disabled={submit.isPending}
             className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-600"
           >
-            {awaitingClarification ? "Resubmit to ConnectSphere" : "Send to ConnectSphere"}
+            Send to ConnectSphere
           </button>
         </div>
       )}

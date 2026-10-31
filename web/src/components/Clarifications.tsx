@@ -57,6 +57,21 @@ export function ClarificationHistory({ clarifications }: { clarifications: Clari
                 ? `answered ${new Date(c.resolved_at).toLocaleString("en-SG")}`
                 : "awaiting answer"}
             </p>
+            {/* SCRUM-92 - notes from the offline conversation, kept after review resumes. */}
+            {(c.comments ?? []).length > 0 && (
+              <ul aria-label="Clarification notes" className="mt-2 space-y-2 border-l-2 border-slate-200 pl-3">
+                {c.comments.map((note) => (
+                  <li key={note.id}>
+                    <p className="whitespace-pre-line text-slate-800">{note.body}</p>
+                    <p className="text-xs text-slate-500">
+                      {note.author_name ?? "Unknown"}
+                      {note.author_role ? ` (${note.author_role})` : ""} ·{" "}
+                      {new Date(note.created_at).toLocaleString("en-SG")}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))}
       </ol>
