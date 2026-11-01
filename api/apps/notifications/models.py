@@ -18,6 +18,8 @@ class NotificationKind(models.TextChoices):
     REVIEW_RESUMED = "REVIEW_RESUMED", "Review resumed"
     # SCRUM-11 - a coordinator's venue booking request reaches Venue Staff.
     VENUE_REQUESTED = "VENUE_REQUESTED", "Venue booking requested"
+    # SCRUM-72 - Venue Staff approve or reject a venue booking request.
+    VENUE_DECIDED = "VENUE_DECIDED", "Venue booking decided"
     VENUE_WITHDRAWN = "VENUE_WITHDRAWN", "Venue booking withdrawn"
 
 

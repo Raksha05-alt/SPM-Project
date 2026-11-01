@@ -201,6 +201,12 @@ describe("VenuePlanner (SCRUM-11)", () => {
 
 
 describe("SCRUM-67 withdrawal", () => {
+  it("offers withdrawal during the project's Awaiting Clarification status", async () => {
+    vi.mocked(listEventBookings).mockResolvedValue([booking()]);
+    renderPlanner({ ...EVENT, status: "UNDER_REVIEW" } as EventRequest);
+    expect(await screen.findByRole("button", { name: "Withdraw Harbour Hall" })).toBeEnabled();
+  });
+
   it("requires approved confirmation and cancelling sends no mutation", async () => {
     vi.mocked(listEventBookings).mockResolvedValue([booking({ status: "APPROVED", status_label: "Approved" })]);
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);

@@ -33,3 +33,17 @@ export const listBookingInbox = (status?: string) =>
   request<VenueBooking[]>(
     status ? `/api/venue-bookings/?status=${encodeURIComponent(status)}` : "/api/venue-bookings/",
   );
+
+/** SCRUM-72 - Venue Staff approve a Pending booking request. */
+export const approveBooking = (bookingId: number) =>
+  request<{ detail: string; booking: VenueBooking }>(`/api/venue-bookings/${bookingId}/approve/`, {
+    method: "POST",
+    body: {},
+  });
+
+/** SCRUM-72 - Venue Staff reject a Pending booking request; a reason is required. */
+export const rejectBooking = (bookingId: number, reason: string) =>
+  request<{ detail: string; booking: VenueBooking }>(`/api/venue-bookings/${bookingId}/reject/`, {
+    method: "POST",
+    body: { reason },
+  });

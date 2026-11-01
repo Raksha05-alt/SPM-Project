@@ -2,13 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { listBookingInbox } from "../api/venueBookings";
+import { BookingDecision } from "../components/venues/BookingDecision";
 
 const FILTERS: [string, string][] = [
   ["PENDING", "Waiting for review"],
   ["", "All requests"],
 ];
 
-/** SCRUM-11 AC4 - Venue Staff see the booking requests sent to them (decisions: SCRUM-72). */
+/** SCRUM-11 AC4 - Venue Staff see the booking requests sent to them; SCRUM-72 - and decide them. */
 export function VenueBookingInbox() {
   const [status, setStatus] = useState("PENDING");
   const { data, isLoading, isError } = useQuery({
@@ -59,6 +60,7 @@ export function VenueBookingInbox() {
                 <th className="px-4 py-3">Requirements</th>
                 <th className="px-4 py-3">Requested by</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Decision</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -92,6 +94,9 @@ export function VenueBookingInbox() {
                     </span>
                   </td>
                   <td className="px-4 py-3">{b.status_label}</td>
+                  <td className="px-4 py-3">
+                    <BookingDecision booking={b} />
+                  </td>
                 </tr>
               ))}
             </tbody>

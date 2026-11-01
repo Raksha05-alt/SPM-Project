@@ -134,7 +134,7 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
                     Withdrawn by {b.withdrawn_by_name ?? "Deleted user"} on {new Date(b.withdrawn_at).toLocaleString("en-SG")}
                   </span>}
                   {["PENDING", "APPROVED"].includes(b.status) &&
-                    ["APPROVED", "PLANNING", "CONFIRMED", "CLARIFICATION"].includes(event.status) && (
+                    ["APPROVED", "PLANNING", "CONFIRMED", "UNDER_REVIEW"].includes(event.status) && (
                     <button type="button" disabled={withdraw.isPending} className="ml-3 underline"
                       aria-label={`Withdraw ${b.venue_name}`}
                       onClick={() => {
