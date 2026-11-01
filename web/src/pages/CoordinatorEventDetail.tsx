@@ -15,6 +15,7 @@ import { ClarificationNoteForm } from "../components/ClarificationNoteForm";
 import { CoordinatorEventEditor } from "../components/CoordinatorEventEditor";
 import { inputClass } from "../components/Field";
 import { layoutName, useLayouts } from "../components/layouts/useLayouts";
+import { EquipmentRequests } from "../components/equipment/EquipmentRequests";
 import { RejectionNotice } from "../components/RejectionNotice";
 import { StatusBadge } from "../components/StatusBadge";
 import { VenueSuitability } from "../components/venues/VenueSuitability";
@@ -422,6 +423,9 @@ export function CoordinatorEventDetail() {
 
       {/* SCRUM-11 - request a venue and follow each request's status. */}
       {isAssigned && <VenuePlanner event={event} />}
+
+      {/* SCRUM-74 - record the equipment the event requires. */}
+      {isAssigned && <EquipmentRequests event={event} />}
 
       <ClarificationHistory clarifications={event.clarifications ?? []} />
     </div>

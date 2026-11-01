@@ -11,6 +11,7 @@ import { EventRequestForm } from "./pages/EventRequestForm";
 import { LoginPage } from "./pages/LoginPage";
 import { OrganiserDashboard } from "./pages/OrganiserDashboard";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { EquipmentInbox } from "./pages/EquipmentInbox";
 import { RoomLayouts } from "./pages/RoomLayouts";
 import { VenueBookingInbox } from "./pages/VenueBookingInbox";
 import { VenueCatalogue } from "./pages/VenueCatalogue";
@@ -140,7 +141,7 @@ export default function App() {
             path="/equipment"
             element={
               <RequireRole roles={["TECH_SUPPORT"]}>
-                <PlaceholderPage title="Equipment" sprint="sprint 4" />
+                <EquipmentInbox />
               </RequireRole>
             }
           />

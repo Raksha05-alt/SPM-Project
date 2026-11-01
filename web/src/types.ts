@@ -236,3 +236,40 @@ export interface VenueBooking {
   decided_at: string | null;
   decision_reason: string;
 }
+
+/** SCRUM-74 - one catalogue equipment type a coordinator can request. */
+export interface EquipmentType {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+}
+
+export type EquipmentRequestStatus = "REQUESTED" | "RESERVED" | "WITHDRAWN";
+
+/** SCRUM-74 - one equipment line requested for an event. */
+export interface EquipmentRequest {
+  id: number;
+  event: number;
+  equipment_type: number;
+  equipment_type_name: string;
+  quantity: number;
+  technical_requirements: string;
+  status: EquipmentRequestStatus;
+  status_label: string;
+  requested_by_name: string | null;
+  requested_at: string;
+}
+
+/** SCRUM-74 AC3 - the scoped event view Technical Support work from. */
+export interface TechnicalEvent {
+  id: number;
+  name: string;
+  status: EventStatus;
+  status_label: string;
+  preferred_start: string | null;
+  preferred_end: string | null;
+  expected_attendance: number | null;
+  coordinator_name: string | null;
+  equipment_requests: EquipmentRequest[];
+}
