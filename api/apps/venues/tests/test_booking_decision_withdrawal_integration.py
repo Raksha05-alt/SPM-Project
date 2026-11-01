@@ -214,9 +214,11 @@ def test_bi_04_concurrent_approval_and_pending_withdrawal_have_one_winner(
 
 def test_bi_05_migration_graph_has_one_leaf_and_preserves_both_notice_kinds():
     executor = MigrationExecutor(connection)
-    assert executor.loader.graph.leaf_nodes("notifications") == [
-        ("notifications", "0010_merge_booking_notice_kinds"),
-    ]
+    graph = executor.loader.graph
+    # One leaf, and the G10/G11 merge is part of its history. Later notice
+    # kinds (e.g. SCRUM-74's 0011) add migrations after it (INT-06).
+    [leaf] = graph.leaf_nodes("notifications")
+    assert ("notifications", "0010_merge_booking_notice_kinds") in graph.forwards_plan(leaf)
     state = executor.loader.project_state()
     field = state.apps.get_model("notifications", "Notification")._meta.get_field("kind")
     assert dict(field.choices) == dict(Notification._meta.get_field("kind").choices)
