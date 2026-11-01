@@ -111,9 +111,7 @@ def test_s3_74_01_ac1_technical_requirements_are_optional(coordinator_api, gala,
 
 
 @pytest.mark.django_db
-def test_s3_74_01_ac1_null_technical_requirements_are_saved_as_empty(
-    coordinator_api, gala, stock
-):
+def test_s3_74_01_ac1_null_technical_requirements_are_saved_as_empty(coordinator_api, gala, stock):
     response = post(
         coordinator_api, gala, equipment_type=stock.pk, quantity=1, technical_requirements=None
     )
