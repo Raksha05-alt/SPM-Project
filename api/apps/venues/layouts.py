@@ -119,3 +119,27 @@ def layout_usage(code: str) -> dict[str, int]:
         "event_requests": EventRequest.objects.filter(required_layout=code).count(),
         "venue_bookings": VenueBooking.objects.filter(layout=code).count(),
     }
+
+
+def bookings_affected_by_removal(venue, removed_codes):
+    """INT-02 (SCRUM-5 AC4) - approved bookings at ``venue`` using a layout being removed.
+
+    Only bookings that have not ended are listed: a past event is history, not
+    something the change can affect. The bookings themselves are never changed.
+    """
+    from django.utils import timezone
+
+    from apps.venues.models import BookingStatus, VenueBooking
+
+    if not removed_codes:
+        return []
+    return list(
+        VenueBooking.objects.filter(
+            venue=venue,
+            status=BookingStatus.APPROVED,
+            layout__in=removed_codes,
+            ends_at__gt=timezone.now(),
+        )
+        .select_related("event")
+        .order_by("starts_at", "pk")
+    )

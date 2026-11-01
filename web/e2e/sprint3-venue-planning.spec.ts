@@ -1,8 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Sprint 3 journey J2 (G09-G11): SCRUM-11 venue requests, SCRUM-71 suitability
- * refusal, SCRUM-72 staff approval and SCRUM-67 confirmed withdrawal.
+ * Sprint 3 journey J2 (G09-G11, G13): SCRUM-11 venue requests, SCRUM-71 suitability
+ * refusal, SCRUM-72 staff approval, the INT-02 affected-layout warning and
+ * SCRUM-67 confirmed withdrawal.
  *
  * Real API and database, no mocks. Requires the API running with seeded demo data:
  *   python manage.py migrate && python manage.py seed_demo_data
@@ -117,6 +118,28 @@ test("J2: request, staff approval and confirmed venue withdrawal preserve the de
   await page.getByLabel("Show requests").selectOption({ label: "All requests" });
   await row.getByRole("button", { name: "Approve", exact: true }).click();
   await expect(row).toContainText("Approved");
+
+  // G13 (INT-02): removing Theatre from Harbour Hall warns about this approved
+  // booking; confirming removes the layout and keeps the booking unchanged.
+  await page.goto("/venues");
+  await page.getByRole("button", { name: "Edit Harbour Hall" }).click();
+  const venueForm = page.getByRole("form", { name: "Venue details" });
+  await venueForm.getByLabel("Theatre", { exact: true }).uncheck();
+  await venueForm.getByRole("button", { name: "Save venue" }).click();
+  const layoutWarning = venueForm.getByRole("alert", { name: "Layout removal warning" });
+  await expect(layoutWarning).toContainText("Removing Theatre from Harbour Hall affects");
+  await expect(layoutWarning).toContainText(`${eventName} · Theatre`);
+  await layoutWarning.getByRole("button", { name: "Remove anyway" }).click();
+  await expect(page.getByRole("status")).toContainText("Saved Harbour Hall");
+  await page.goto("/venues/requests");
+  await page.getByLabel("Show requests").selectOption({ label: "All requests" });
+  await expect(page.getByRole("row", { name: new RegExp(eventName) })).toContainText("Approved");
+  // Put Theatre back so later runs find Harbour Hall suitable; adding never warns.
+  await page.goto("/venues");
+  await page.getByRole("button", { name: "Edit Harbour Hall" }).click();
+  await venueForm.getByLabel("Theatre", { exact: true }).check();
+  await venueForm.getByRole("button", { name: "Save venue" }).click();
+  await expect(page.getByRole("status")).toContainText("Saved Harbour Hall");
   await signOut(page);
 
   // G11: declining the warning leaves the approved arrangement unchanged.
