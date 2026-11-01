@@ -349,3 +349,88 @@ class _Requested:
     def __init__(self, **values):
         for key, value in values.items():
             setattr(self, key, value)
+
+
+# SCRUM-72 - Venue Staff record their decision on a Pending booking request.
+
+
+def _lock_for_decision(booking):
+    """Lock the event, venue and booking rows in the shared order and return them."""
+    from apps.events.models import EventRequest
+
+    identity = VenueBooking.objects.values("event_id", "venue_id").get(pk=booking.pk)
+    event = EventRequest.objects.select_for_update().get(pk=identity["event_id"])
+    venue = Venue.objects.select_for_update().get(pk=identity["venue_id"])
+    locked = VenueBooking.objects.select_for_update().get(pk=booking.pk)
+    return event, venue, locked
+
+
+def _notify_coordinator(event, booking, message) -> None:
+    """Tell the event's current coordinator (or, failing that, the requester)."""
+    from apps.notifications.models import Notification, NotificationKind
+
+    recipient_id = event.coordinator_id or booking.requested_by_id
+    if recipient_id is None:
+        return
+    Notification.objects.create(
+        recipient_id=recipient_id,
+        event=event,
+        kind=NotificationKind.VENUE_DECIDED,
+        message=message,
+    )
+
+
+@transaction.atomic
+def approve_booking(booking: VenueBooking, actor) -> VenueBooking:
+    """SCRUM-72 AC2/AC5/AC6 - approve a Pending request and notify the coordinator.
+
+    Rechecks, under the event/venue/booking locks, that the request is still
+    Pending (AC5), the venue still suits it (SCRUM-71), is in service, unblocked
+    and free (SCRUM-69), and the event has no other approved venue. Any failure
+    raises with nothing saved; an earlier successful search does not count.
+    """
+    from apps.venues.suitability import Requirements, ensure_suitable
+
+    event, venue, locked = _lock_for_decision(booking)
+    if locked.status != BookingStatus.PENDING:
+        raise InvalidBookingTransition(locked.status, BookingStatus.APPROVED)
+    if event.status in EVENT_STATUSES_CLOSED_TO_BOOKING:
+        raise BookingValidationError({"event": "This event cannot receive a venue approval."})
+    if VenueBooking.objects.filter(event=event, status=BookingStatus.APPROVED).exists():
+        raise BookingValidationError(
+            {"event": "This event already has an approved venue. Withdraw it first."}
+        )
+    # SCRUM-71 - raises VenueUnsuitable with every unmet requirement.
+    ensure_suitable(venue, Requirements.for_booking(locked))
+    problems = _availability_problems(venue, locked.starts_at, locked.ends_at)
+    if problems:
+        raise VenueNotAvailable(problems)
+
+    transition_booking(locked, BookingStatus.APPROVED, actor)
+    locked.refresh_from_db()
+    _notify_coordinator(
+        event,
+        locked,
+        f'Venue Staff approved {venue.name} for "{event.name}" '
+        f"({_local(locked.starts_at)} to {_local(locked.ends_at)}).",
+    )
+    return locked
+
+
+@transaction.atomic
+def reject_booking(booking: VenueBooking, actor, reason: str) -> VenueBooking:
+    """SCRUM-72 AC3-AC6 - reject a Pending request with a reason and notify the coordinator.
+
+    A blank reason (AC4) or an already-decided request (AC5) raises with nothing saved.
+    """
+    event, venue, locked = _lock_for_decision(booking)
+    transition_booking(locked, BookingStatus.REJECTED, actor, reason)
+    locked.refresh_from_db()
+    _notify_coordinator(
+        event,
+        locked,
+        f'Venue Staff rejected {venue.name} for "{event.name}" '
+        f"({_local(locked.starts_at)} to {_local(locked.ends_at)}). "
+        f"Reason: {locked.decision_reason}",
+    )
+    return locked

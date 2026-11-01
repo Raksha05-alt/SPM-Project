@@ -4,6 +4,12 @@ GET  /api/events/<event_id>/venue-bookings/   the event's venue requests (AC5)
 POST /api/events/<event_id>/venue-bookings/   the assigned coordinator requests a venue
 GET  /api/venue-bookings/?status=PENDING      Venue Staff's booking-request inbox (AC4)
 
+SCRUM-72 - Respond to a venue booking request (Sprint 3 gate G10):
+
+GET  /api/venue-bookings/<id>/                one request's event, timing and requirements
+POST /api/venue-bookings/<id>/approve/        Venue Staff approve a Pending request
+POST /api/venue-bookings/<id>/reject/         Venue Staff reject one, with a reason
+
 Venue booking requests are internal planning information: clients and
 Attendees never reach them (SCRUM-1 AC2). Every refusal is audited.
 """
@@ -22,8 +28,11 @@ from apps.core.statuses import EventStatus
 from apps.events.models import EventRequest
 from apps.venues.bookings import (
     BookingValidationError,
+    InvalidBookingTransition,
     NotAssignedToEvent,
     VenueNotAvailable,
+    approve_booking,
+    reject_booking,
     request_booking,
 )
 from apps.venues.layouts import cached_label_map
@@ -193,7 +202,7 @@ class EventVenueBookingsView(APIView):
 
 
 class VenueBookingInboxView(APIView):
-    """AC4 - Venue Staff see the booking requests waiting for them (decisions: SCRUM-72)."""
+    """AC4 - Venue Staff see the booking requests waiting for them (decisions: VenueBookingDecisionView)."""
 
     permission_classes = [HasAnyRole, IsAuthenticated]
     allowed_roles = frozenset({Role.VENUE_STAFF})
@@ -208,3 +217,80 @@ class VenueBookingInboxView(APIView):
                 )
             bookings = bookings.filter(status=wanted)
         return Response(VenueBookingSerializer(bookings, many=True).data)
+
+
+class VenueBookingDetailView(APIView):
+    """SCRUM-72 AC1 - the event, requested period and stated requirements of one request."""
+
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = frozenset({Role.VENUE_STAFF})
+
+    def get(self, request, booking_id):
+        booking = get_object_or_404(_bookings(), pk=booking_id)
+        return Response(VenueBookingSerializer(booking).data)
+
+
+class DecisionInputSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class VenueBookingDecisionView(APIView):
+    """SCRUM-72 AC2-AC6 - Venue Staff approve or reject a Pending request.
+
+    The deciding user and time come from the session and the server clock,
+    never from the payload (AC6).
+    """
+
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = frozenset({Role.VENUE_STAFF})
+    decision = ""  # "approve" or "reject", set in urls.py
+
+    def post(self, request, booking_id):
+        booking = get_object_or_404(VenueBooking, pk=booking_id)
+        payload = DecisionInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            if self.decision == "approve":
+                decided = approve_booking(booking, request.user)
+            else:
+                decided = reject_booking(booking, request.user, payload.validated_data["reason"])
+        except InvalidBookingTransition as exc:
+            # AC5 - a decided request cannot be decided again.
+            return Response(
+                {"detail": f"This request has already been decided: {exc}", "status": exc.current},
+                status=status.HTTP_409_CONFLICT,
+            )
+        except BookingValidationError as exc:
+            # AC4 - a rejection without a reason; or the venue clashes or the event is closed.
+            code = (
+                status.HTTP_409_CONFLICT
+                if "venue" in exc.errors or "event" in exc.errors
+                else status.HTTP_400_BAD_REQUEST
+            )
+            return Response(
+                {
+                    "detail": "The decision could not be recorded.",
+                    **{field: [message] for field, message in exc.errors.items()},
+                },
+                status=code,
+            )
+        except VenueUnsuitable as exc:
+            return Response(
+                {
+                    "detail": f"{exc.result.venue_name} no longer meets this event's requirements.",
+                    "unmet_requirements": [reason.as_dict() for reason in exc.reasons],
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        except VenueNotAvailable as exc:
+            return Response(
+                {"detail": "The venue is not available for that period.", "reasons": exc.reasons},
+                status=status.HTTP_409_CONFLICT,
+            )
+        verb = "approved" if decided.status == BookingStatus.APPROVED else "rejected"
+        return Response(
+            {
+                "detail": f"Booking request {verb}. The Event Coordinator has been notified.",
+                "booking": VenueBookingSerializer(_bookings().get(pk=decided.pk)).data,
+            }
+        )
