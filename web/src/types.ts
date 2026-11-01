@@ -211,6 +211,8 @@ export interface EventSuitability {
 export type BookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "WITHDRAWN";
 
 export interface VenueBooking {
+  withdrawn_by_name?: string | null;
+  withdrawn_at?: string | null;
   id: number;
   event: number;
   event_name: string;

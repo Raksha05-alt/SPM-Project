@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client";
-import { listEventBookings, requestVenue } from "../../api/venueBookings";
+import { listEventBookings, requestVenue, withdrawVenue } from "../../api/venueBookings";
 import { listVenues } from "../../api/venues";
 import type { EventRequest, Venue, VenueBooking } from "../../types";
 import { VenuePlanner } from "./VenuePlanner";
@@ -11,6 +11,7 @@ import { VenuePlanner } from "./VenuePlanner";
 vi.mock("../../api/venueBookings", () => ({
   listEventBookings: vi.fn(),
   requestVenue: vi.fn(),
+  withdrawVenue: vi.fn(),
 }));
 vi.mock("../../api/venues", () => ({ listVenues: vi.fn() }));
 
@@ -195,5 +196,23 @@ describe("VenuePlanner (SCRUM-11)", () => {
     expect(
       screen.queryByRole("button", { name: "Send request to Venue Staff" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+
+describe("SCRUM-67 withdrawal", () => {
+  it("requires approved confirmation and cancelling sends no mutation", async () => {
+    vi.mocked(listEventBookings).mockResolvedValue([booking({ status: "APPROVED", status_label: "Approved" })]);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+    renderPlanner();
+    await user.click(await screen.findByRole("button", { name: "Withdraw Harbour Hall" }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("release a confirmed venue arrangement"));
+    expect(withdrawVenue).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    vi.mocked(withdrawVenue).mockResolvedValue({ detail: "Withdrawn", booking: booking({ status: "WITHDRAWN" }) });
+    await user.click(screen.getByRole("button", { name: "Withdraw Harbour Hall" }));
+    expect(withdrawVenue).toHaveBeenCalledWith(9, expect.objectContaining({ id: 1, status: "APPROVED" }), true);
+    confirm.mockRestore();
   });
 });

@@ -18,6 +18,7 @@ class NotificationKind(models.TextChoices):
     REVIEW_RESUMED = "REVIEW_RESUMED", "Review resumed"
     # SCRUM-11 - a coordinator's venue booking request reaches Venue Staff.
     VENUE_REQUESTED = "VENUE_REQUESTED", "Venue booking requested"
+    VENUE_WITHDRAWN = "VENUE_WITHDRAWN", "Venue booking withdrawn"
 
 
 # Assignment notices are unique per occurrence, not per lifetime of an event.

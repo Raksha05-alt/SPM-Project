@@ -8,7 +8,11 @@ from apps.venues.availability_views import (
     BlockView,
     CalendarView,
 )
-from apps.venues.booking_views import EventVenueBookingsView, VenueBookingInboxView
+from apps.venues.booking_views import (
+    EventVenueBookingsView,
+    VenueBookingInboxView,
+    WithdrawVenueBookingView,
+)
 from apps.venues.discovery_views import (
     EventVenueShortlistItemView,
     EventVenueShortlistView,
@@ -23,6 +27,11 @@ router.register("venues", VenueViewSet, basename="venue")
 router.register("layouts", LayoutTypeViewSet, basename="layout-type")
 
 urlpatterns = [
+    path(
+        "events/<int:event_id>/venue-bookings/<int:booking_id>/withdraw/",
+        WithdrawVenueBookingView.as_view(),
+        name="withdraw-venue-booking",
+    ),
     path("venues/available/", AvailableVenuesView.as_view()),
     path("venues/<int:pk>/availability/", CalendarView.as_view()),
     path("venues/<int:pk>/blocks/", BlockView.as_view()),

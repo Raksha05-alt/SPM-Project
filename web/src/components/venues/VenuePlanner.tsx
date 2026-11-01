@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError } from "../../api/client";
-import { listEventBookings, requestVenue } from "../../api/venueBookings";
+import { listEventBookings, requestVenue, withdrawVenue } from "../../api/venueBookings";
 import { listVenues } from "../../api/venues";
 import type { EventRequest } from "../../types";
 import { toLocalInput } from "../CoordinatorEventEditor";
@@ -57,6 +57,12 @@ function initialForm(event: EventRequest) {
 /** SCRUM-11 - the assigned coordinator requests a venue and follows each request's status. */
 export function VenuePlanner({ event }: { event: EventRequest }) {
   const queryClient = useQueryClient();
+  const withdraw = useMutation({
+    mutationFn: (booking: import("../../types").VenueBooking) =>
+      withdrawVenue(event.id, booking, booking.status === "APPROVED"),
+    onSuccess: () => { void queryClient.invalidateQueries(); },
+    onError: () => { void queryClient.invalidateQueries({ queryKey: ["venue-bookings", event.id] }); },
+  });
   const bookings = useQuery({
     queryKey: ["venue-bookings", event.id],
     queryFn: () => listEventBookings(event.id),
@@ -97,6 +103,8 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
   return (
     <section aria-label="Venue requests" className="mt-6 rounded-lg border border-slate-200 bg-white p-6">
       <h2 className="mb-3 text-sm font-semibold text-navy-700">Venue requests</h2>
+      {withdraw.isError && <p role="alert">{withdraw.error.message}</p>}
+      {withdraw.isSuccess && <p role="status">Booking withdrawn. Venue Staff have been notified.</p>}
 
       {bookings.isError && <p role="alert">We could not load this event's venue requests.</p>}
       {(bookings.data ?? []).length === 0 && !bookings.isLoading && !bookings.isError && (
@@ -122,6 +130,20 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
                 <td className="py-2">
                   {/* AC5 - the request's current status. */}
                   <span className="font-medium">{b.status_label}</span>
+                  {b.withdrawn_at && <span className="block text-xs">
+                    Withdrawn by {b.withdrawn_by_name ?? "Deleted user"} on {new Date(b.withdrawn_at).toLocaleString("en-SG")}
+                  </span>}
+                  {["PENDING", "APPROVED"].includes(b.status) &&
+                    ["APPROVED", "PLANNING", "CONFIRMED", "CLARIFICATION"].includes(event.status) && (
+                    <button type="button" disabled={withdraw.isPending} className="ml-3 underline"
+                      aria-label={`Withdraw ${b.venue_name}`}
+                      onClick={() => {
+                        if (b.status === "APPROVED" && !window.confirm(
+                          "This will release a confirmed venue arrangement and require a new Safety review. Withdraw this booking?",
+                        )) return;
+                        withdraw.mutate(b);
+                      }}>Withdraw</button>
+                  )}
                   {b.decided_by_name && (
                     <span className="block text-xs text-slate-500">by {b.decided_by_name}</span>
                   )}

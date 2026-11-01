@@ -22,9 +22,11 @@ from apps.core.statuses import EventStatus
 from apps.events.models import EventRequest
 from apps.venues.bookings import (
     BookingValidationError,
+    InvalidBookingTransition,
     NotAssignedToEvent,
     VenueNotAvailable,
     request_booking,
+    withdraw_booking,
 )
 from apps.venues.layouts import cached_label_map
 from apps.venues.models import BookingStatus, Venue, VenueBooking
@@ -43,6 +45,8 @@ class VenueBookingSerializer(serializers.ModelSerializer):
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     requested_by_name = serializers.SerializerMethodField()
     decided_by_name = serializers.SerializerMethodField()
+    withdrawn_by_name = serializers.SerializerMethodField()
+    withdrawn_at = serializers.SerializerMethodField()
 
     class Meta:
         model = VenueBooking
@@ -69,6 +73,8 @@ class VenueBookingSerializer(serializers.ModelSerializer):
             "decided_by_name",
             "decided_at",
             "decision_reason",
+            "withdrawn_by_name",
+            "withdrawn_at",
         ]
         read_only_fields = fields
 
@@ -80,6 +86,17 @@ class VenueBookingSerializer(serializers.ModelSerializer):
 
     def get_decided_by_name(self, obj) -> str | None:
         return _name(obj.decided_by)
+
+    def _withdrawal(self, obj):
+        return obj.history.filter(to_status=BookingStatus.WITHDRAWN).select_related("actor").first()
+
+    def get_withdrawn_by_name(self, obj):
+        change = self._withdrawal(obj)
+        return _name(change.actor) if change else None
+
+    def get_withdrawn_at(self, obj):
+        change = self._withdrawal(obj)
+        return serializers.DateTimeField().to_representation(change.changed_at) if change else None
 
 
 class BookingRequestInputSerializer(serializers.Serializer):
@@ -208,3 +225,42 @@ class VenueBookingInboxView(APIView):
                 )
             bookings = bookings.filter(status=wanted)
         return Response(VenueBookingSerializer(bookings, many=True).data)
+
+
+class WithdrawalInputSerializer(serializers.Serializer):
+    expected_status = serializers.ChoiceField(choices=BookingStatus.choices)
+    confirm_release = serializers.BooleanField(default=False)
+
+
+class WithdrawVenueBookingView(APIView):
+    permission_classes = [HasAnyRole, IsAuthenticated, CanSeeEventBookings]
+    allowed_roles = frozenset({Role.EVENT_COORDINATOR})
+
+    def post(self, request, event_id, booking_id):
+        event = get_object_or_404(EventRequest, pk=event_id)
+        self.check_object_permissions(request, event)
+        booking = get_object_or_404(_bookings(), pk=booking_id, event=event)
+        payload = WithdrawalInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            booking = withdraw_booking(
+                booking=booking, actor=request.user, **payload.validated_data
+            )
+        except NotAssignedToEvent:
+            record_denied(
+                request.user,
+                action=f"POST {request.path}",
+                obj=event,
+                detail="only the current assigned coordinator may withdraw",
+            )
+            raise PermissionDenied("Only the current assigned coordinator may withdraw.") from None
+        except BookingValidationError as exc:
+            return Response({"detail": "Withdrawal refused.", **exc.errors}, status=409)
+        except InvalidBookingTransition as exc:
+            return Response({"detail": str(exc)}, status=409)
+        return Response(
+            {
+                "detail": "Booking withdrawn. Venue Staff have been notified.",
+                "booking": VenueBookingSerializer(booking).data,
+            }
+        )
