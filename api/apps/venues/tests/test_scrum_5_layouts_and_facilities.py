@@ -2,10 +2,10 @@
 each venue supports, so that coordinators can match venues to the layout the
 Event Organiser asked for.
 
-AC4 (warn which confirmed bookings are affected when a layout is removed) is
-blocked: this baseline has no booking records, so there is nothing to warn
-about yet. It needs the booking slice agreed in the Sprint 2 implementation
-guide before it can be implemented or tested.
+AC4 (warn which confirmed bookings are affected when a layout is removed) was
+blocked in Sprint 2 because there were no booking records yet. It is now
+implemented as Sprint 3 INT-02 (gate G13) and tested through real approved
+bookings in test_int_02_layout_booking_warning.py.
 """
 
 import pytest

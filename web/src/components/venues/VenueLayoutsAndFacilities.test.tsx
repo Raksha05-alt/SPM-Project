@@ -156,3 +156,64 @@ describe("SCRUM-91 venue form uses the layout catalogue", () => {
     expect(screen.getByLabelText("Classroom")).toBeInTheDocument();
   });
 });
+
+describe("INT-02 (SCRUM-5 AC4) affected-layout warning", () => {
+  const WARNING = new ApiError(
+    409,
+    {
+      detail:
+        "Removing Theatre from Harbour Hall affects 1 approved booking. " +
+        "The booking will be kept. Confirm to remove the layout anyway.",
+      affected_bookings: [
+        {
+          booking: 7,
+          event: 9,
+          event_name: "Annual Gala",
+          layout: "THEATRE",
+          layout_name: "Theatre",
+          starts_at: "2027-03-01T02:00:00Z",
+          ends_at: "2027-03-01T04:00:00Z",
+        },
+      ],
+    },
+    "Conflict",
+  );
+
+  it("names each approved booking that uses the removed layout", async () => {
+    renderForm(WARNING);
+
+    const warning = screen.getByRole("alert", { name: "Layout removal warning" });
+    expect(warning).toHaveTextContent("affects 1 approved booking");
+    expect(warning).toHaveTextContent("The booking will be kept.");
+    expect(warning).toHaveTextContent(/Annual Gala · Theatre · /);
+    expect(screen.queryByText("We could not save the venue.")).not.toBeInTheDocument();
+  });
+
+  it("removes the layout anyway only when Venue Staff confirm", async () => {
+    const onSave = renderForm(WARNING);
+    await userEvent.click(await screen.findByLabelText("Theatre"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove anyway" }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ layouts: [], confirm_layout_removal: true }),
+    );
+  });
+
+  it("a plain save does not confirm the removal", async () => {
+    const onSave = renderForm();
+    await userEvent.click(await screen.findByLabelText("Theatre"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Save venue" }));
+
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty("confirm_layout_removal");
+    expect(screen.queryByRole("button", { name: "Remove anyway" })).not.toBeInTheDocument();
+  });
+
+  it("a conflict without a booking list is shown as a general error", () => {
+    renderForm(new ApiError(409, { detail: "Something else." }, "Conflict"));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("We could not save the venue.");
+  });
+});
