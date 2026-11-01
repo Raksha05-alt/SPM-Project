@@ -54,14 +54,14 @@ def test_ac1_supplied_filters_are_combined(signed_in_coordinator):
     )
 
     assert result_names(response) == ["Suitable room"]
-    assert response.data["availability_integrated"] is False
+    assert response.data["availability_integrated"] is True
+    assert response.data["booking_occupancy_integrated"] is True
+    assert response.data["holds_integrated"] is False
     assert response.data["date_blocks_integrated"] is True
     match = response.data["results"][0]
-    assert match["availability_status"] == "UNVERIFIED"
+    assert match["availability_status"] == "AVAILABLE"
     assert match["matches_recorded_requirements"] is True
-    assert [check["key"] for check in match["criteria"] if check["result"] == "UNVERIFIED"] == [
-        "booking_availability"
-    ]
+    assert not any(check["result"] == "UNVERIFIED" for check in match["criteria"])
 
 
 @pytest.mark.parametrize(

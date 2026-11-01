@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client";
@@ -18,8 +18,7 @@ const PENDING = {
   decision_reason: "",
 } as unknown as VenueBooking;
 
-function renderDecision(booking: VenueBooking = PENDING) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderDecision(booking: VenueBooking = PENDING, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={client}>
       <BookingDecision booking={booking} />
@@ -39,6 +38,40 @@ describe("BookingDecision (SCRUM-72)", () => {
 
     expect(approveBooking).toHaveBeenCalledWith(7);
     expect(rejectBooking).not.toHaveBeenCalled();
+  });
+
+  it("G12: a staff decision invalidates cached discovery, shortlist and availability data", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const keys = [["venue-search", 2], ["venue-shortlist", 9, 2], ["venue-availability", 3]];
+    keys.forEach(key => client.setQueryData<{ oldSnapshot: boolean }>(key, { oldSnapshot: true }));
+    vi.mocked(approveBooking).mockResolvedValue({ detail: "ok", booking: PENDING });
+    renderDecision(PENDING, client);
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => keys.forEach(key => expect(client.getQueryState(key)?.isInvalidated).toBe(true)));
+  });
+
+  it.each([
+    new Error("connection lost"), new ApiError(500, null, "Empty response"),
+  ])("G12: uncertain decision responses refresh cached venue availability (%s)", async error => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const keys = [["venue-search", 2], ["venue-shortlist", 9, 2], ["venue-availability", 3]];
+    keys.forEach(key => client.setQueryData<{ oldSnapshot: boolean }>(key, { oldSnapshot: true }));
+    vi.mocked(approveBooking).mockRejectedValue(error);
+    renderDecision(PENDING, client);
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The decision could not be recorded");
+    await waitFor(() => keys.forEach(key => expect(client.getQueryState(key)?.isInvalidated).toBe(true)));
+  });
+
+  it.each([
+    { body: { event: ["This event already has an approved venue."] }, expected: "This event already has an approved venue." },
+    { body: { venue: ["The venue conflicts with event 42."] }, expected: "The venue conflicts with event 42." },
+    { body: { unmet_requirements: [{ message: "Attendance exceeds current capacity." }] }, expected: "Attendance exceeds current capacity." },
+  ])("shows a current server refusal without claiming approval: $expected", async ({ body, expected }) => {
+    vi.mocked(approveBooking).mockRejectedValue(new ApiError(409, body, "Refused"));
+    renderDecision();
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(expected);
   });
 
   it("AC3/AC4 - rejection needs a reason before it can be confirmed", async () => {

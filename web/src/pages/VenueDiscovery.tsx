@@ -75,6 +75,8 @@ function MatchDetails({ match }: { match: VenueMatch }) {
       </p>
       {match.availability_status === "UNAVAILABLE" ? (
         <p className="mt-2 font-medium text-rose-700">No longer available for these criteria</p>
+      ) : match.availability_status === "AVAILABLE" ? (
+        <p className="mt-2 font-medium text-emerald-800">Available for this period</p>
       ) : (
         <p className="mt-2 text-sm text-amber-800">Availability not verified</p>
       )}
@@ -113,26 +115,32 @@ export function VenueDiscovery({ event }: { event?: EventRequest }) {
   const search = useQuery({
     queryKey: ["venue-search", user?.id, criteria],
     queryFn: () => searchVenues(criteria),
+    refetchOnWindowFocus: "always",
   });
   const shortlistKey = ["venue-shortlist", event?.id, user?.id];
   const shortlist = useQuery({
     queryKey: shortlistKey,
     queryFn: () => getVenueShortlist(event!.id),
     enabled: Boolean(event),
+    refetchOnWindowFocus: "always",
   });
+  const refreshMatches = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["venue-search", user?.id] }),
+    queryClient.invalidateQueries({ queryKey: shortlistKey }),
+  ]);
   const add = useMutation({
     mutationFn: (venueId: number) => addVenueToShortlist(event!.id, venueId, search.data!.criteria),
     onSuccess: () => {
       setNotice("Venue saved to this event's shortlist.");
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: shortlistKey }),
+    onSettled: refreshMatches,
   });
   const remove = useMutation({
     mutationFn: (venueId: number) => removeVenueFromShortlist(event!.id, venueId),
     onSuccess: () => {
       setNotice("Venue removed from this event's shortlist.");
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: shortlistKey }),
+    onSettled: refreshMatches,
   });
   const set = (key: keyof typeof EMPTY, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -147,6 +155,7 @@ export function VenueDiscovery({ event }: { event?: EventRequest }) {
       setValidationError(null);
       if (JSON.stringify(next) === JSON.stringify(criteria)) void search.refetch();
       else setCriteria(next);
+      if (event) void shortlist.refetch();
     } catch (error) {
       setValidationError((error as Error).message);
     }
@@ -169,7 +178,7 @@ export function VenueDiscovery({ event }: { event?: EventRequest }) {
       </p>
       <p role="note" className="mb-6 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
         {search.data?.limitation ??
-          "Recorded date-specific blocks and operating hours are checked for a supplied period. Booking and hold occupancy is not integrated yet; verify booking availability with Venue Staff."}
+          "Checking the selected period against current venue records. Search results do not reserve a venue."}
       </p>
       <form
         aria-label="Venue search filters"
@@ -307,6 +316,11 @@ export function VenueDiscovery({ event }: { event?: EventRequest }) {
             search if the event requirements change. Date checks use the saved search period,
             or the event's period when no dates were saved.
           </p>
+          <button type="button" className="mb-3 text-sm text-navy-700 underline"
+            disabled={shortlist.isFetching || search.isFetching}
+            onClick={() => { void refreshMatches(); }}>
+            Refresh availability
+          </button>
           {notice && (
             <p role="status" className="mb-3 text-sm text-emerald-800">
               {notice}
