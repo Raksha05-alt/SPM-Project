@@ -17,6 +17,7 @@ import { inputClass } from "../components/Field";
 import { layoutName, useLayouts } from "../components/layouts/useLayouts";
 import { RejectionNotice } from "../components/RejectionNotice";
 import { StatusBadge } from "../components/StatusBadge";
+import { VenueSuitability } from "../components/venues/VenueSuitability";
 import type { EventRequest, EventStatus } from "../types";
 
 /** Statuses a coordinator can approve from; the API enforces the same rule. */
@@ -414,6 +415,9 @@ export function CoordinatorEventDetail() {
           {new Date(event.updated_at).toLocaleString("en-SG")}
         </p>
       )}
+
+      {/* SCRUM-71 - check venues against this event's requirements. */}
+      {isAssigned && <VenueSuitability eventId={event.id} />}
 
       <ClarificationHistory clarifications={event.clarifications ?? []} />
     </div>

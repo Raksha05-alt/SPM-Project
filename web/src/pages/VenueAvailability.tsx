@@ -105,6 +105,7 @@ export function VenueAvailability() {
         <p className="font-semibold capitalize">{result.data.status}</p>
         <p>{display(result.data.starts_at)} to {display(result.data.ends_at)}</p>
         {result.data.blocks.map(b => <p key={b.id}>Blocked: {b.reason} ({display(b.starts_at)} to {display(b.ends_at)})</p>)}
+        {result.data.conflicts?.map(b => <p key={b.id}>Conflicting event #{b.event_id} (booking #{b.id}): {display(b.starts_at)} to {display(b.ends_at)}</p>)}
       </section>}
       <section aria-label="Venue blocks" className="space-y-3">
         <h2 className="text-lg font-semibold">Blocked periods</h2>

@@ -171,3 +171,38 @@ export interface LayoutType {
   created_at: string;
   updated_at: string;
 }
+
+/** SCRUM-71 - a requirement a venue does not meet. */
+export interface SuitabilityReason {
+  requirement: "CAPACITY" | "LAYOUT" | "ACCESSIBILITY" | "FACILITY" | "OPERATING_HOURS";
+  message: string;
+}
+
+/** SCRUM-71 - one venue checked against one event's requirements. */
+export interface VenueSuitability {
+  venue: number;
+  venue_name: string;
+  suitable: boolean;
+  reasons: SuitabilityReason[];
+  /** Shown beside the result; operational status is not a suitability reason. */
+  in_service: boolean;
+}
+
+/** SCRUM-71 - the requirements the venues were checked against. */
+export interface SuitabilityRequirements {
+  attendance: number | null;
+  layout: string;
+  layout_name: string;
+  required_facilities: string[];
+  wheelchair_access_required: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+}
+
+export interface EventSuitability {
+  event: number;
+  requirements: SuitabilityRequirements;
+  /** What this check does not cover, e.g. whether the venue is free. */
+  not_checked: string[];
+  venues: VenueSuitability[];
+}

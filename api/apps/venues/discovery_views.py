@@ -26,6 +26,7 @@ from apps.venues.discovery_serializers import (
     VenueShortlistEntrySerializer,
 )
 from apps.venues.models import VenueShortlistEntry
+from apps.venues.occupancy import occupancy_prefetch
 
 
 class VenueSearchView(APIView):
@@ -81,7 +82,7 @@ class EventVenueShortlistView(APIView):
         event = self.event(request, event_id)
         entries = event.venue_shortlist.select_related(
             "event", "venue__created_by", "venue__updated_by"
-        ).prefetch_related("venue__blocks")
+        ).prefetch_related("venue__blocks", occupancy_prefetch("venue__bookings"))
         return Response(
             {
                 "event_id": event.pk,

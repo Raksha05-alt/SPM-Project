@@ -9,6 +9,7 @@ export interface BlockHistory extends VenueBlock {
 export interface Availability {
   venue_id: number; status: string; available: boolean; timezone: string;
   starts_at: string; ends_at: string; blocks: VenueBlock[];
+  conflicts?: { id: number; event_id: number; starts_at: string; ends_at: string }[];
 }
 const base = (id: number) => `/api/venues/${id}`;
 export const getAvailability = (id: number, start: string, end: string) =>
