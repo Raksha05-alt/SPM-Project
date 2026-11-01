@@ -57,7 +57,14 @@ def availability(venue, start, end):
         blocks = [b for b in venue.blocks.all() if b.starts_at < end and b.ends_at > start]
     else:
         blocks = list(venue.blocks.filter(starts_at__lt=end, ends_at__gt=start))
-    conflicts = conflict_references(venue, start, end)
+    if hasattr(venue, "occupancy_bookings"):
+        conflicts = [
+            {"id": b.pk, "event_id": b.event_id, "starts_at": b.starts_at, "ends_at": b.ends_at}
+            for b in venue.occupancy_bookings
+            if b.starts_at < end and b.ends_at > start
+        ]
+    else:
+        conflicts = conflict_references(venue, start, end)
     if blocks:
         status = "blocked"
     elif conflicts:

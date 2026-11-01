@@ -4,8 +4,23 @@ Pending requests reserve nothing. Read conflicts afresh rather than persisting a
 flag that can become stale after approval, withdrawal or event cancellation.
 """
 
+from django.db.models import Prefetch
+
 from apps.core.statuses import EventStatus
 from apps.venues.models import VenueBooking
+
+
+def occupying_bookings():
+    return VenueBooking.objects.occupying().exclude(event__status=EventStatus.CANCELLED)
+
+
+def occupancy_prefetch(lookup="bookings"):
+    """Request-scoped snapshot for bulk reads; never used for approval writes."""
+    return Prefetch(
+        lookup,
+        queryset=occupying_bookings().order_by("starts_at", "pk"),
+        to_attr="occupancy_bookings",
+    )
 
 
 def clashes(venue, starts_at, ends_at, *, exclude_booking_id=None):
@@ -14,12 +29,7 @@ def clashes(venue, starts_at, ends_at, *, exclude_booking_id=None):
     Booking IDs and event IDs suffice to identify conflicts without exposing
     private event descriptions, contacts or requirements.
     """
-    bookings = (
-        VenueBooking.objects.filter(venue=venue)
-        .occupying()
-        .overlapping(starts_at, ends_at)
-        .exclude(event__status=EventStatus.CANCELLED)
-    )
+    bookings = occupying_bookings().filter(venue=venue).overlapping(starts_at, ends_at)
     if exclude_booking_id is not None:
         bookings = bookings.exclude(pk=exclude_booking_id)
     return bookings.order_by("starts_at", "pk")

@@ -121,3 +121,45 @@ def test_05_concurrent_approvals_cannot_both_succeed(
     for booking in bookings:
         booking.refresh_from_db()
     assert sorted(b.status for b in bookings) == [BookingStatus.APPROVED, BookingStatus.PENDING]
+
+
+@pytest.mark.django_db
+def test_bulk_occupancy_matches_direct_checks_without_per_venue_queries(
+    open_venue, organiser, coordinator, venue_staff, django_assert_num_queries
+):
+    from apps.venues.models import Venue
+    from apps.venues.occupancy import occupancy_prefetch
+
+    approved = pending(organiser, coordinator, open_venue)
+    transition_booking(approved, BookingStatus.APPROVED, venue_staff)
+    pending(organiser, coordinator, open_venue)
+    cancelled = pending(organiser, coordinator, open_venue)
+    # Establish historical approved occupancy belonging to a cancelled event.
+    type(cancelled).objects.filter(pk=cancelled.pk).update(status=BookingStatus.APPROVED)
+    cancelled.event.status = EventStatus.CANCELLED
+    cancelled.event.save(update_fields=["status"])
+    withdrawn = pending(organiser, coordinator, open_venue)
+    transition_booking(withdrawn, BookingStatus.WITHDRAWN, venue_staff)
+    rejected = pending(organiser, coordinator, open_venue)
+    transition_booking(rejected, BookingStatus.REJECTED, venue_staff, reason="Not required")
+
+    periods = [
+        (START, END),
+        (END - timedelta(minutes=1), END + timedelta(hours=1)),
+        (START - timedelta(hours=2), START),
+        (END, END + timedelta(hours=1)),
+    ]
+    expected = [availability(open_venue, start, end) for start, end in periods]
+    with django_assert_num_queries(3):
+        loaded = Venue.objects.prefetch_related("blocks", occupancy_prefetch()).get(
+            pk=open_venue.pk
+        )
+    assert [b.pk for b in loaded.occupancy_bookings] == [approved.pk]
+    with django_assert_num_queries(0):
+        assert [availability(loaded, start, end) for start, end in periods] == expected
+
+    # Each new read obtains a new snapshot after a write.
+    transition_booking(approved, BookingStatus.WITHDRAWN, venue_staff)
+    loaded = Venue.objects.prefetch_related("blocks", occupancy_prefetch()).get(pk=open_venue.pk)
+    with django_assert_num_queries(0):
+        assert availability(loaded, START, END)["available"] is True

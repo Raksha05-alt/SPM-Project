@@ -239,7 +239,8 @@ def test_list_uses_constant_query_count(
             created_by=coordinator,
         )
     # SCRUM-91: +1 constant query for the layout catalogue's current names (AC2).
-    with django_assert_num_queries(4):
+    # SCRUM-69: +1 constant query for all venues' approved occupancy.
+    with django_assert_num_queries(5):
         response = signed_in_coordinator.get(url(planning_event))
     assert len(response.data["entries"]) == 5
 

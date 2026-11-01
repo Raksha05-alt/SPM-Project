@@ -180,7 +180,8 @@ def test_search_queries_do_not_grow_per_venue(signed_in_coordinator, django_asse
     for index in range(5):
         searchable_venue(name=f"Room {index}")
     # SCRUM-91: +1 constant query for the layout catalogue's current names (AC2).
-    with django_assert_num_queries(3):
+    # SCRUM-69: +1 constant query for all venues' approved occupancy.
+    with django_assert_num_queries(4):
         response = signed_in_coordinator.get(SEARCH)
     assert len(response.data["results"]) == 5
 
@@ -268,6 +269,7 @@ def test_ac1_block_search_uses_constant_queries_with_multiple_real_blocks(
         VenueBlock.objects.create(
             venue=venue, reason="Maintenance", starts_at=PERIOD["start"], ends_at=PERIOD["end"]
         )
-    with django_assert_num_queries(2):
+    # One additional bulk query loads approved occupancy for every venue.
+    with django_assert_num_queries(3):
         response = signed_in_coordinator.get(SEARCH, PERIOD)
     assert result_names(response) == []

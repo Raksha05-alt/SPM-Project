@@ -11,6 +11,7 @@ from apps.core.statuses import TERMINAL_STATUSES
 from apps.venues.availability import availability, within_operating_hours
 from apps.venues.layouts import label_map
 from apps.venues.models import Venue, VenueShortlistEntry
+from apps.venues.occupancy import occupancy_prefetch
 
 AVAILABILITY_LIMITATION = (
     "Approved booking occupancy is checked. Request workflows and holds are not integrated yet. Recorded date-specific blocks "
@@ -117,7 +118,7 @@ def search_venues(criteria):
     venues = (
         Venue.objects.filter(in_service=True)
         .select_related("created_by", "updated_by")
-        .prefetch_related("blocks")
+        .prefetch_related("blocks", occupancy_prefetch())
     )
     if criteria.get("attendance") is not None:
         venues = venues.filter(capacity__gte=criteria["attendance"])

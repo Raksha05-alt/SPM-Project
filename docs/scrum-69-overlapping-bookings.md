@@ -36,3 +36,11 @@ All periods above are 1 March 2027 in Asia/Singapore. Tests use persisted record
 - No manual browser journey, commit, push, PR, main integration or Jira update performed.
 
 Remaining integration: G09 request validation calls shared availability; G10 real staff approval/inbox runs concurrency and refusal cases; INT-03 cancellation verifies release through the real action. This is the guide's G08 slice, not a claim that the full story meets Definition of Done.
+
+## Bulk occupancy performance fix — 1 November 2026
+
+Search and shortlist reads now prefetch Approved, non-cancelled bookings once for all venues, using the same queryset as direct conflict checks. Availability uses this request-scoped snapshot when present, retaining half-open comparisons and reference ordering. Approval continues querying fresh state under its existing venue lock.
+
+The fixed query budgets include one bulk occupancy query: period/block search 3, general search 4 (including layout names), and shortlist list 5. These counts stay constant as venues increase. Exact assertions remain enabled. A regression test compares bulk and direct results for overlap and adjacency, excludes Pending/Rejected/Withdrawn/cancelled occupancy, proves zero queries during prefetched assessment and verifies a new snapshot after withdrawal.
+
+Verification: 84 tests passed across test_scrum_64_filter_venues.py, test_scrum_68_shortlist.py and test_scrum_69_overlapping_bookings.py against PostgreSQL, including concurrent approvals. Ruff lint, formatting and Git whitespace checks passed. This supersedes the earlier backend-unavailable note for these three modules only; full-suite/coverage/browser execution was not repeated. No commit or push performed.
