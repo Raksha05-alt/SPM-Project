@@ -1,7 +1,4 @@
-"""SCRUM-64/68: matching and shortlists using the shared date-block checks.
-
-Approved occupancy is checked; request workflows and holds remain later gates.
-"""
+"""SCRUM-64/68, G12: fresh venue matches using shared booking/block checks."""
 
 from django.utils.dateparse import parse_datetime
 from rest_framework.exceptions import ValidationError
@@ -14,10 +11,17 @@ from apps.venues.models import Venue, VenueShortlistEntry
 from apps.venues.occupancy import occupancy_prefetch
 
 AVAILABILITY_LIMITATION = (
-    "Approved booking occupancy is checked. Request workflows and holds are not integrated yet. Recorded date-specific blocks "
-    "and operating hours are checked for a supplied period. These are venue candidates, "
-    "not confirmed available rooms. Verify booking availability with Venue Staff."
+    "Availability reflects approved bookings, recorded date-specific blocks and operating hours "
+    "for the selected period. Search results do not reserve a venue. "
+    "Venue Staff recheck availability before approving a request."
 )
+
+DISCOVERY_CAPABILITIES = {
+    "availability_integrated": True,
+    "booking_occupancy_integrated": True,
+    "date_blocks_integrated": True,
+    "holds_integrated": False,
+}
 
 
 def assess_venue(venue, criteria, labels=None):
@@ -61,7 +65,8 @@ def assess_venue(venue, criteria, labels=None):
             if missing
             else "All required facilities are recorded.",
         )
-    if criteria.get("start") and criteria.get("end"):
+    has_period = bool(criteria.get("start") and criteria.get("end"))
+    if has_period:
         start = parse_datetime(criteria["start"])
         end = parse_datetime(criteria["end"])
         within_hours = within_operating_hours(venue, start, end)
@@ -92,14 +97,15 @@ def assess_venue(venue, criteria, labels=None):
             if blocked
             else "No recorded block overlaps this period.",
         )
-    checks.append(
-        {
-            "key": "booking_availability",
-            "label": "Booking and hold availability",
-            "result": "UNVERIFIED",
-            "message": AVAILABILITY_LIMITATION,
-        }
-    )
+    else:
+        checks.append(
+            {
+                "key": "booking_availability",
+                "label": "Availability for an event period",
+                "result": "UNVERIFIED",
+                "message": "Enter event start and end to check bookings, blocks and operating hours.",
+            }
+        )
     unavailable = any(
         item["result"] == "UNMET"
         and item["key"]
@@ -110,7 +116,9 @@ def assess_venue(venue, criteria, labels=None):
         "venue": venue,
         "criteria": checks,
         "matches_recorded_requirements": not any(item["result"] == "UNMET" for item in checks),
-        "availability_status": "UNAVAILABLE" if unavailable else "UNVERIFIED",
+        "availability_status": (
+            "UNAVAILABLE" if unavailable else "AVAILABLE" if has_period else "UNVERIFIED"
+        ),
     }
 
 

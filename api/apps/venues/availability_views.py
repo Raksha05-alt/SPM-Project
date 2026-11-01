@@ -34,7 +34,7 @@ class CalendarView(APIView):
 
 
 class AvailableVenuesView(CalendarView):
-    """SCRUM-13 AC3: period search; booking occupancy awaits its dependency."""
+    """SCRUM-13/G12: period search through the shared booking/block checks."""
 
     def get(self, request):
         period = PeriodSerializer(data=request.query_params)

@@ -106,7 +106,7 @@ def test_ac3_reopen_rechecks_current_venue_data_against_saved_filters(
     results = {item["key"]: item["result"] for item in match["criteria"]}
     assert results["attendance"] == results["layout"] == "UNMET"
     assert results["facilities"] == "MATCH"
-    assert results["booking_availability"] == "UNVERIFIED"
+    assert results["approved_bookings"] == "MATCH"
     assert match["matches_recorded_requirements"] is False
     assert match["venue"]["capacity"] == 59
 
@@ -129,7 +129,9 @@ def test_empty_shortlist_is_a_valid_empty_state(signed_in_coordinator, planning_
     assert response.status_code == 200
     assert response.data["entries"] == []
     assert response.data["can_edit"] is True
-    assert response.data["availability_integrated"] is False
+    assert response.data["availability_integrated"] is True
+    assert response.data["booking_occupancy_integrated"] is True
+    assert response.data["holds_integrated"] is False
     assert response.data["date_blocks_integrated"] is True
 
 
@@ -285,15 +287,14 @@ def test_ac4_real_staff_block_flags_saved_entry_and_changes_refresh_without_remo
         signed_in_coordinator.get(url(planning_event)).data["entries"][0]["match"][
             "availability_status"
         ]
-        == "UNVERIFIED"
+        == "AVAILABLE"
     )
     assert staff.delete(item).status_code == 204
     cleared = signed_in_coordinator.get(url(planning_event)).data["entries"][0]["match"]
     assert cleared["matches_recorded_requirements"] is True
     assert next(c for c in cleared["criteria"] if c["key"] == "date_blocks")["result"] == "MATCH"
     assert (
-        next(c for c in cleared["criteria"] if c["key"] == "booking_availability")["result"]
-        == "UNVERIFIED"
+        next(c for c in cleared["criteria"] if c["key"] == "approved_bookings")["result"] == "MATCH"
     )
 
 

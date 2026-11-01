@@ -35,9 +35,17 @@ export function BookingDecision({ booking }: { booking: VenueBooking }) {
     setReason("");
     void queryClient.invalidateQueries({ queryKey: ["venue-booking-inbox"] });
     void queryClient.invalidateQueries({ queryKey: ["venue-bookings", booking.event] });
+    void queryClient.invalidateQueries({ queryKey: ["venue-search"] });
+    void queryClient.invalidateQueries({ queryKey: ["venue-shortlist"] });
+    void queryClient.invalidateQueries({ queryKey: ["venue-availability"] });
   };
   // A refused decision may mean someone else decided first, so reload the inbox.
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: ["venue-booking-inbox"] });
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["venue-booking-inbox"] });
+    void queryClient.invalidateQueries({ queryKey: ["venue-search"] });
+    void queryClient.invalidateQueries({ queryKey: ["venue-shortlist"] });
+    void queryClient.invalidateQueries({ queryKey: ["venue-availability"] });
+  };
   const approve = useMutation({
     mutationFn: () => approveBooking(booking.id),
     onSuccess: done,
