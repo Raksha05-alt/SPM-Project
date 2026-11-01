@@ -26,6 +26,12 @@ vi.mock("../api/events", () => ({
   addClarificationNote: vi.fn(),
 }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: 2 } }) }));
+// SCRUM-11 venue planner on the same page: no requests and no venues by default.
+vi.mock("../api/venueBookings", () => ({
+  listEventBookings: vi.fn(async () => []),
+  requestVenue: vi.fn(),
+}));
+vi.mock("../api/venues", () => ({ listVenues: vi.fn(async () => []) }));
 
 function event(overrides: Partial<EventRequest> = {}): EventRequest {
   return {

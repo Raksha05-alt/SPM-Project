@@ -43,6 +43,9 @@ export function VenueCatalogue() {
       <div className="mb-6 flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold text-navy-700">Venues</h1>
         <div className="flex items-baseline gap-4">
+          <Link to="/venues/requests" className="text-sm text-navy-700 underline">
+            Booking requests
+          </Link>
           <Link to="/venues/layouts" className="text-sm text-navy-700 underline">
             Room layouts
           </Link>
