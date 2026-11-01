@@ -8,6 +8,7 @@ from apps.venues.availability_views import (
     BlockView,
     CalendarView,
 )
+from apps.venues.booking_views import EventVenueBookingsView, VenueBookingInboxView
 from apps.venues.discovery_views import (
     EventVenueShortlistItemView,
     EventVenueShortlistView,
@@ -28,6 +29,12 @@ urlpatterns = [
     path("venues/<int:pk>/blocks/history/", BlockHistoryView.as_view()),
     path("venues/<int:pk>/blocks/<int:block_pk>/", BlockDetailView.as_view()),
     path("venues/search/", VenueSearchView.as_view(), name="venue-search"),
+    path(
+        "events/<int:event_id>/venue-bookings/",
+        EventVenueBookingsView.as_view(),
+        name="event-venue-bookings",
+    ),
+    path("venue-bookings/", VenueBookingInboxView.as_view(), name="venue-booking-inbox"),
     path(
         "events/<int:event_id>/venue-shortlist/",
         EventVenueShortlistView.as_view(),

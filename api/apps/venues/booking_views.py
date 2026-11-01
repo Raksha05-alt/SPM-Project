@@ -1,0 +1,210 @@
+"""SCRUM-11 - Request a venue booking (Sprint 3 gate G09).
+
+GET  /api/events/<event_id>/venue-bookings/   the event's venue requests (AC5)
+POST /api/events/<event_id>/venue-bookings/   the assigned coordinator requests a venue
+GET  /api/venue-bookings/?status=PENDING      Venue Staff's booking-request inbox (AC4)
+
+Venue booking requests are internal planning information: clients and
+Attendees never reach them (SCRUM-1 AC2). Every refusal is audited.
+"""
+
+from django.shortcuts import get_object_or_404
+from rest_framework import serializers, status
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.accounts.models import Role
+from apps.core.audit import record_denied
+from apps.core.permissions import HasAnyRole
+from apps.core.statuses import EventStatus
+from apps.events.models import EventRequest
+from apps.venues.bookings import (
+    BookingValidationError,
+    NotAssignedToEvent,
+    VenueNotAvailable,
+    request_booking,
+)
+from apps.venues.layouts import cached_label_map
+from apps.venues.models import BookingStatus, Venue, VenueBooking
+from apps.venues.suitability import VenueUnsuitable
+
+
+def _name(user):
+    return None if user is None else (user.get_full_name() or user.email)
+
+
+class VenueBookingSerializer(serializers.ModelSerializer):
+    event_name = serializers.CharField(source="event.name", read_only=True)
+    organisation_name = serializers.CharField(source="event.organisation.name", read_only=True)
+    venue_name = serializers.CharField(source="venue.name", read_only=True)
+    layout_name = serializers.SerializerMethodField()
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    requested_by_name = serializers.SerializerMethodField()
+    decided_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VenueBooking
+        fields = [
+            "id",
+            "event",
+            "event_name",
+            "organisation_name",
+            "venue",
+            "venue_name",
+            "starts_at",
+            "ends_at",
+            "attendance",
+            "layout",
+            "layout_name",
+            "required_facilities",
+            "wheelchair_access_required",
+            "accessibility_notes",
+            "status",
+            "status_label",
+            "status_changed_at",
+            "requested_by_name",
+            "requested_at",
+            "decided_by_name",
+            "decided_at",
+            "decision_reason",
+        ]
+        read_only_fields = fields
+
+    def get_layout_name(self, obj) -> str:
+        return cached_label_map(self.context).get(obj.layout, obj.layout) if obj.layout else ""
+
+    def get_requested_by_name(self, obj) -> str | None:
+        return _name(obj.requested_by)
+
+    def get_decided_by_name(self, obj) -> str | None:
+        return _name(obj.decided_by)
+
+
+class BookingRequestInputSerializer(serializers.Serializer):
+    """Parses the request; the booking service names every missing item (AC3)."""
+
+    venue = serializers.IntegerField(required=False, allow_null=True)
+    starts_at = serializers.DateTimeField(required=False, allow_null=True)
+    ends_at = serializers.DateTimeField(required=False, allow_null=True)
+    attendance = serializers.IntegerField(required=False, allow_null=True)
+    layout = serializers.CharField(required=False, allow_blank=True, default="")
+    required_facilities = serializers.ListField(
+        child=serializers.CharField(allow_blank=True), required=False, default=list
+    )
+    wheelchair_access_required = serializers.BooleanField(required=False, default=False)
+    accessibility_notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+def _bookings():
+    return VenueBooking.objects.select_related(
+        "event__organisation", "venue", "requested_by", "decided_by"
+    )
+
+
+class CanSeeEventBookings(BasePermission):
+    """Assigned coordinator, any Lead, or Venue Staff; drafts are never visible."""
+
+    message = "You do not have access to this event's venue requests."
+
+    def has_object_permission(self, request, view, event):
+        user = request.user
+        if event.status == EventStatus.DRAFT:
+            allowed, reason = False, "drafts are not visible to ConnectSphere"
+        elif user.role == Role.EVENT_COORDINATOR:
+            allowed = event.coordinator_id == user.pk
+            reason = "coordinator is not assigned to this event"
+        else:
+            allowed, reason = True, ""
+        if not allowed:
+            record_denied(user, action=f"{request.method} {request.path}", obj=event, detail=reason)
+        return allowed
+
+
+class EventVenueBookingsView(APIView):
+    # HasAnyRole first so that every refusal is audited (US-01.2 AC4).
+    permission_classes = [HasAnyRole, IsAuthenticated, CanSeeEventBookings]
+
+    @property
+    def allowed_roles(self):
+        if self.request.method == "POST":
+            # AC6 - only coordinators request venues; the service checks assignment.
+            return frozenset({Role.EVENT_COORDINATOR})
+        return frozenset({Role.EVENT_COORDINATOR, Role.EVENT_COORDINATOR_LEAD, Role.VENUE_STAFF})
+
+    def get(self, request, event_id):
+        event = get_object_or_404(EventRequest, pk=event_id)
+        self.check_object_permissions(request, event)
+        bookings = _bookings().filter(event=event).order_by("-requested_at", "-pk")
+        return Response(VenueBookingSerializer(bookings, many=True).data)
+
+    def post(self, request, event_id):
+        event = get_object_or_404(EventRequest, pk=event_id)
+        action = f"POST /api/events/{event_id}/venue-bookings/"
+        payload = BookingRequestInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        values = dict(payload.validated_data)
+        venue_id = values.pop("venue", None)
+        venue = Venue.objects.filter(pk=venue_id).first() if venue_id is not None else None
+        if venue_id is not None and venue is None:
+            raise ValidationError({"venue": ["That venue does not exist."]})
+        try:
+            booking = request_booking(event=event, venue=venue, requested_by=request.user, **values)
+        except NotAssignedToEvent:
+            record_denied(
+                request.user,
+                action=action,
+                obj=event,
+                detail="only the assigned coordinator may request a venue",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can request a venue."
+            ) from None
+        except BookingValidationError as exc:
+            return Response(
+                {
+                    "detail": "The venue request is missing information or has invalid values.",
+                    **{field: [message] for field, message in exc.errors.items()},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except VenueUnsuitable as exc:
+            return Response(
+                {
+                    "detail": f"{exc.result.venue_name} does not meet this event's requirements.",
+                    "unmet_requirements": [reason.as_dict() for reason in exc.reasons],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except VenueNotAvailable as exc:
+            return Response(
+                {"detail": "The venue is not available for that period.", "reasons": exc.reasons},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(
+            {
+                # AC4 - confirmation that the request reached Venue Staff.
+                "detail": f"Your request for {booking.venue.name} has been sent to Venue Staff.",
+                "booking": VenueBookingSerializer(_bookings().get(pk=booking.pk)).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class VenueBookingInboxView(APIView):
+    """AC4 - Venue Staff see the booking requests waiting for them (decisions: SCRUM-72)."""
+
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = frozenset({Role.VENUE_STAFF})
+
+    def get(self, request):
+        bookings = _bookings().order_by("requested_at", "pk")
+        wanted = request.query_params.get("status")
+        if wanted:
+            if wanted not in BookingStatus.values:
+                raise ValidationError(
+                    {"status": [f"Choose from {', '.join(BookingStatus.values)}."]}
+                )
+            bookings = bookings.filter(status=wanted)
+        return Response(VenueBookingSerializer(bookings, many=True).data)

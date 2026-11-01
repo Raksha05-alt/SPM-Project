@@ -235,3 +235,117 @@ def transition_booking(booking: VenueBooking, target: str, actor, reason: str = 
         )
     booking.refresh_from_db()
     return booking
+
+
+# SCRUM-11 - a venue is requested once the event has been approved for planning.
+# The first request on an Approved event moves it to Planning in the same
+# transaction (the "start planning" step in the Sprint 3 guide, gate G09).
+EVENT_STATUSES_OPEN_TO_REQUESTS = frozenset({EventStatus.APPROVED, EventStatus.PLANNING})
+
+
+class NotAssignedToEvent(Exception):
+    """SCRUM-11 AC6 - only the event's assigned coordinator may request a venue."""
+
+
+class VenueNotAvailable(Exception):
+    """The venue is blocked, out of service or already approved for that period."""
+
+    def __init__(self, reasons: list[str]):
+        self.reasons = reasons
+        super().__init__(" ".join(reasons))
+
+
+def _local(moment) -> str:
+    """A stored instant as Singapore time for messages people read."""
+    return f"{timezone.localtime(moment):%d %b %Y %H:%M}"
+
+
+def _availability_problems(venue, starts_at, ends_at) -> list[str]:
+    from apps.venues.availability import availability
+
+    period = availability(venue, starts_at, ends_at)
+    problems = [
+        f"The venue is blocked from {_local(b['starts_at'])} to "
+        f"{_local(b['ends_at'])}: {b['reason']}"
+        for b in period["blocks"]
+    ]
+    if not venue.in_service:
+        problems.append("The venue is out of service.")
+    if period["conflicts"]:
+        events = ", ".join(str(c["event_id"]) for c in period["conflicts"])
+        problems.append(f"The venue is already approved for event(s) {events} in this period.")
+    return problems
+
+
+@transaction.atomic
+def request_booking(*, event, venue, requested_by, **values) -> VenueBooking:
+    """SCRUM-11 - the assigned coordinator requests a venue for their event.
+
+    Locks the event, then the venue (the shared lock order), and refuses, with
+    nothing saved, when the user is not the assigned coordinator (AC6), the
+    request is incomplete or invalid (AC3, every item named), the venue does not
+    suit the event (SCRUM-71 AC4, every unmet requirement named) or it is
+    blocked, out of service or already approved for that period. On success it
+    saves a Pending booking, starts planning an Approved event and notifies
+    Venue Staff (AC4).
+    """
+    from apps.accounts.models import Role, User
+    from apps.events.models import EventRequest
+    from apps.events.services import transition_event
+    from apps.notifications.models import Notification, NotificationKind
+    from apps.venues.suitability import Requirements, ensure_suitable
+
+    locked_event = EventRequest.objects.select_for_update().get(pk=event.pk)
+    if locked_event.coordinator_id is None or locked_event.coordinator_id != requested_by.pk:
+        raise NotAssignedToEvent
+    if locked_event.status not in EVENT_STATUSES_OPEN_TO_REQUESTS:
+        raise BookingValidationError(
+            {
+                "event": (
+                    "A venue can be requested once the event is approved; "
+                    f"this event is {locked_event.get_status_display()}."
+                )
+            }
+        )
+    locked_venue = Venue.objects.select_for_update().get(pk=venue.pk) if venue is not None else None
+    cleaned = validate_booking_request(event=locked_event, venue=locked_venue, **values)
+
+    # SCRUM-71 AC4 - raises VenueUnsuitable with every unmet requirement.
+    ensure_suitable(locked_venue, Requirements.for_booking(_Requested(**cleaned)))
+    problems = _availability_problems(locked_venue, cleaned["starts_at"], cleaned["ends_at"])
+    if problems:
+        raise VenueNotAvailable(problems)
+
+    if locked_event.status == EventStatus.APPROVED:
+        transition_event(locked_event, EventStatus.PLANNING, requested_by)
+
+    values = {key: value for key, value in cleaned.items() if key not in ("event", "venue")}
+    booking = create_booking_record(
+        requested_by=requested_by, event=locked_event, venue=locked_venue, **values
+    )
+    staff = User.objects.filter(role=Role.VENUE_STAFF, is_active=True)
+    name = requested_by.get_full_name() or requested_by.email
+    Notification.objects.bulk_create(
+        [
+            Notification(
+                recipient=member,
+                event=locked_event,
+                kind=NotificationKind.VENUE_REQUESTED,
+                message=(
+                    f'{name} requested {locked_venue.name} for "{locked_event.name}" '
+                    f"({_local(booking.starts_at)} to {_local(booking.ends_at)}). "
+                    "Review it in Booking requests."
+                ),
+            )
+            for member in staff
+        ]
+    )
+    return booking
+
+
+class _Requested:
+    """The cleaned request values, shaped like a booking for ``Requirements.for_booking``."""
+
+    def __init__(self, **values):
+        for key, value in values.items():
+            setattr(self, key, value)

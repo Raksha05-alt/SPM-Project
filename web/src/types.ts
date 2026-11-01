@@ -206,3 +206,31 @@ export interface EventSuitability {
   not_checked: string[];
   venues: VenueSuitability[];
 }
+
+/** SCRUM-11 - a venue booking request for an event. */
+export type BookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "WITHDRAWN";
+
+export interface VenueBooking {
+  id: number;
+  event: number;
+  event_name: string;
+  organisation_name: string;
+  venue: number;
+  venue_name: string;
+  starts_at: string;
+  ends_at: string;
+  attendance: number;
+  layout: string;
+  layout_name: string;
+  required_facilities: string[];
+  wheelchair_access_required: boolean;
+  accessibility_notes: string;
+  status: BookingStatus;
+  status_label: string;
+  status_changed_at: string;
+  requested_by_name: string | null;
+  requested_at: string;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  decision_reason: string;
+}

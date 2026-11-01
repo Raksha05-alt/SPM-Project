@@ -16,6 +16,8 @@ class NotificationKind(models.TextChoices):
     # SCRUM-92 - offline clarification notes and resuming review.
     CLARIFICATION_NOTE = "CLARIFICATION_NOTE", "Clarification note added"
     REVIEW_RESUMED = "REVIEW_RESUMED", "Review resumed"
+    # SCRUM-11 - a coordinator's venue booking request reaches Venue Staff.
+    VENUE_REQUESTED = "VENUE_REQUESTED", "Venue booking requested"
 
 
 # Assignment notices are unique per occurrence, not per lifetime of an event.
