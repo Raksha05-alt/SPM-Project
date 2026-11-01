@@ -1,7 +1,6 @@
 """SCRUM-64/68: matching and shortlists using the shared date-block checks.
 
-Booking/hold occupancy is still outside this base. An unverified result must
-never claim that a room is free merely because no recorded block overlaps it.
+Approved occupancy is checked; request workflows and holds remain later gates.
 """
 
 from django.utils.dateparse import parse_datetime
@@ -14,7 +13,7 @@ from apps.venues.layouts import label_map
 from apps.venues.models import Venue, VenueShortlistEntry
 
 AVAILABILITY_LIMITATION = (
-    "Booking and hold occupancy is not integrated yet. Recorded date-specific blocks "
+    "Approved booking occupancy is checked. Request workflows and holds are not integrated yet. Recorded date-specific blocks "
     "and operating hours are checked for a supplied period. These are venue candidates, "
     "not confirmed available rooms. Verify booking availability with Venue Staff."
 )
@@ -75,6 +74,15 @@ def assess_venue(venue, criteria, labels=None):
             else "The period is outside recorded operating hours or the hours are missing.",
         )
         blocked = period["blocks"]
+        conflicts = period["conflicts"]
+        check(
+            "approved_bookings",
+            "Approved bookings",
+            not conflicts,
+            "Conflicting event(s): " + ", ".join(str(b["event_id"]) for b in conflicts)
+            if conflicts
+            else "No approved booking overlaps this period.",
+        )
         check(
             "date_blocks",
             "Recorded date-specific blocks",
@@ -93,7 +101,8 @@ def assess_venue(venue, criteria, labels=None):
     )
     unavailable = any(
         item["result"] == "UNMET"
-        and item["key"] in {"operational_status", "operating_hours", "date_blocks"}
+        and item["key"]
+        in {"operational_status", "operating_hours", "date_blocks", "approved_bookings"}
         for item in checks
     )
     return {

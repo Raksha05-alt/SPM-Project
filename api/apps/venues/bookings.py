@@ -23,7 +23,7 @@ from django.utils import timezone
 
 from apps.core.statuses import EventStatus
 from apps.venues.layouts import LayoutChoiceError, check_choice, claim_layouts
-from apps.venues.models import BookingStatus, VenueBooking, VenueBookingHistory
+from apps.venues.models import BookingStatus, Venue, VenueBooking, VenueBookingHistory
 from apps.venues.serializers import is_facility_list, normalise_facilities
 
 # Sprint 3 booking lifecycle. Sprint 4 adds Held/Expired/Disrupted here.
@@ -177,12 +177,31 @@ def transition_booking(booking: VenueBooking, target: str, actor, reason: str = 
     BookingValidationError for a rejection without a reason. Nothing is saved
     when either is raised.
     """
+    # Serialize approvals of different requests for the same venue. Lock the
+    # event before the venue and booking, following the shared resource order.
+    from apps.events.models import EventRequest
+
+    identity = VenueBooking.objects.values("event_id", "venue_id").get(pk=booking.pk)
+    event = EventRequest.objects.select_for_update().get(pk=identity["event_id"])
+    venue = Venue.objects.select_for_update().get(pk=identity["venue_id"])
     locked = VenueBooking.objects.select_for_update().get(pk=booking.pk)
     if target not in ALLOWED_BOOKING_TRANSITIONS.get(locked.status, frozenset()):
         raise InvalidBookingTransition(locked.status, target)
     reason = (reason or "").strip()
     if target == BookingStatus.REJECTED and not reason:
         raise BookingValidationError({"reason": "Enter a reason for the rejection."})
+
+    if target == BookingStatus.APPROVED:
+        from apps.venues.occupancy import conflict_references
+
+        if event.status in EVENT_STATUSES_CLOSED_TO_BOOKING:
+            raise BookingValidationError({"event": "This event cannot receive a venue approval."})
+        conflicts = conflict_references(venue, locked.starts_at, locked.ends_at)
+        if conflicts:
+            references = ", ".join(str(item["event_id"]) for item in conflicts)
+            raise BookingValidationError(
+                {"venue": f"The venue conflicts with event(s): {references}."}
+            )
 
     previous = locked.status
     now = timezone.now()

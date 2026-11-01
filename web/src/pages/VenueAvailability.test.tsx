@@ -85,3 +85,12 @@ it.each<Role>(["ATTENDEE", "ORGANISER"])("refuses direct calendar access for %s"
   await waitFor(() => expect(screen.queryByRole("heading", { name: "Venue availability" })).not.toBeInTheDocument());
   expect(listVenues).not.toHaveBeenCalled();
 });
+
+it("identifies the event responsible for a booking conflict", async () => {
+  vi.mocked(api.getAvailability).mockResolvedValue({ venue_id: 1, status: "booked", available: false, timezone: "Asia/Singapore", starts_at: block.starts_at, ends_at: block.ends_at, blocks: [], conflicts: [{ id: 9, event_id: 42, starts_at: block.starts_at, ends_at: block.ends_at }] });
+  renderPage(); await selectVenue();
+  fireEvent.change(screen.getByLabelText("Period start"), { target: { value: "2026-11-02T10:00" } });
+  fireEvent.change(screen.getByLabelText("Period end"), { target: { value: "2026-11-02T12:00" } });
+  fireEvent.click(screen.getByRole("button", { name: "Check availability" }));
+  expect(await screen.findByRole("region", { name: "Availability result" })).toHaveTextContent("Conflicting event #42 (booking #9)");
+});

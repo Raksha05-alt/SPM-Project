@@ -2,10 +2,12 @@
 
 Intervals are half-open: a block ending at 10:00 does not obstruct a 10:00 start.
 Missing operating hours are unavailable rather than assumed to be open.
-Booking/hold integration is deliberately left to the agreed booking contract.
+Approved bookings occupy the actual event period; holds belong to Sprint 4.
 """
 
 from django.utils import timezone
+
+from apps.venues.occupancy import conflict_references
 
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -55,8 +57,11 @@ def availability(venue, start, end):
         blocks = [b for b in venue.blocks.all() if b.starts_at < end and b.ends_at > start]
     else:
         blocks = list(venue.blocks.filter(starts_at__lt=end, ends_at__gt=start))
+    conflicts = conflict_references(venue, start, end)
     if blocks:
         status = "blocked"
+    elif conflicts:
+        status = "booked"
     elif not venue.in_service or not within_operating_hours(venue, start, end):
         status = "unavailable"
     else:
@@ -68,6 +73,7 @@ def availability(venue, start, end):
         "timezone": timezone.get_default_timezone_name(),
         "status": status,
         "available": status == "available",
+        "conflicts": conflicts,
         "blocks": [
             {"id": b.pk, "reason": b.reason, "starts_at": b.starts_at, "ends_at": b.ends_at}
             for b in blocks
