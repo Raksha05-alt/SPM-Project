@@ -8,7 +8,12 @@ from apps.venues.availability_views import (
     BlockView,
     CalendarView,
 )
-from apps.venues.booking_views import EventVenueBookingsView, VenueBookingInboxView
+from apps.venues.booking_views import (
+    EventVenueBookingsView,
+    VenueBookingDecisionView,
+    VenueBookingDetailView,
+    VenueBookingInboxView,
+)
 from apps.venues.discovery_views import (
     EventVenueShortlistItemView,
     EventVenueShortlistView,
@@ -35,6 +40,22 @@ urlpatterns = [
         name="event-venue-bookings",
     ),
     path("venue-bookings/", VenueBookingInboxView.as_view(), name="venue-booking-inbox"),
+    # SCRUM-72 - Venue Staff respond to a booking request.
+    path(
+        "venue-bookings/<int:booking_id>/",
+        VenueBookingDetailView.as_view(),
+        name="venue-booking-detail",
+    ),
+    path(
+        "venue-bookings/<int:booking_id>/approve/",
+        VenueBookingDecisionView.as_view(decision="approve"),
+        name="venue-booking-approve",
+    ),
+    path(
+        "venue-bookings/<int:booking_id>/reject/",
+        VenueBookingDecisionView.as_view(decision="reject"),
+        name="venue-booking-reject",
+    ),
     path(
         "events/<int:event_id>/venue-shortlist/",
         EventVenueShortlistView.as_view(),

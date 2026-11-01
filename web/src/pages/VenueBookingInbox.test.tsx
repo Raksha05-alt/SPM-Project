@@ -7,7 +7,11 @@ import { listBookingInbox } from "../api/venueBookings";
 import type { VenueBooking } from "../types";
 import { VenueBookingInbox } from "./VenueBookingInbox";
 
-vi.mock("../api/venueBookings", () => ({ listBookingInbox: vi.fn() }));
+vi.mock("../api/venueBookings", () => ({
+  listBookingInbox: vi.fn(),
+  approveBooking: vi.fn(),
+  rejectBooking: vi.fn(),
+}));
 
 const REQUEST = {
   id: 1,
@@ -54,6 +58,9 @@ describe("VenueBookingInbox (SCRUM-11 AC4)", () => {
     expect(screen.getByText(/60 people · Theatre/)).toBeInTheDocument();
     expect(screen.getByText("Wheelchair access required")).toBeInTheDocument();
     expect(screen.getByText("Cora Coordinator")).toBeInTheDocument();
+    // SCRUM-72 - each pending request can be decided from the inbox.
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
   });
 
   it("can show every request, and has a clear empty state", async () => {
