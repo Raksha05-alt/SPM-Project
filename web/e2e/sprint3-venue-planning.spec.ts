@@ -1,10 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Sprint 3 journey J2 (venue planning) - the G09 slice: SCRUM-11 venue
- * booking requests, with the SCRUM-71 suitability refusal at request time.
- * Staff approval (SCRUM-72), clashes on approval (SCRUM-69) and withdrawal
- * (SCRUM-67) extend this journey at gates G10-G11.
+ * Sprint 3 journey J2 (G09-G11): SCRUM-11 venue requests, SCRUM-71 suitability
+ * refusal, SCRUM-72 staff approval and SCRUM-67 confirmed withdrawal.
  *
  * Real API and database, no mocks. Requires the API running with seeded demo data:
  *   python manage.py migrate && python manage.py seed_demo_data
@@ -34,7 +32,7 @@ async function csrf(page: Page) {
   return (await page.context().cookies()).find((c) => c.name === "csrftoken")?.value ?? "";
 }
 
-test("J2: the assigned coordinator requests a venue and Venue Staff receive it", async ({
+test("J2: request, staff approval and confirmed venue withdrawal preserve the decision", async ({
   page,
 }) => {
   const eventName = `J2 Venue Request ${Date.now()}`;
@@ -89,7 +87,7 @@ test("J2: the assigned coordinator requests a venue and Venue Staff receive it",
     "Your request for Harbour Hall has been sent to Venue Staff.",
   );
   // AC5 - the request and its current status appear on the event.
-  await expect(planner.getByRole("cell", { name: "Harbour Hall" })).toBeVisible();
+  await expect(planner.getByRole("cell", { name: "Harbour Hall", exact: true })).toBeVisible();
   await expect(planner.getByRole("cell", { name: /Pending/ })).toBeVisible();
   // The first request started planning.
   await page.reload();
@@ -114,4 +112,33 @@ test("J2: the assigned coordinator requests a venue and Venue Staff receive it",
   await expect(row).toContainText("Cora Coordinator");
   await expect(row).toContainText("Pending");
   await expect(row).toContainText("Wheelchair access required");
+
+  // G10: the actual Venue Staff action, not a shell-created approval.
+  await page.getByLabel("Show requests").selectOption({ label: "All requests" });
+  await row.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(row).toContainText("Approved");
+  await signOut(page);
+
+  // G11: declining the warning leaves the approved arrangement unchanged.
+  await signIn(page, COORDINATOR);
+  await page.goto(`/coordinator/events/${eventId}`);
+  const requests = page.getByRole("region", { name: "Venue requests" });
+  const approved = requests.getByRole("row", { name: /Harbour Hall/ });
+  await expect(approved).toContainText("Approved");
+  page.once("dialog", async dialog => {
+    expect(dialog.message()).toContain("release a confirmed venue arrangement");
+    await dialog.dismiss();
+  });
+  await approved.getByRole("button", { name: "Withdraw Harbour Hall" }).click();
+  await page.reload();
+  await expect(requests.getByRole("row", { name: /Harbour Hall/ })).toContainText("Approved");
+
+  page.once("dialog", async dialog => { await dialog.accept(); });
+  await requests.getByRole("button", { name: "Withdraw Harbour Hall" }).click();
+  await expect(requests.getByRole("status")).toContainText("Booking withdrawn");
+  await page.reload();
+  const withdrawn = requests.getByRole("row", { name: /Harbour Hall/ });
+  await expect(withdrawn).toContainText("Withdrawn by Cora Coordinator");
+  await expect(withdrawn).toContainText("by Vera Venue");
+  await expect(withdrawn.getByRole("button", { name: /Withdraw/ })).toHaveCount(0);
 });

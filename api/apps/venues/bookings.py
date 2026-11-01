@@ -351,6 +351,48 @@ class _Requested:
             setattr(self, key, value)
 
 
+@transaction.atomic
+def withdraw_booking(*, booking, actor, expected_status, confirm_release=False):
+    """SCRUM-67: withdraw under the shared resource locks, with durable staff notices."""
+    from apps.accounts.models import Role, User
+    from apps.events.models import EventRequest
+    from apps.notifications.models import Notification, NotificationKind
+
+    identity = VenueBooking.objects.values("event_id", "venue_id").get(pk=booking.pk)
+    event = EventRequest.objects.select_for_update().get(pk=identity["event_id"])
+    Venue.objects.select_for_update().get(pk=identity["venue_id"])
+    locked = VenueBooking.objects.select_for_update().get(pk=booking.pk)
+    if actor.role != Role.EVENT_COORDINATOR or event.coordinator_id != actor.pk:
+        raise NotAssignedToEvent
+    if event.status in EVENT_STATUSES_CLOSED_TO_BOOKING:
+        raise BookingValidationError({"event": "This event is closed to booking withdrawals."})
+    if locked.status != expected_status:
+        raise BookingValidationError(
+            {"status": "The booking has changed. Reload before withdrawing."}
+        )
+    if locked.status == BookingStatus.APPROVED and confirm_release is not True:
+        raise BookingValidationError(
+            {"confirm_release": "This releases a confirmed venue arrangement. Confirm to continue."}
+        )
+    transition_booking(locked, BookingStatus.WITHDRAWN, actor)
+    Notification.objects.bulk_create(
+        [
+            Notification(
+                recipient=member,
+                event=event,
+                kind=NotificationKind.VENUE_WITHDRAWN,
+                message=(
+                    f"{actor.get_full_name() or actor.email} withdrew the booking "
+                    f'for {locked.venue.name} for "{event.name}" '
+                    f"({_local(locked.starts_at)} to {_local(locked.ends_at)})."
+                ),
+            )
+            for member in User.objects.filter(role=Role.VENUE_STAFF, is_active=True)
+        ]
+    )
+    return locked
+
+
 # SCRUM-72 - Venue Staff record their decision on a Pending booking request.
 
 

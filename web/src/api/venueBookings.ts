@@ -1,6 +1,12 @@
 import { request } from "./client";
 import type { VenueBooking } from "../types";
 
+export const withdrawVenue = (eventId: number, booking: VenueBooking, confirmRelease: boolean) =>
+  request<{ detail: string; booking: VenueBooking }>(
+    `/api/events/${eventId}/venue-bookings/${booking.id}/withdraw/`,
+    { method: "POST", body: { expected_status: booking.status, confirm_release: confirmRelease } },
+  );
+
 /** SCRUM-11 - what the coordinator sends when requesting a venue. */
 export interface VenueRequestInput {
   venue: number | null;
