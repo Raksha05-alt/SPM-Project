@@ -2,7 +2,7 @@
 
 Owner: Jerom. Branch: `feature/equipment-holding-events`, from main `6bfb7b0` (G15, G16a and G16b merged). Sprint 3 gate **G18**; depends on G15 (SCRUM-12, PR #20), G16b (SCRUM-77, PR #22) and G17 (SCRUM-75, Adilah, PR #23).
 
-**Merge order:** G17 (PR #23) was finished but not yet merged when this branch was built. Merge this branch only after PR #23 is on main. Then merge `origin/main` into it and rerun the checks.
+**Merge order:** G17 (PR #23) merged on 2 November 2026 (`b5c55b9`) and was merged into this branch in `eb80933`. The one conflict, in `services.py`, kept both new sections; no names overlap. The checks were rerun afterwards (see below).
 
 ## Rules
 
@@ -57,8 +57,11 @@ Run on 2 November 2026 by Claude (AI assistant) for Jerom, on local PostgreSQL 1
 
 One SCRUM-12 page test now compares the leading number of each table cell, because the "Reserved by other events" cell also holds the new button. The expected values are unchanged.
 
+### After merging main (G17)
+
+Rerun on 2 November 2026 by Claude (AI assistant) on the merged branch: 1183 backend tests passed; `equipment/services.py` and `views.py` 100% statements and branches; web 248 tests passed; type check and build clean.
+
 ### Not yet done
 
-- **Merge PR #23 (G17) first,** then merge main into this branch and rerun.
 - **J3 browser journey:** add a holding-events step to `web/e2e/sprint3-equipment.spec.ts`.
 - **Teammate code and test review**, and a team member's manual check: pending.
