@@ -8,6 +8,10 @@ GET  /api/equipment/requests/                  Technical Support: events with re
 SCRUM-12 (G15):
 GET  /api/events/<event_id>/equipment-availability/  availability for the event period
 
+SCRUM-76 (G18):
+GET  /api/events/<event_id>/equipment-availability/<equipment_type_id>/
+     one type's availability and the events holding it, scoped to the viewer
+
 Technical Support get a scoped, read-only view: only events that have equipment
 requested, with only the event fields they need to fulfil them. Clients and
 Attendees never reach equipment requests. Every refusal is audited.
@@ -335,5 +339,43 @@ class EventEquipmentAvailabilityView(APIView):
                     for r in rows
                     if r["shortfall"]
                 ],
+            }
+        )
+
+
+class EquipmentHoldersView(APIView):
+    """GET /api/events/<event_id>/equipment-availability/<equipment_type_id>/
+
+    SCRUM-76 - one equipment type selected on the availability screen: its
+    availability row, including damaged/maintenance reasons and expected return
+    (AC2), and the events holding it for the period (AC1), scoped to the
+    viewer's role (AC3). Same access and period rules as SCRUM-12.
+    """
+
+    permission_classes = [HasAnyRole, IsAuthenticated, CanCheckEventAvailability]
+    allowed_roles = frozenset({Role.TECHNICAL_SUPPORT, Role.EVENT_COORDINATOR})
+
+    def get(self, request, event_id, equipment_type_id):
+        from apps.equipment.services import availability_row, holders
+
+        event = get_object_or_404(EventRequest, pk=event_id)
+        self.check_object_permissions(request, event)
+        equipment_type = get_object_or_404(EquipmentType, pk=equipment_type_id)
+        starts_at, ends_at = _period(request, event)
+        requested = (
+            EquipmentRequest.objects.filter(plan__event=event, equipment_type=equipment_type)
+            .exclude(status=EquipmentRequestStatus.WITHDRAWN)
+            .values_list("quantity", flat=True)
+            .first()
+        )
+        return Response(
+            {
+                "period": {"starts_at": starts_at, "ends_at": ends_at},
+                "availability": availability_row(
+                    equipment_type, starts_at, ends_at, requested=requested, event=event
+                ),
+                "holders": holders(
+                    equipment_type, starts_at, ends_at, viewer=request.user, event=event
+                ),
             }
         )
