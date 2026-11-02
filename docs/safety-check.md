@@ -105,39 +105,64 @@ Every refusal, including role refusals by `HasAnyRole`, is written to the audit 
 
 ### Migration
 
-`venues/0005_venue_safety_information` adds two blank text fields. Shalika currently owns venue migrations (G05). If her layout-catalogue migration merges first, rename this file or add a merge migration; do not delete either.
+`venues/0005_venue_safety_information` adds two blank text fields. Main's SCRUM-91 layout catalogue added `venues/0006_seed_layout_catalogue` from the same parent, so `venues/0007_merge_layout_catalogue_and_safety_information` joins the two leaves. It has no operations, and neither migration was renamed or deleted. `makemigrations --check` reports no changes.
 
 ## Test evidence (G20)
 
-Tests: `api/apps/safety/tests/test_cr_06_safety_check.py` (42 cases) and the G04 file (49 cases). Web: `web/src/pages/safety/SafetyCheck.test.tsx`, `web/src/components/safety/SafetyCheckPanel.test.tsx`, plus updated venue page and form tests.
+Tests: `api/apps/safety/tests/test_cr_06_safety_check.py` (42 cases) and the G04 file (49 cases). Web: `web/src/pages/safety/SafetyCheck.test.tsx`, `web/src/components/safety/SafetyCheckPanel.test.tsx`, plus updated venue page and form tests. Case records: `docs/test-cases/S3-SCRUM-90-safety.csv` (91 rows, reviewer pending).
 
-Run on 29 October 2026 by Claude (AI assistant) for Jerom, on the same local base as G04.
+### After merging main (G10, G14, G16a, G17 on main)
+
+Run on 2 November 2026 by Claude (AI assistant) for Jerom, on `feature/operational-safety` after merging `origin/main` at `6edbe59` (merge commit `db384e6`).
+
+The safety fixtures no longer create booking or reservation rows directly. Every test that needs approved arrangements gets them through the real actions:
+
+| Arrangement | Real action used |
+| --- | --- |
+| Venue requested / approved | `request_booking` (SCRUM-11), `approve_booking` (SCRUM-72) |
+| Venue withdrawn (AC4, AC6) | `withdraw_booking` (SCRUM-67) |
+| Equipment requested / reserved and plan approved | `create_request` (SCRUM-74), `reserve` (SCRUM-16) |
+| Equipment amended, then plan re-approved (AC6) | `POST /api/equipment/requests/<id>/amend/`, `POST /api/events/<id>/approve-revised-equipment/` |
+
+Using the real actions changed three tests, and each change is recorded here:
+
+- The planning event now runs 09:00-15:00 Singapore time, because the real booking action refuses an event that runs past the venue's closing time.
+- The AC2 over-capacity concern now comes from correcting the venue's capacity after approval, because the real action refuses an over-capacity booking.
+- C04c compares notification counts, because the real actions send their own notices.
 
 | Check | Result |
 | --- | --- |
 | Backend lint, format, `check`, `makemigrations --check` | Clean |
-| Full backend suite | 683 passed |
-| `apps/safety` statements / branches | 100% / 100%, no exclusions |
-| Production-only coverage, whole API | 99% |
-| PostgreSQL race: two officers decide at once | Exactly one 200 and one 409; one notice. Stable over 5 repeated runs |
-| Seeded fault: request skips the assigned-coordinator reread | Caught by AC1-06 |
-| `venues/0005` on the seeded baseline database | Applied; existing venues show the new fields as blank, never invented |
-| Web: `npm run lint`, `npm run test`, `npm run build` | Clean; 128 tests passed; build succeeded |
-| Agent browser check (Chromium, real API and database) | Coordinator requests with a note; officer sees the queue and the facts; blank comment refused; changes requested; coordinator sees the comment and can request again; organiser gets 403 from the API |
+| Full backend suite | 1231 passed; total coverage 99.64% (gate 80%) |
+| `apps/safety` tests | 91 passed |
+| Web: `npm run lint`, `npm run test`, `npm run build` | Clean; 262 tests passed; build succeeded |
+| Agent browser check (Chromium, real API and a fresh seeded database) | See below |
 
-The browser check used a throwaway database. Its approved booking and equipment reservation were set from a Django shell because the G10/G16a actions do not exist yet. It shows the screens work; it is **not** evidence for journey J4.
+**Browser check.** Setup in a Django shell did only this: it gave the seeded event daytime hours, because seed times are relative to now and can cross midnight, and it assigned and approved the event through the existing `assign_coordinator` and `approve_event` services. Everything else went through HTTP endpoints or the UI:
+
+1. The coordinator requested Harbour Hall and 2 projectors (POST 201, 201). The panel listed four gaps and offered no request.
+2. Venue Staff approved the booking (200), and Technical Support reserved the projectors (200), which approved the plan.
+3. The coordinator requested the check with a note in the UI. It showed "Awaiting Safety Officer", and confirmation was still blocked by the check.
+4. The Safety Officer opened it from the queue, saw capacity 200/180, emergency access, restrictions and 2 of 2 projectors reserved, and approved it.
+5. The coordinator saw "Approved by Sam Safety", then amended the projectors to 1 (200). The panel showed the check superseded ("No longer applies: Equipment request amended.") and the technical re-approval gap. This step found a wording fault, "Superseded by a later change by Sam Safety", which is fixed in `1ef2bd3` and covered by a new panel test.
+
+This is agent evidence. It is not a teammate review, and it is not journey J4, which needs the confirm action.
+
+### Before the merge (29 October, superseded)
+
+Run on the G04 base with shell-created bookings and reservations: backend 683 passed and web 128 passed. A PostgreSQL race test of two officers deciding at once gave exactly one 200 and one 409 over 5 runs, and a seeded fault was caught by AC1-06. Those runs are kept for history only. The figures above replace them.
 
 ### Not yet executed
 
 | Item | Status | Why |
 | --- | --- | --- |
-| J4 `web/e2e/sprint3-plan-safety-confirm.spec.ts` | Blocked | Needs real venue approval (G10), equipment reservation (G16a) and the confirm action (G21). Raksha and Jerom write it at G21 |
-| J5 stale Safety approval cannot confirm (browser) | Blocked | Same dependencies |
+| J4 `web/e2e/sprint3-plan-safety-confirm.spec.ts` | Blocked on G21 | Venue approval, reservations and amendments are now real; the confirm action (SCRUM-58, Raksha) is still needed. Raksha and Jerom write it at G21 |
+| J5 stale Safety approval cannot confirm (browser) | Blocked on G21 | Same |
 | Teammate code and test review | Pending | Record the real reviewer and date |
 | Manual check as `safety@connectsphere.example` | Pending | The FAQ asks a team member to do this themselves |
 
 ## Scope boundaries
 
 - **AC5 endpoint.** The confirm action is SCRUM-58 (Raksha, G21). G04 proves the guard at service level. The endpoint-level refusal test belongs to G21.
-- **AC6 producers.** Real withdrawal (SCRUM-67, G11) and equipment actions (G16a/G17) must call the service. SCRUM-80's approved change requests are Sprint 4.
+- **AC6 producers.** Real withdrawal (SCRUM-67) runs the `transition_booking` hook, and the equipment reserve, release, amend, withdraw and revised-approval actions call `arrangements_changed` in their own transactions. Both paths are exercised above. SCRUM-80's approved change requests are Sprint 4.
 - **Design records.** The C4 diagrams in `docs/c4` and the sequence diagram (Lead → coordinator → venue/technical staff → Safety → confirmation) still need the Safety Officer actor and `safety` component added.
