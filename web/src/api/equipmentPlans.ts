@@ -16,3 +16,4 @@ export const listEquipmentPlans = () => request<{ id: number; name: string }[]>(
 export const getEquipmentPlan = (id: number) => request<EquipmentPlan>(`/api/events/${id}/equipment-plan/`);
 export const reserveEquipment = (id: number, revision: number) => request<EquipmentPlan>(`/api/equipment/requests/${id}/reserve/`, { method: "POST", body: { expected_revision: revision } });
 export const approveNoEquipment = (id: number, revision: number, notes: string) => request<EquipmentPlan>(`/api/events/${id}/approve-no-equipment/`, { method: "POST", body: { expected_revision: revision, acknowledged: true, notes } });
+export const releaseEquipment = (id: number, revision: number, reason: string) => request<EquipmentPlan>(`/api/equipment/reservations/${id}/release/`, { method: "POST", body: { expected_revision: revision, reason } });

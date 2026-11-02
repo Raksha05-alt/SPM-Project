@@ -3,6 +3,7 @@ from django.urls import path
 from apps.equipment.action_views import (
     EquipmentPlanView,
     NoEquipmentApprovalView,
+    ReleaseEquipmentView,
     ReserveEquipmentView,
     TechnicalPlanListView,
 )
@@ -14,6 +15,11 @@ from apps.equipment.views import (
 )
 
 urlpatterns = [
+    path(
+        "equipment/reservations/<int:reservation_id>/release/",
+        ReleaseEquipmentView.as_view(),
+        name="release-equipment",
+    ),
     path("equipment/plans/", TechnicalPlanListView.as_view(), name="equipment-plans"),
     path(
         "events/<int:event_id>/equipment-plan/", EquipmentPlanView.as_view(), name="equipment-plan"

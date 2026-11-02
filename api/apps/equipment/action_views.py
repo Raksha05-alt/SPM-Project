@@ -174,3 +174,23 @@ class NoEquipmentApprovalView(EquipmentActionView):
                 notes=request.data.get("notes", ""),
             ),
         )
+
+
+class ReleaseEquipmentView(EquipmentActionView):
+    def post(self, request, reservation_id):
+        from apps.equipment.releases import release
+
+        reservation = get_object_or_404(
+            EquipmentReservation.objects.select_related("request__plan__event"),
+            pk=reservation_id,
+        )
+        return self.perform(
+            request,
+            reservation.request.plan.event,
+            lambda: release(
+                reservation=reservation,
+                actor=request.user,
+                expected_revision=request.data.get("expected_revision"),
+                reason=request.data.get("reason", ""),
+            ),
+        )

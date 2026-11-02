@@ -10,6 +10,8 @@ import { expect, test, type Page } from "@playwright/test";
  *   python manage.py migrate && python manage.py seed_demo_data
  */
 
+test.use({ timezoneId: "Asia/Singapore" });
+
 const PASSWORD = "connectsphere-demo";
 const ORGANISER = "organiser@acme.example";
 const COORDINATOR = "coordinator@connectsphere.example";
@@ -35,7 +37,7 @@ async function csrf(page: Page) {
   return (await page.context().cookies()).find((c) => c.name === "csrftoken")?.value ?? "";
 }
 
-test("J3: the assigned coordinator requests equipment and Technical Support see it", async ({
+test("J3 G16: request, reserve, release, re-reserve and cancel real equipment and venue arrangements", async ({
   page,
 }) => {
   const eventName = `J3 Equipment ${Date.now()}`;
@@ -114,4 +116,66 @@ test("J3: the assigned coordinator requests equipment and Technical Support see 
   await expect(requested).toContainText("3");
   await expect(requested).toContainText(NOTE);
   await expect(requested).toContainText("Requested");
+
+  // SCRUM-16: staff reserve the actual persisted request through the UI.
+  await event.getByRole("link", { name: "Manage reservations" }).click();
+  await page.getByRole("button", { name: "Reserve 3 × Projector" }).click();
+  await expect(page.getByRole("region", { name: "Projector" })).toContainText("Reserved");
+  await expect(page.getByText(/Technical arrangements approved by/)).toBeVisible();
+  const firstPlan = await (await page.request.get(`/api/events/${eventId}/equipment-plan/`)).json();
+  const firstReservation = firstPlan.reservations.find((row: { status: string }) => row.status === "ACTIVE");
+  expect(firstReservation.quantity).toBe(3);
+
+  // SCRUM-77: manual reasoned release and fresh persisted history.
+  await page.getByLabel("Release reason").fill("Returned before the event.");
+  await page.getByRole("button", { name: `Release reservation #${firstReservation.id}` }).click();
+  await expect(page.getByRole("region", { name: "Reservation history" })).toContainText("Returned before the event.");
+  await expect(page.getByRole("region", { name: "Projector" })).toContainText("Requested");
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Reservation history" })).toContainText("RELEASED");
+  await page.getByRole("button", { name: "Reserve 3 × Projector" }).click();
+  await expect(page.getByRole("region", { name: "Projector" })).toContainText("Reserved");
+  await signOut(page);
+
+  // Real venue API preconditions; the J2 browser case covers the booking forms.
+  await signIn(page, COORDINATOR);
+  const plannedEvent = await (await page.request.get(`/api/events/${eventId}/`)).json();
+  const venues = await (await page.request.get("/api/venues/")).json();
+  const venue = venues.find((item: { in_service: boolean; capacity: number; layouts: string[] }) => item.in_service && item.capacity >= 80 && item.layouts.includes("THEATRE"));
+  expect(venue).toBeTruthy();
+  const bookingResponse = await page.request.post(`/api/events/${eventId}/venue-bookings/`, {
+    headers: { "X-CSRFToken": await csrf(page) },
+    data: { venue: venue.id, starts_at: plannedEvent.preferred_start, ends_at: plannedEvent.preferred_end, attendance: 80, layout: "THEATRE", required_facilities: [], wheelchair_access_required: false, accessibility_notes: "" },
+  });
+  expect(bookingResponse.status()).toBe(201);
+  const booking = (await bookingResponse.json()).booking;
+  await signOut(page);
+  await signIn(page, "venue@connectsphere.example");
+  const decision = await page.request.post(`/api/venue-bookings/${booking.id}/approve/`, { headers: { "X-CSRFToken": await csrf(page) }, data: {} });
+  expect(decision.status()).toBe(200);
+  await signOut(page);
+
+  // INT-03: the coordinator confirms the actual summary, then both resources release.
+  await signIn(page, COORDINATOR);
+  await page.goto(`/coordinator/events/${eventId}`);
+  await page.getByRole("button", { name: "Cancel event", exact: true }).click();
+  const cancellation = page.getByRole("region", { name: "Event cancellation" });
+  await expect(cancellation).toContainText(`${venue.name}: APPROVED`);
+  await expect(cancellation).toContainText("3 × Projector");
+  await cancellation.getByRole("button", { name: "Confirm event cancellation" }).click();
+  await expect(cancellation.getByRole("alert")).toContainText("Confirm the resource release");
+  await cancellation.getByLabel("Cancellation reason").fill("Client cancelled the event.");
+  await cancellation.getByRole("checkbox").check();
+  await cancellation.getByRole("button", { name: "Confirm event cancellation" }).click();
+  await expect(cancellation.getByRole("status")).toContainText("Event cancelled.");
+  const finalPlan = await (await page.request.get(`/api/events/${eventId}/equipment-plan/`)).json();
+  expect(finalPlan.event.status).toBe("CANCELLED");
+  expect(finalPlan.reservations).toHaveLength(2);
+  expect(finalPlan.reservations.every((row: { status: string }) => row.status === "RELEASED")).toBe(true);
+  expect(finalPlan.requests[0].status).toBe("WITHDRAWN");
+  const period = new URLSearchParams({ starts_at: plannedEvent.preferred_start, ends_at: plannedEvent.preferred_end });
+  const calendar = await (await page.request.get(`/api/venues/${venue.id}/availability/?${period}`)).json();
+  expect(calendar.conflicts).toEqual([]);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Cancel event", exact: true })).toHaveCount(0);
 });

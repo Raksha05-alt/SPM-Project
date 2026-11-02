@@ -16,6 +16,7 @@ import { CoordinatorEventEditor } from "../components/CoordinatorEventEditor";
 import { inputClass } from "../components/Field";
 import { layoutName, useLayouts } from "../components/layouts/useLayouts";
 import { EquipmentRequests } from "../components/equipment/EquipmentRequests";
+import { EventCancellation } from "../components/EventCancellation";
 import { RejectionNotice } from "../components/RejectionNotice";
 import { StatusBadge } from "../components/StatusBadge";
 import { VenueSuitability } from "../components/venues/VenueSuitability";
@@ -426,6 +427,7 @@ export function CoordinatorEventDetail() {
 
       {/* SCRUM-74 - record the equipment the event requires. */}
       {isAssigned && <EquipmentRequests event={event} />}
+      {isAssigned && <EventCancellation event={event} />}
 
       <ClarificationHistory clarifications={event.clarifications ?? []} />
     </div>
