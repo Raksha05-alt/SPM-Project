@@ -23,6 +23,7 @@ class NotificationKind(models.TextChoices):
     VENUE_WITHDRAWN = "VENUE_WITHDRAWN", "Venue booking withdrawn"
     # SCRUM-74 - a coordinator's equipment request reaches Technical Support.
     EQUIPMENT_REQUESTED = "EQUIPMENT_REQUESTED", "Equipment requested"
+    EQUIPMENT_UPDATED = "EQUIPMENT_UPDATED", "Equipment arrangement updated"
 
 
 # Assignment notices are unique per occurrence, not per lifetime of an event.
