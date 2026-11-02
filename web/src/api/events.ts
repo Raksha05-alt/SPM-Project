@@ -19,6 +19,10 @@ export type EventDraft = Partial<
 
 export const listEvents = () => request<EventRequest[]>("/api/events/");
 
+/** SCRUM-45/48 - the organiser's drafts or the requests sent to ConnectSphere. */
+export const listOrganiserEvents = (group: "drafts" | "submitted") =>
+  request<EventRequest[]>(`/api/events/?group=${group}`);
+
 export const listAttendeeEvents = () => request<AttendeeEvent[]>("/api/events/");
 
 export const getEvent = (id: number) => request<EventRequest>(`/api/events/${id}/`);
