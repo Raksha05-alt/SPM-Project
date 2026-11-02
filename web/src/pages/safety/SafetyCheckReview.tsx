@@ -243,7 +243,8 @@ export function SafetyCheckReview() {
         <section aria-label="Recorded decision" className="mt-6 rounded-lg border border-slate-200 bg-white p-5">
           <h2 className="mb-2 text-sm font-semibold text-navy-700">Decision</h2>
           <p className="text-sm">
-            {check.status_display} by {decisionLine(check.decided_by_name, check.decided_at)}
+            {check.status === "SUPERSEDED" ? "Decided" : check.status_display} by{" "}
+              {decisionLine(check.decided_by_name, check.decided_at)}
           </p>
           {check.comment && <p className="mt-2 whitespace-pre-line text-sm">{check.comment}</p>}
         </section>

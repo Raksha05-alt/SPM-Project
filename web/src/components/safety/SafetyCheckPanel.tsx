@@ -70,7 +70,8 @@ export function SafetyCheckPanel({ eventId, status }: { eventId: number; status:
           </div>
           {latest.decided_at && (
             <p className="mt-2">
-              {latest.status_display} by {decisionLine(latest.decided_by_name, latest.decided_at)}
+              {latest.status === "SUPERSEDED" ? "Decided" : latest.status_display} by{" "}
+              {decisionLine(latest.decided_by_name, latest.decided_at)}
             </p>
           )}
           {latest.comment && (

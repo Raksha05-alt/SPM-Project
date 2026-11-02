@@ -111,4 +111,29 @@ describe("SafetyCheckPanel (SCRUM-90)", () => {
     expect(screen.getByText(/Rejected by Sam Safety/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Request a new safety check" })).toBeInTheDocument();
   });
+
+  it("AC6: a superseded approval says why it no longer applies, not who superseded it", async () => {
+    vi.mocked(getEventSafety).mockResolvedValue(
+      state({
+        checks: [
+          {
+            ...REJECTED,
+            status: "SUPERSEDED",
+            status_display: "Superseded by a later change",
+            comment: "",
+            superseded_at: "2026-10-30T01:00:00Z",
+            superseded_reason: "Equipment request amended.",
+          },
+        ],
+        arrangement_gaps: ["Technical: the equipment plan has not been approved by Technical Support."],
+        can_request: false,
+      }),
+    );
+    renderPanel();
+
+    expect(await screen.findByText(/No longer applies: Equipment request amended./)).toBeInTheDocument();
+    expect(screen.getByText(/Decided by Sam Safety/)).toBeInTheDocument();
+    expect(screen.queryByText(/Superseded by a later change by/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Request/ })).not.toBeInTheDocument();
+  });
 });
