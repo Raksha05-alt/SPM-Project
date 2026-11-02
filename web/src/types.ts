@@ -77,6 +77,9 @@ export interface EventRequest {
   /** Approval decision - only sent to internal users. */
   approved_by_name?: string | null;
   approved_at?: string | null;
+  /** SCRUM-58 AC4 - who confirmed the event, and when. */
+  confirmed_by_name?: string | null;
+  confirmed_at?: string | null;
   /** SCRUM-52 - the rejection reason and date are shown to the client too. */
   rejection_reason: string;
   rejected_at: string | null;

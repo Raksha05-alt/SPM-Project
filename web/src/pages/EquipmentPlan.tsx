@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { EquipmentUnavailable } from "../components/equipment/EquipmentUnavailable";
 import { approveRevisedEquipment, approveNoEquipment, getEquipmentPlan, listEquipmentPlans, reserveEquipment } from "../api/equipmentPlans";
 import { useAuth } from "../auth/AuthContext";
 import { inputClass } from "../components/Field";
@@ -79,6 +80,7 @@ export function EquipmentPlanPage() {
       <p>{item.technical_requirements || "No additional technical requirements."}</p>
       <p>{item.status_label}</p>
       {user?.role === "COORDINATOR" && open && data.event.status !== "CONFIRMED" && item.status !== "WITHDRAWN" && <EquipmentAmendment item={item} revision={data.revision} refresh={refresh} />}
+      {isTech && open && item.status === "REQUESTED" && data.event.status !== "CONFIRMED" && <EquipmentUnavailable item={item} refresh={refresh} />}
       {isTech && open && item.status === "REQUESTED" && <button disabled={pending} className="mt-2 rounded bg-navy-700 px-4 py-2 text-white disabled:opacity-50" onClick={() => { setNotice(null); reserve.mutate(item.id); }}>Reserve {item.quantity} × {item.equipment_type_name}</button>}
     </section>)}
     {data.requests.every((item) => item.status === "WITHDRAWN") && <section aria-label="No equipment review" className="rounded-lg border bg-white p-4">

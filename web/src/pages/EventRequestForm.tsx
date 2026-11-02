@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
+import { ConfirmedArrangementsPanel } from "../components/confirmation/ConfirmedArrangementsPanel";
 import { createDraft, getEvent, submitEvent, updateDraft } from "../api/events";
 import type { EventDraft } from "../api/events";
 import { Field, inputClass } from "../components/Field";
@@ -151,6 +152,11 @@ export function EventRequestForm() {
         <p role="status" className="mb-4 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900">
           {banner}
         </p>
+      )}
+
+      {/* SCRUM-58 AC5 - the confirmed plan the organiser can rely on. */}
+      {existing && ["CONFIRMED", "COMPLETED"].includes(existing.status) && (
+        <ConfirmedArrangementsPanel eventId={existing.id} />
       )}
 
       {/* US-02.2 AC2 - every field blocking submission is named. */}

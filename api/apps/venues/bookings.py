@@ -464,7 +464,10 @@ def reject_booking(booking: VenueBooking, actor, reason: str) -> VenueBooking:
     """SCRUM-72 AC3-AC6 - reject a Pending request with a reason and notify the coordinator.
 
     A blank reason (AC4) or an already-decided request (AC5) raises with nothing saved.
+    SCRUM-58 AC3 - the venue is unavailable, so the Event Organiser also receives the reason.
     """
+    from apps.events.confirmation import notify_unavailable
+
     event, venue, locked = _lock_for_decision(booking)
     transition_booking(locked, BookingStatus.REJECTED, actor, reason)
     locked.refresh_from_db()
@@ -473,6 +476,11 @@ def reject_booking(booking: VenueBooking, actor, reason: str) -> VenueBooking:
         locked,
         f'Venue Staff rejected {venue.name} for "{event.name}" '
         f"({_local(locked.starts_at)} to {_local(locked.ends_at)}). "
+        f"Reason: {locked.decision_reason}",
+    )
+    notify_unavailable(
+        event,
+        f'{venue.name} is unavailable for "{event.name}", so the event is not confirmed. '
         f"Reason: {locked.decision_reason}",
     )
     return locked
