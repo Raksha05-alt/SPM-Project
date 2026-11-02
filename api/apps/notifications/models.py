@@ -21,6 +21,8 @@ class NotificationKind(models.TextChoices):
     # SCRUM-72 - Venue Staff approve or reject a venue booking request.
     VENUE_DECIDED = "VENUE_DECIDED", "Venue booking decided"
     VENUE_WITHDRAWN = "VENUE_WITHDRAWN", "Venue booking withdrawn"
+    # SCRUM-74 - a coordinator's equipment request reaches Technical Support.
+    EQUIPMENT_REQUESTED = "EQUIPMENT_REQUESTED", "Equipment requested"
 
 
 # Assignment notices are unique per occurrence, not per lifetime of an event.

@@ -32,6 +32,11 @@ vi.mock("../api/venueBookings", () => ({
   requestVenue: vi.fn(),
 }));
 vi.mock("../api/venues", () => ({ listVenues: vi.fn(async () => []) }));
+vi.mock("../api/equipment", () => ({
+  listEventEquipment: vi.fn(async () => []),
+  listEquipmentTypes: vi.fn(async () => []),
+  requestEquipment: vi.fn(),
+}));
 
 function event(overrides: Partial<EventRequest> = {}): EventRequest {
   return {

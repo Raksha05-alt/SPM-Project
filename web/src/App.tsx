@@ -11,6 +11,8 @@ import { EventRequestForm } from "./pages/EventRequestForm";
 import { LoginPage } from "./pages/LoginPage";
 import { OrganiserDashboard } from "./pages/OrganiserDashboard";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { EquipmentAvailabilityPage } from "./pages/EquipmentAvailability";
+import { EquipmentInbox } from "./pages/EquipmentInbox";
 import { RoomLayouts } from "./pages/RoomLayouts";
 import { VenueBookingInbox } from "./pages/VenueBookingInbox";
 import { VenueCatalogue } from "./pages/VenueCatalogue";
@@ -140,10 +142,22 @@ export default function App() {
             path="/equipment"
             element={
               <RequireRole roles={["TECH_SUPPORT"]}>
-                <PlaceholderPage title="Equipment" sprint="sprint 4" />
+                <EquipmentInbox />
               </RequireRole>
             }
           />
+          {/* SCRUM-12 - Technical Support or the assigned coordinator. */}
+          {["/equipment/availability", "/equipment/availability/:id"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <RequireRole roles={["TECH_SUPPORT", "COORDINATOR"]}>
+                  <EquipmentAvailabilityPage />
+                </RequireRole>
+              }
+            />
+          ))}
           <Route
             path="/safety"
             element={

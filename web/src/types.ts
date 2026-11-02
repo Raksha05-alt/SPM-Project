@@ -236,3 +236,74 @@ export interface VenueBooking {
   decided_at: string | null;
   decision_reason: string;
 }
+
+/** SCRUM-74 - one catalogue equipment type a coordinator can request. */
+export interface EquipmentType {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+}
+
+export type EquipmentRequestStatus = "REQUESTED" | "RESERVED" | "WITHDRAWN";
+
+/** SCRUM-74 - one equipment line requested for an event. */
+export interface EquipmentRequest {
+  id: number;
+  event: number;
+  equipment_type: number;
+  equipment_type_name: string;
+  quantity: number;
+  technical_requirements: string;
+  status: EquipmentRequestStatus;
+  status_label: string;
+  requested_by_name: string | null;
+  requested_at: string;
+}
+
+/** SCRUM-74 AC3 - the scoped event view Technical Support work from. */
+export interface TechnicalEvent {
+  id: number;
+  name: string;
+  status: EventStatus;
+  status_label: string;
+  preferred_start: string | null;
+  preferred_end: string | null;
+  expected_attendance: number | null;
+  coordinator_name: string | null;
+  equipment_requests: EquipmentRequest[];
+}
+
+/** SCRUM-12 - stock out of action regardless of the period (AC4). */
+export interface EquipmentUnavailableStock {
+  quantity: number;
+  cause: "DAMAGED" | "MAINTENANCE";
+  cause_label: string;
+  reason: string;
+  expected_return_at: string | null;
+}
+
+/** SCRUM-12 - one equipment type's availability for the period. */
+export interface EquipmentAvailabilityRow {
+  equipment_type: number;
+  code: string;
+  name: string;
+  in_service: boolean;
+  total_quantity: number;
+  unavailable_quantity: number;
+  unavailable: EquipmentUnavailableStock[];
+  reserved_for_other_events: number;
+  reserved_for_this_event: number;
+  available_quantity: number;
+  requested_quantity: number | null;
+  shortfall: number;
+  status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+}
+
+/** SCRUM-12 - GET /api/events/:id/equipment-availability/ */
+export interface EquipmentAvailability {
+  event: { id: number; name: string; preferred_start: string | null; preferred_end: string | null };
+  period: { starts_at: string; ends_at: string };
+  equipment: EquipmentAvailabilityRow[];
+  shortfalls: { name: string; requested: number; short_by: number }[];
+}
