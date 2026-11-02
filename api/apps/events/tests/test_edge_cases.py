@@ -36,18 +36,27 @@ def test_a_coordinator_cannot_open_a_clients_draft(signed_in_coordinator, comple
 
 
 @pytest.mark.django_db
-def test_a_coordinator_cannot_edit_a_request_in_this_release(
-    signed_in_coordinator, submitted_event, coordinator
+def test_only_the_assigned_coordinator_can_edit_a_request(
+    api, submitted_event, coordinator, second_coordinator
 ):
+    # SCRUM-61 replaced the Sprint 1 rule that no coordinator could edit: the
+    # assigned coordinator now can (AC5); any other coordinator still cannot (AC2).
     submitted_event.coordinator = coordinator
     submitted_event.save(update_fields=["coordinator"])
-    response = signed_in_coordinator.patch(
+
+    api.force_authenticate(second_coordinator)
+    refused = api.patch(
+        f"{EVENTS}{submitted_event.pk}/", {"name": "Renamed by someone else"}, format="json"
+    )
+    api.force_authenticate(coordinator)
+    allowed = api.patch(
         f"{EVENTS}{submitted_event.pk}/", {"name": "Renamed by ConnectSphere"}, format="json"
     )
 
-    assert response.status_code == 403
+    assert refused.status_code == 403
+    assert allowed.status_code == 200
     submitted_event.refresh_from_db()
-    assert submitted_event.name == "Regional Partner Conference"
+    assert submitted_event.name == "Renamed by ConnectSphere"
 
 
 @pytest.mark.django_db

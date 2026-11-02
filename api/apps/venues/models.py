@@ -14,6 +14,35 @@ def every_day():
     return list(WEEKDAYS)
 
 
+class LayoutType(TimeStampedModel):
+    """SCRUM-91 - one entry in the room layout catalogue that Venue Staff maintain.
+
+    Venues, event requests and venue bookings store the layout ``code``. The code
+    never changes once created; the name and description can. A retired layout
+    stays readable on the records that already use it but cannot be newly chosen.
+    """
+
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["sort_order", "name", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                models.functions.Lower("name"), name="layout_type_unique_name_ignoring_case"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.code})"
+
+
 class VenueQuerySet(models.QuerySet):
     def supporting_layout(self, layout: str):
         """SCRUM-5 AC3 - venues that have recorded this layout as supported.
@@ -32,7 +61,7 @@ class Venue(TimeStampedModel):
     capacity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     # Free-text facility names, for example "Video conferencing" or "Hearing loop".
     facilities = models.JSONField(default=list, blank=True)
-    # Values from apps.events.models.RoomLayout.
+    # LayoutType codes (SCRUM-91 catalogue).
     layouts = models.JSONField(default=list, blank=True)
     wheelchair_access = models.BooleanField(null=True, blank=True)
     accessibility_notes = models.TextField(blank=True)
@@ -161,8 +190,7 @@ class VenueBooking(TimeStampedModel):
     starts_at = models.DateTimeField()
     ends_at = models.DateTimeField()
     attendance = models.PositiveIntegerField()
-    # A code from apps.events.models.RoomLayout; blank means no layout preference.
-    # SCRUM-91 moves this onto the layout catalogue.
+    # A LayoutType code (SCRUM-91 catalogue); blank means no layout preference.
     layout = models.CharField(max_length=20, blank=True)
     # Facility names, normalised as venue facilities are.
     required_facilities = models.JSONField(default=list, blank=True)

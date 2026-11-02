@@ -1,16 +1,9 @@
 import { useState } from "react";
 import { ApiError } from "../../api/client";
-import type { VenueInput } from "../../api/venues";
+import type { AffectedBooking, VenueInput } from "../../api/venues";
 import type { Venue } from "../../types";
 import { Field, inputClass } from "../Field";
-
-const LAYOUTS: [string, string][] = [
-  ["CLASSROOM", "Classroom"],
-  ["THEATRE", "Theatre"],
-  ["BOARDROOM", "Boardroom"],
-  ["BANQUET", "Banquet"],
-  ["EXHIBITION", "Exhibition"],
-];
+import { selectableLayouts, useLayouts } from "../layouts/useLayouts";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -76,6 +69,16 @@ function toInput(venue: Venue | null): VenueInput {
   };
 }
 
+/** INT-02 - the approved bookings a 409 says would be affected by removing layouts. */
+export function layoutRemovalWarning(
+  error: unknown,
+): { detail: string; bookings: AffectedBooking[] } | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const body = (error.body ?? {}) as { detail?: string; affected_bookings?: AffectedBooking[] };
+  if (!Array.isArray(body.affected_bookings)) return null;
+  return { detail: body.detail ?? error.message, bookings: body.affected_bookings };
+}
+
 /** Turn a DRF 400 body ({field: [message]}) into one message per field. */
 export function fieldErrors(error: unknown): Errors {
   if (!(error instanceof ApiError) || error.status !== 400) return {};
@@ -102,23 +105,31 @@ export function VenueForm({
   onCancel: () => void;
 }) {
   const [form, setForm] = useState<VenueInput>(() => toInput(venue));
+  // SCRUM-91 - layouts come from the catalogue; retired ones stay if already saved.
+  const { layouts, isLoading: layoutsLoading } = useLayouts();
+  const layoutChoices = selectableLayouts(layouts, venue?.layouts ?? []);
   const [facilities, setFacilities] = useState(form.facilities.join(", "));
   const errors = fieldErrors(error);
-  const set = <K extends keyof VenueInput>(key: K, value: VenueInput[K]) =>
+  const warning = layoutRemovalWarning(error);
+  const set =<K extends keyof VenueInput>(key: K, value: VenueInput[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
   const toggle = (list: string[] | number[], item: string | number) =>
     (list as (string | number)[]).includes(item)
       ? (list as (string | number)[]).filter((x) => x !== item)
       : [...list, item];
 
-  function submit(event: React.FormEvent) {
-    event.preventDefault();
-    onSave({
+  function input(): VenueInput {
+    return {
       ...form,
       facilities: splitFacilities(facilities),
       opens_at: form.opens_at || null,
       closes_at: form.closes_at || null,
-    });
+    };
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    onSave(input());
   }
 
   return (
@@ -130,7 +141,32 @@ export function VenueForm({
       <h2 className="mb-4 text-lg font-semibold text-navy-700">
         {venue ? `Edit ${venue.name}` : "New venue"}
       </h2>
-      {error && !(error instanceof ApiError && error.status === 400) ? (
+      {warning ? (
+        <div
+          role="alert"
+          aria-label="Layout removal warning"
+          className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+        >
+          <p className="font-medium">{warning.detail}</p>
+          <ul className="mt-2 list-disc pl-5">
+            {warning.bookings.map((booking) => (
+              <li key={booking.booking}>
+                {booking.event_name} · {booking.layout_name} ·{" "}
+                {new Date(booking.starts_at).toLocaleString("en-SG")} to{" "}
+                {new Date(booking.ends_at).toLocaleString("en-SG")}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => onSave({ ...input(), confirm_layout_removal: true })}
+            className="mt-3 rounded-md bg-amber-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            Remove anyway
+          </button>
+        </div>
+      ) : error && !(error instanceof ApiError && error.status === 400) ? (
         <p role="alert" className="mb-4 text-sm text-rose-700">
           {error instanceof ApiError && error.status === 403
             ? "Only Venue Staff can create or edit venues."
@@ -237,14 +273,16 @@ export function VenueForm({
       <fieldset className="mb-4">
         <legend className="mb-1 text-sm font-medium text-slate-700">Supported room layouts</legend>
         <div className="flex flex-wrap gap-3 text-sm">
-          {LAYOUTS.map(([value, label]) => (
-            <label key={value} className="flex items-center gap-1">
+          {layoutsLoading && <span className="text-slate-500">Loading layouts…</span>}
+          {layoutChoices.map((layout) => (
+            <label key={layout.code} className="flex items-center gap-1">
               <input
                 type="checkbox"
-                checked={form.layouts.includes(value)}
-                onChange={() => set("layouts", toggle(form.layouts, value) as string[])}
+                checked={form.layouts.includes(layout.code)}
+                onChange={() => set("layouts", toggle(form.layouts, layout.code) as string[])}
               />
-              {label}
+              {layout.name}
+              {!layout.is_active && <span className="text-xs text-slate-500">(retired)</span>}
             </label>
           ))}
         </div>

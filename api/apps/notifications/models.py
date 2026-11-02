@@ -13,6 +13,16 @@ class NotificationKind(models.TextChoices):
     SAFETY_DECIDED = "SAFETY_DECIDED", "Safety check decided"
     SAFETY_SUPERSEDED = "SAFETY_SUPERSEDED", "Safety check no longer applies"
     PLANNING_REOPENED = "PLANNING_REOPENED", "Event returned to planning"
+    # SCRUM-92 - offline clarification notes and resuming review.
+    CLARIFICATION_NOTE = "CLARIFICATION_NOTE", "Clarification note added"
+    REVIEW_RESUMED = "REVIEW_RESUMED", "Review resumed"
+    # SCRUM-11 - a coordinator's venue booking request reaches Venue Staff.
+    VENUE_REQUESTED = "VENUE_REQUESTED", "Venue booking requested"
+    # SCRUM-72 - Venue Staff approve or reject a venue booking request.
+    VENUE_DECIDED = "VENUE_DECIDED", "Venue booking decided"
+    VENUE_WITHDRAWN = "VENUE_WITHDRAWN", "Venue booking withdrawn"
+    # SCRUM-74 - a coordinator's equipment request reaches Technical Support.
+    EQUIPMENT_REQUESTED = "EQUIPMENT_REQUESTED", "Equipment requested"
 
 
 # Assignment notices are unique per occurrence, not per lifetime of an event.

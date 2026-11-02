@@ -2,17 +2,16 @@
 each venue supports, so that coordinators can match venues to the layout the
 Event Organiser asked for.
 
-AC4 (warn which confirmed bookings are affected when a layout is removed) is
-blocked: this baseline has no booking records, so there is nothing to warn
-about yet. It needs the booking slice agreed in the Sprint 2 implementation
-guide before it can be implemented or tested.
+AC4 (warn which confirmed bookings are affected when a layout is removed) was
+blocked in Sprint 2 because there were no booking records yet. It is now
+implemented as Sprint 3 INT-02 (gate G13) and tested through real approved
+bookings in test_int_02_layout_booking_warning.py.
 """
 
 import pytest
 
 from apps.core.models import AuditLog
-from apps.events.models import RoomLayout
-from apps.venues.models import Venue
+from apps.venues.models import LayoutType, Venue
 from apps.venues.tests.conftest import make_venue
 
 VENUES = "/api/venues/"
@@ -40,9 +39,9 @@ def test_ac1_venue_staff_select_the_layouts_a_venue_supports(signed_in_venue_sta
 
 @pytest.mark.django_db
 def test_ac1_every_layout_on_the_agreed_list_can_be_recorded(signed_in_venue_staff, venue):
-    response = signed_in_venue_staff.patch(
-        venue_url(venue), {"layouts": list(RoomLayout.values)}, format="json"
-    )
+    # SCRUM-91 replaced the fixed list with the catalogue, seeded with these five.
+    seeded = list(LayoutType.objects.filter(is_active=True).values_list("code", flat=True))
+    response = signed_in_venue_staff.patch(venue_url(venue), {"layouts": seeded}, format="json")
 
     assert response.status_code == 200
     venue.refresh_from_db()

@@ -27,6 +27,26 @@ def _make_user(email, role, organisation=None, first="Test", last="User"):
     )
 
 
+@pytest.fixture(autouse=True)
+def _layout_catalogue(request):
+    """SCRUM-91 - make sure the seeded room layout catalogue exists in database tests.
+
+    Migration 0006 seeds it, but a ``transaction=True`` test empties every table
+    afterwards, which would leave later tests without any layouts.
+    """
+    marker = request.node.get_closest_marker("django_db")
+    uses_db = marker is not None or {"db", "transactional_db"} & set(request.fixturenames)
+    if not uses_db:
+        return
+    transactional = (marker is not None and marker.kwargs.get("transaction")) or (
+        "transactional_db" in request.fixturenames
+    )
+    request.getfixturevalue("transactional_db" if transactional else "db")
+    from apps.venues.layouts import ensure_seed_layouts
+
+    ensure_seed_layouts()
+
+
 @pytest.fixture
 def password():
     return PASSWORD

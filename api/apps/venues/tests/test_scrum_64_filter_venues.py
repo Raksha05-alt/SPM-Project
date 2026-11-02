@@ -54,14 +54,14 @@ def test_ac1_supplied_filters_are_combined(signed_in_coordinator):
     )
 
     assert result_names(response) == ["Suitable room"]
-    assert response.data["availability_integrated"] is False
+    assert response.data["availability_integrated"] is True
+    assert response.data["booking_occupancy_integrated"] is True
+    assert response.data["holds_integrated"] is False
     assert response.data["date_blocks_integrated"] is True
     match = response.data["results"][0]
-    assert match["availability_status"] == "UNVERIFIED"
+    assert match["availability_status"] == "AVAILABLE"
     assert match["matches_recorded_requirements"] is True
-    assert [check["key"] for check in match["criteria"] if check["result"] == "UNVERIFIED"] == [
-        "booking_availability"
-    ]
+    assert not any(check["result"] == "UNVERIFIED" for check in match["criteria"])
 
 
 @pytest.mark.parametrize(
@@ -179,7 +179,9 @@ def test_missing_hours_cannot_establish_a_match_for_a_supplied_period(signed_in_
 def test_search_queries_do_not_grow_per_venue(signed_in_coordinator, django_assert_num_queries):
     for index in range(5):
         searchable_venue(name=f"Room {index}")
-    with django_assert_num_queries(2):
+    # SCRUM-91: +1 constant query for the layout catalogue's current names (AC2).
+    # SCRUM-69: +1 constant query for all venues' approved occupancy.
+    with django_assert_num_queries(4):
         response = signed_in_coordinator.get(SEARCH)
     assert len(response.data["results"]) == 5
 
@@ -267,6 +269,7 @@ def test_ac1_block_search_uses_constant_queries_with_multiple_real_blocks(
         VenueBlock.objects.create(
             venue=venue, reason="Maintenance", starts_at=PERIOD["start"], ends_at=PERIOD["end"]
         )
-    with django_assert_num_queries(2):
+    # One additional bulk query loads approved occupancy for every venue.
+    with django_assert_num_queries(3):
         response = signed_in_coordinator.get(SEARCH, PERIOD)
     assert result_names(response) == []
