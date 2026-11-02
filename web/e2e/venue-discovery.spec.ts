@@ -9,7 +9,7 @@ async function csrf(api: APIRequestContext) {
   return state.cookies.find((cookie) => cookie.name === "csrftoken")!.value;
 }
 
-test("SCRUM-64/68: search, persist, recheck real date blocks, venue status and remove", async ({
+test("G12 SCRUM-64/68: search, persist, refresh real approval/withdrawal, blocks and venue status", async ({
   page,
   playwright,
 }) => {
@@ -80,12 +80,44 @@ test("SCRUM-64/68: search, persist, recheck real date blocks, venue status and r
     const results = page.getByRole("region", { name: "Search results" });
     await expect(results.getByRole("heading", { name: venueName })).toBeVisible();
     await expect(results).toContainText("Capacity 60");
-    await expect(results).toContainText("Availability not verified");
+    await expect(results).toContainText("Available for this period");
     await results.getByRole("button", { name: `Shortlist ${venueName}` }).click();
     const saved = page.getByRole("region", { name: "Saved shortlist" });
     await expect(saved.getByRole("heading", { name: venueName })).toBeVisible();
     await page.reload();
     await expect(saved.getByRole("heading", { name: venueName })).toBeVisible();
+
+    // Actual G09/G10/G11 APIs, with no shell-created booking or mocked response.
+    // J2 covers their form/inbox UI; this case keeps discovery open to verify refresh.
+    const eventId = Number(page.url().split("/").at(-2));
+    expect((await page.request.post(`/api/events/${eventId}/approve/`, {
+      headers: { "X-CSRFToken": await csrf(page.request) }, data: {},
+    })).status()).toBe(200);
+    const requested = await page.request.post(`/api/events/${eventId}/venue-bookings/`, {
+      headers: { "X-CSRFToken": await csrf(page.request) },
+      data: { venue: venueId, starts_at: "2027-03-01T01:00:00Z", ends_at: "2027-03-01T09:00:00Z",
+        attendance: 60, layout: "THEATRE", required_facilities: ["Projector", marker] },
+    });
+    expect(requested.status()).toBe(201);
+    const bookingId = (await requested.json()).booking.id;
+    expect((await staff.post(`/api/venue-bookings/${bookingId}/approve/`, {
+      headers: { "X-CSRFToken": await csrf(staff) }, data: {},
+    })).status()).toBe(200);
+    await page.getByRole("button", { name: "Refresh availability" }).click();
+    await expect(results.getByRole("heading", { name: venueName })).toHaveCount(0);
+    await expect(saved.getByRole("heading", { name: venueName })).toBeVisible();
+    await expect(saved).toContainText("No longer available for these criteria");
+    await expect(saved).toContainText(`Conflicting event(s): ${eventId}`);
+    expect((await page.request.post(`/api/events/${eventId}/venue-bookings/${bookingId}/withdraw/`, {
+      headers: { "X-CSRFToken": await csrf(page.request) },
+      data: { expected_status: "APPROVED", confirm_release: true },
+    })).status()).toBe(200);
+    await page.getByRole("button", { name: "Refresh availability" }).click();
+    await expect(results.getByRole("heading", { name: venueName })).toBeVisible();
+    await expect(saved).toContainText("Available for this period");
+    await page.reload();
+    await expect(saved.getByRole("heading", { name: venueName })).toBeVisible();
+    await expect(saved).toContainText("No approved booking overlaps this period.");
 
     // A real staff block affects the same search and persisted shortlist, not a mock.
     const block = await staff.post(`/api/venues/${venueId}/blocks/`, {
@@ -111,7 +143,7 @@ test("SCRUM-64/68: search, persist, recheck real date blocks, venue status and r
     await page.reload();
     await expect(results.getByRole("heading", { name: venueName })).toBeVisible();
     await expect(saved).toContainText("No recorded block overlaps this period.");
-    await expect(saved).toContainText("Availability not verified");
+    await expect(saved).toContainText("Available for this period");
     expect((await staff.delete(blockUrl, {
       headers: { "X-CSRFToken": await csrf(staff) },
     })).status()).toBe(204);

@@ -90,15 +90,18 @@ See the [equipment contract and handoff](docs/equipment-contract.md).
 
 After migrating, sign in as a coordinator and use **Venue search**, or open an
 assigned event and choose **Venue search and shortlist**. Filters cover recorded
-capacity, layouts, facilities, operating hours and recorded date-specific blocks.
-Shortlists persist per event and recheck current venue data when reopened.
+capacity, layouts, facilities, operating hours, recorded date-specific blocks and
+approved venue bookings. Shortlists persist per event and recheck current data
+when reopened, refreshed or when you return focus to the page.
 
-Search and shortlist checks share the merged SCRUM-13/17 date-block rules and
-SCRUM-5 layout query. Booking/hold occupancy still requires the booking workflow;
-results retain an unverified availability notice. Run all migrations, including
-the merge migration joining the block and shortlist tables. See the
-[implementation and AC/test map](docs/scrum-64-68-venue-discovery.md) for tested
-behaviour, the remaining cases and the demo procedure.
+G12 uses the shared occupancy service and the real request/approval/withdrawal
+actions. Available periods show **Available for this period**; missing dates
+remain unverified. A booking that obstructs a saved venue leaves that entry in
+the shortlist with its conflict reference. **Refresh availability** updates both
+results and saved entries. Searching does not reserve the venue; staff recheck
+at approval. Tentative holds remain a later capability, reported separately by
+the API. See the [G12 contract and evidence](docs/venue-discovery-booking-integration.md)
+and the [earlier AC/test map](docs/scrum-64-68-venue-discovery.md).
 
 ### Operational Safety Check (SCRUM-90)
 
@@ -177,3 +180,12 @@ docs/
 - Access control lives in DRF permission classes, never in view bodies.
 - Business rules live in `services.py`, not in serializers or views.
 - Every refused request is written to `core.AuditLog`.
+
+### Amend or withdraw equipment (SCRUM-75)
+
+Open an assigned event, then **Equipment plan and reservations**. Before event
+confirmation, the assigned coordinator can amend a request or confirm its withdrawal.
+Reductions release only surplus units; withdrawal releases its reservations and keeps
+its history. Technical Support receives a notification and can approve a revised
+plan with retained reservations. Changed arrangements require a fresh Safety check.
+See [the API and acceptance-test map](docs/scrum-75-equipment-amendment.md).

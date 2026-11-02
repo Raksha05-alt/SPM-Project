@@ -20,13 +20,15 @@ export interface VenueMatch {
   venue: Venue;
   criteria: VenueCriterion[];
   matches_recorded_requirements: boolean;
-  availability_status: "UNAVAILABLE" | "UNVERIFIED";
+  availability_status: "AVAILABLE" | "UNAVAILABLE" | "UNVERIFIED";
 }
 
 export interface VenueSearchResult {
   results: VenueMatch[];
   criteria: VenueSearchCriteria;
   availability_integrated: boolean;
+  booking_occupancy_integrated: boolean;
+  holds_integrated: boolean;
   date_blocks_integrated: boolean;
   limitation: string;
 }
@@ -43,6 +45,8 @@ export interface EventShortlist {
   can_edit: boolean;
   entries: ShortlistEntry[];
   availability_integrated: boolean;
+  booking_occupancy_integrated: boolean;
+  holds_integrated: boolean;
   date_blocks_integrated: boolean;
   limitation: string;
 }

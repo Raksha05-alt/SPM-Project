@@ -1,8 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
 import { getEvent } from "../api/events";
 import {
@@ -89,14 +89,14 @@ const MATCH: VenueMatch = {
       message: "Required: 60; recorded capacity: 60.",
     },
     {
-      key: "booking_availability",
-      label: "Booking and block availability",
-      result: "UNVERIFIED",
-      message: "Verify with Venue Staff.",
+      key: "approved_bookings",
+      label: "Approved bookings",
+      result: "MATCH",
+      message: "No approved booking overlaps this period.",
     },
   ],
   matches_recorded_requirements: true,
-  availability_status: "UNVERIFIED",
+  availability_status: "AVAILABLE",
 };
 const ENTRY: ShortlistEntry = {
   id: 4,
@@ -108,7 +108,7 @@ let entries: ShortlistEntry[];
 
 function renderPage(path = "/coordinator/events/9/venues") {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
@@ -123,6 +123,7 @@ function renderPage(path = "/coordinator/events/9/venues") {
 }
 
 describe("SCRUM-64/68 venue discovery", () => {
+  afterEach(() => focusManager.setFocused(undefined));
   beforeEach(() => {
     vi.clearAllMocks();
     entries = [];
@@ -130,15 +131,19 @@ describe("SCRUM-64/68 venue discovery", () => {
     vi.mocked(searchVenues).mockImplementation(async (criteria) => ({
       results: [MATCH],
       criteria,
-      availability_integrated: false,
+      availability_integrated: true,
+      booking_occupancy_integrated: true,
+      holds_integrated: false,
       date_blocks_integrated: true,
-      limitation: "Recorded date-specific blocks are checked. Booking and hold occupancy is not integrated. Verify with Venue Staff.",
+      limitation: "Availability reflects approved bookings, recorded blocks and operating hours. Search results do not reserve a venue.",
     }));
     vi.mocked(getVenueShortlist).mockImplementation(async () => ({
       event_id: 9,
       can_edit: true,
       entries: [...entries],
-      availability_integrated: false,
+      availability_integrated: true,
+      booking_occupancy_integrated: true,
+      holds_integrated: false,
       date_blocks_integrated: true,
       limitation: "Verify with Venue Staff.",
     }));
@@ -168,8 +173,8 @@ describe("SCRUM-64/68 venue discovery", () => {
         facilities: ["Projector", "Hearing loop"],
       }),
     );
-    expect(screen.getByRole("note")).toHaveTextContent("not integrated");
-    expect(screen.getByText("Availability not verified")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("Search results do not reserve a venue");
+    expect(screen.getByText("Available for this period")).toBeInTheDocument();
   });
 
   it("SCRUM-64 AC4: clearing filters removes optional constraints", async () => {
@@ -185,7 +190,9 @@ describe("SCRUM-64/68 venue discovery", () => {
     vi.mocked(searchVenues).mockResolvedValue({
       results: [],
       criteria: {},
-      availability_integrated: false,
+      availability_integrated: true,
+      booking_occupancy_integrated: true,
+      holds_integrated: false,
       date_blocks_integrated: true,
       limitation: "Verify with Venue Staff.",
     });
@@ -305,7 +312,9 @@ describe("SCRUM-64/68 venue discovery", () => {
       event_id: 9,
       can_edit: false,
       entries: [ENTRY],
-      availability_integrated: false,
+      availability_integrated: true,
+      booking_occupancy_integrated: true,
+      holds_integrated: false,
       date_blocks_integrated: true,
       limitation: "Verify with Venue Staff.",
     });
@@ -339,6 +348,9 @@ describe("SCRUM-64/68 venue discovery", () => {
     expect(
       screen.queryByRole("button", { name: "Shortlist Harbour Hall" }),
     ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Search venues" }));
+    await waitFor(() => expect(searchVenues).toHaveBeenCalledTimes(2));
+    expect(getVenueShortlist).not.toHaveBeenCalled();
   });
 
   it("explains a missing or inaccessible event", async () => {
@@ -369,8 +381,9 @@ describe("SCRUM-64/68 venue discovery", () => {
       },
     }];
     vi.mocked(searchVenues).mockResolvedValue({
-      results: [], criteria: {}, availability_integrated: false,
-      date_blocks_integrated: true, limitation: "Booking and hold occupancy is not integrated.",
+      results: [], criteria: {}, availability_integrated: true,
+      booking_occupancy_integrated: true, holds_integrated: false,
+      date_blocks_integrated: true, limitation: "Search results do not reserve a venue.",
     });
     renderPage();
     const saved = await screen.findByRole("region", { name: "Saved shortlist" });
@@ -381,11 +394,125 @@ describe("SCRUM-64/68 venue discovery", () => {
   });
 
   it("shortlist load failures keep modification controls disabled", async () => {
-    vi.mocked(getVenueShortlist).mockRejectedValue(new Error("down"));
+    vi.mocked(getVenueShortlist).mockRejectedValueOnce(new Error("down"));
     renderPage();
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "could not load this event's shortlist",
     );
     expect(screen.getByRole("button", { name: "Shortlist Harbour Hall" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Refresh shortlist" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Shortlist Harbour Hall" })).toBeEnabled());
+  });
+
+  it("G12: refresh shows booking and withdrawal changes without removing the saved entry", async () => {
+    entries = [ENTRY];
+    renderPage();
+    const saved = await screen.findByRole("region", { name: "Saved shortlist" });
+    expect(await within(saved).findByText("Available for this period")).toBeInTheDocument();
+    const refresh = screen.getByRole("button", { name: "Refresh availability" });
+    await waitFor(() => expect(refresh).toBeEnabled());
+    entries = [{ ...ENTRY, match: { ...MATCH,
+      availability_status: "UNAVAILABLE", matches_recorded_requirements: false,
+      criteria: [{ key: "approved_bookings", label: "Approved bookings", result: "UNMET", message: "Conflicting event(s): 42" }],
+    } }];
+    vi.mocked(searchVenues).mockImplementation(async criteria => ({
+      results: [], criteria, availability_integrated: true, booking_occupancy_integrated: true,
+      holds_integrated: false, date_blocks_integrated: true, limitation: "Search results do not reserve a venue.",
+    }));
+    await userEvent.click(refresh);
+    expect(await within(saved).findByText("Conflicting event(s): 42")).toBeInTheDocument();
+    expect(within(saved).getByRole("heading", { name: "Harbour Hall" })).toBeInTheDocument();
+    expect(await screen.findByText("No venue matched the filters you entered.")).toBeInTheDocument();
+
+    entries = [ENTRY];
+    vi.mocked(searchVenues).mockImplementation(async criteria => ({
+      results: [MATCH], criteria, availability_integrated: true, booking_occupancy_integrated: true,
+      holds_integrated: false, date_blocks_integrated: true, limitation: "Search results do not reserve a venue.",
+    }));
+    await waitFor(() => expect(refresh).toBeEnabled());
+    await userEvent.click(refresh);
+    expect(await within(saved).findByText("Available for this period")).toBeInTheDocument();
+    expect(removeVenueFromShortlist).not.toHaveBeenCalled();
+  });
+
+  it("G12: returning focus refreshes an occupied saved venue despite the app's default", async () => {
+    entries = [ENTRY];
+    renderPage();
+    const saved = await screen.findByRole("region", { name: "Saved shortlist" });
+    expect(await within(saved).findByText("Available for this period")).toBeInTheDocument();
+    focusManager.setFocused(false);
+    entries = [{ ...ENTRY, match: { ...MATCH, availability_status: "UNAVAILABLE", matches_recorded_requirements: false } }];
+    focusManager.setFocused(true);
+    expect(await within(saved).findByText("No longer available for these criteria")).toBeInTheDocument();
+    expect(getVenueShortlist).toHaveBeenCalledTimes(2);
+  });
+
+  it("G12: refusing a stale addition refreshes the old search result", async () => {
+    renderPage();
+    const add = await screen.findByRole("button", { name: "Shortlist Harbour Hall" });
+    await waitFor(() => expect(add).toBeEnabled());
+    vi.mocked(searchVenues).mockResolvedValue({
+      results: [], criteria: {}, availability_integrated: true, booking_occupancy_integrated: true,
+      holds_integrated: false, date_blocks_integrated: true, limitation: "Search results do not reserve a venue.",
+    });
+    vi.mocked(addVenueToShortlist).mockRejectedValue(new ApiError(400, { detail: "This venue no longer matches the saved search." }, "Stale match"));
+    await userEvent.click(add);
+    expect(await screen.findByRole("alert")).toHaveTextContent("no longer matches");
+    expect(await screen.findByText("No venue matched the filters you entered.")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("G12: missing dates show unverified availability even with booking integration enabled", async () => {
+    vi.mocked(searchVenues).mockResolvedValue({
+      results: [{ ...MATCH, venue: { ...MATCH.venue, location: "" }, availability_status: "UNVERIFIED",
+        criteria: [{ key: "booking_availability", label: "Availability for an event period", result: "UNVERIFIED", message: "Enter event dates." }],
+      }], criteria: {},
+      availability_integrated: true, booking_occupancy_integrated: true, holds_integrated: false,
+      date_blocks_integrated: true, limitation: "Enter event dates to check availability.",
+    });
+    renderPage("/coordinator/venues");
+    expect(await screen.findByText("Availability not verified")).toBeInTheDocument();
+    expect(screen.queryByText("Available for this period")).not.toBeInTheDocument();
+    expect(screen.getByText(/Not checked: Availability for an event period/)).toBeInTheDocument();
+    expect(screen.getByText(/Location not recorded/)).toBeInTheDocument();
+  });
+
+  it("G12: searching the same period refreshes results and saved entries", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "Harbour Hall" });
+    await userEvent.click(screen.getByRole("button", { name: "Search venues" }));
+    await waitFor(() => expect(searchVenues).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getVenueShortlist).toHaveBeenCalledTimes(2));
+  });
+
+  it("sends a changed start and removes a cleared layout constraint", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "Harbour Hall" });
+    fireEvent.change(screen.getByLabelText("Event start (your local time)"), { target: { value: "2027-03-01T00:00" } });
+    await userEvent.selectOptions(screen.getByLabelText("Required room layout"), "");
+    await userEvent.click(screen.getByRole("button", { name: "Search venues" }));
+    await waitFor(() => expect(searchVenues).toHaveBeenCalledTimes(2));
+    const latest = vi.mocked(searchVenues).mock.calls.at(-1)![0];
+    expect(latest).not.toHaveProperty("layout");
+    expect(Date.parse(latest.start!)).not.toBe(Date.parse(EVENT.preferred_start!));
+  });
+
+  it("refuses a reversed search period before making another API request", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "Harbour Hall" });
+    fireEvent.change(screen.getByLabelText("Event end (your local time)"), { target: { value: "2027-03-01T00:00" } });
+    await userEvent.click(screen.getByRole("button", { name: "Search venues" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Event end must be after its start");
+    expect(searchVenues).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the server's grouped validation messages for a refused shortlist addition", async () => {
+    vi.mocked(addVenueToShortlist).mockRejectedValue(new ApiError(400, { detail: ["The room changed.", "Refresh availability."] }, "Refused"));
+    renderPage();
+    const add = await screen.findByRole("button", { name: "Shortlist Harbour Hall" });
+    await waitFor(() => expect(add).toBeEnabled());
+    await userEvent.click(add);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The room changed. Refresh availability.");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

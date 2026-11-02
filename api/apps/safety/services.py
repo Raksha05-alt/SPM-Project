@@ -34,7 +34,7 @@ from apps.equipment.models import (
     ReservationStatus,
     TechnicalApprovalStatus,
 )
-from apps.events.models import EventRequest, RoomLayout
+from apps.events.models import EventRequest
 from apps.notifications.models import Notification, NotificationKind
 from apps.safety.models import CURRENT_STATUSES, DECISIONS, SafetyCheck, SafetyStatus
 from apps.venues.models import BookingStatus, VenueBlock
@@ -252,7 +252,11 @@ def _supersede(check: SafetyCheck, event: EventRequest, reason: str, actor) -> S
         event,
         NotificationKind.SAFETY_SUPERSEDED,
         f'The safety check for "{event.name}" no longer applies: {reason} '
-        "A new check is needed before the event can be confirmed.",
+        + (
+            "The event has been cancelled."
+            if event.status == EventStatus.CANCELLED
+            else "A new check is needed before the event can be confirmed."
+        ),
         skip=actor,
     )
     return check
@@ -320,8 +324,11 @@ class NotSafetyOfficer(Exception):
     """AC7 - only an active Safety Officer may decide a check."""
 
 
-def _layout_label(value: str) -> str:
-    return RoomLayout(value).label if value in RoomLayout.values else "No preference"
+def _layout_label(value: str, labels: dict[str, str]) -> str:
+    """The layout's current catalogue name (SCRUM-91), including retired layouts."""
+    if not value:
+        return "No preference"
+    return labels.get(value, value)
 
 
 def _iso(value):
@@ -341,6 +348,9 @@ def safety_facts(event: EventRequest) -> dict:
     invented. ``concerns`` points out what the recorded facts already show; the
     Safety Officer still makes the decision (no automatic approval).
     """
+    from apps.venues.layouts import label_map
+
+    labels = label_map()
     venues, concerns = [], []
     accessibility_needed = bool((event.accessibility_needs or "").strip())
     for booking in _approved_bookings(event):
@@ -352,7 +362,7 @@ def safety_facts(event: EventRequest) -> dict:
                 "location": venue.location,
                 "capacity": venue.capacity,
                 "booked_attendance": booking.attendance,
-                "layout": _layout_label(booking.layout),
+                "layout": _layout_label(booking.layout, labels),
                 "starts_at": _iso(booking.starts_at),
                 "ends_at": _iso(booking.ends_at),
                 "wheelchair_access": venue.wheelchair_access,
@@ -410,7 +420,7 @@ def safety_facts(event: EventRequest) -> dict:
         "expected_attendance": event.expected_attendance,
         "starts_at": _iso(event.preferred_start),
         "ends_at": _iso(event.preferred_end),
-        "required_layout": _layout_label(event.required_layout),
+        "required_layout": _layout_label(event.required_layout, labels),
         "accessibility_needs": event.accessibility_needs,
         "venues": venues,
         "equipment": equipment,

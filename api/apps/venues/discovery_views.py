@@ -14,6 +14,7 @@ from apps.core.statuses import TERMINAL_STATUSES
 from apps.events.models import EventRequest
 from apps.venues.discovery import (
     AVAILABILITY_LIMITATION,
+    DISCOVERY_CAPABILITIES,
     add_to_shortlist,
     remove_from_shortlist,
     search_venues,
@@ -26,6 +27,7 @@ from apps.venues.discovery_serializers import (
     VenueShortlistEntrySerializer,
 )
 from apps.venues.models import VenueShortlistEntry
+from apps.venues.occupancy import occupancy_prefetch
 
 
 class VenueSearchView(APIView):
@@ -45,8 +47,7 @@ class VenueSearchView(APIView):
             {
                 "results": results,
                 "criteria": criteria,
-                "availability_integrated": False,
-                "date_blocks_integrated": True,
+                **DISCOVERY_CAPABILITIES,
                 "limitation": AVAILABILITY_LIMITATION,
             }
         )
@@ -81,15 +82,14 @@ class EventVenueShortlistView(APIView):
         event = self.event(request, event_id)
         entries = event.venue_shortlist.select_related(
             "event", "venue__created_by", "venue__updated_by"
-        ).prefetch_related("venue__blocks")
+        ).prefetch_related("venue__blocks", occupancy_prefetch("venue__bookings"))
         return Response(
             {
                 "event_id": event.pk,
                 "can_edit": event.coordinator_id == request.user.pk
                 and event.status not in TERMINAL_STATUSES,
                 "entries": VenueShortlistEntrySerializer(entries, many=True).data,
-                "availability_integrated": False,
-                "date_blocks_integrated": True,
+                **DISCOVERY_CAPABILITIES,
                 "limitation": AVAILABILITY_LIMITATION,
             }
         )

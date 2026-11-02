@@ -12,6 +12,7 @@ from apps.core.statuses import (
     validate_transition,
 )
 from apps.events.models import (
+    ClarificationComment,
     ClarificationRequest,
     CoordinatorAssignment,
     EventRequest,
@@ -28,6 +29,18 @@ class MissingMandatoryFields(Exception):
 
 class MissingClarificationDetails(Exception):
     """Raised when a clarification request does not say what is needed."""
+
+
+class NoOpenClarification(Exception):
+    """SCRUM-92 AC2 - the request has no clarification awaiting an answer."""
+
+
+class EmptyClarificationNote(Exception):
+    """SCRUM-92 AC2 - a note must say something."""
+
+
+class NotClarificationParty(Exception):
+    """SCRUM-92 AC2 - only the client and the assigned coordinator add notes."""
 
 
 class MissingRejectionReason(Exception):
@@ -158,8 +171,6 @@ def submit_event(event: EventRequest, user) -> EventRequest:
     """Submit atomically into the Lead's unassigned queue (SCRUM-89)."""
     # Lock only the event row, not the nullable coordinator join used by the view.
     locked = EventRequest.objects.select_for_update().get(pk=event.pk)
-    if locked.status == EventStatus.UNDER_REVIEW:
-        return _resubmit_after_clarification(locked, event, user)
     if not locked.is_draft:
         raise InvalidTransition(locked.status, EventStatus.SUBMITTED)
     missing = locked.missing_mandatory_fields()
@@ -224,8 +235,19 @@ def request_clarification(event: EventRequest, user, message: str, fields=()) ->
     return event
 
 
-def _resubmit_after_clarification(locked: EventRequest, event: EventRequest, user) -> EventRequest:
-    """Send an answered request back to review, keeping its coordinator and history."""
+@transaction.atomic
+def resume_review(event: EventRequest, user) -> EventRequest:
+    """SCRUM-92 AC4 - the assigned coordinator returns an answered request to review.
+
+    Replaces the client's resubmission (SCRUM-49): the coordinator has made the
+    agreed edits on the client's behalf. The clarification and its notes stay in
+    history; the event keeps its coordinator.
+    """
+    locked = EventRequest.objects.select_for_update().get(pk=event.pk)
+    if locked.coordinator_id != user.pk:
+        raise NotAssignedCoordinator
+    if locked.status != EventStatus.UNDER_REVIEW:
+        raise InvalidTransition(locked.status, EventStatus.SUBMITTED)
     missing = locked.missing_mandatory_fields()
     if missing:
         raise MissingMandatoryFields(missing)
@@ -233,15 +255,104 @@ def _resubmit_after_clarification(locked: EventRequest, event: EventRequest, use
     locked.clarifications.filter(resolved_at__isnull=True).update(
         resolved_at=locked.status_changed_at
     )
-    if locked.coordinator:
-        Notification.objects.create(
-            recipient=locked.coordinator,
-            event=locked,
-            kind=NotificationKind.RESUBMITTED,
-            message=f'"{locked.name}" has been updated and resubmitted for review.',
-        )
+    Notification.objects.create(
+        recipient=locked.created_by,
+        event=locked,
+        kind=NotificationKind.REVIEW_RESUMED,
+        message=f'Your coordinator has resumed reviewing "{locked.name}".',
+    )
     event.refresh_from_db()
     return event
+
+
+def _is_client_of(user, event: EventRequest) -> bool:
+    return user.role == Role.EVENT_ORGANISER and user.organisation_id == event.organisation_id
+
+
+@transaction.atomic
+def add_clarification_comment(event: EventRequest, user, body: str) -> ClarificationComment:
+    """SCRUM-92 AC1/AC2 - record a note from an offline clarification conversation.
+
+    Only the assigned coordinator and the event's client organisation may add a
+    note, only while a clarification is awaiting an answer, and never an empty
+    one. The other party is notified.
+    """
+    locked = EventRequest.objects.select_for_update().get(pk=event.pk)
+    is_coordinator = locked.coordinator_id is not None and locked.coordinator_id == user.pk
+    if not is_coordinator and not _is_client_of(user, locked):
+        raise NotClarificationParty
+    clarification = (
+        locked.clarifications.filter(resolved_at__isnull=True).order_by("-requested_at").first()
+        if locked.status == EventStatus.UNDER_REVIEW
+        else None
+    )
+    if clarification is None:
+        raise NoOpenClarification
+    body = (body or "").strip()
+    if not body:
+        raise EmptyClarificationNote
+    comment = ClarificationComment.objects.create(
+        clarification=clarification, author=user, body=body
+    )
+    recipient = locked.created_by if is_coordinator else locked.coordinator
+    if recipient is not None and recipient.pk != user.pk:
+        name = user.get_full_name() or user.email
+        Notification.objects.create(
+            recipient=recipient,
+            event=locked,
+            kind=NotificationKind.CLARIFICATION_NOTE,
+            message=f'{name} added a clarification note to "{locked.name}": {body}',
+        )
+    return comment
+
+
+# SCRUM-61 - fields whose change alters what a safety approval reviewed
+# (apps.safety.services.arrangement_version).
+SAFETY_RELEVANT_FIELDS = ("preferred_start", "preferred_end", "expected_attendance")
+
+EDITABLE_FIELDS = (
+    "name",
+    "purpose",
+    "description",
+    "preferred_start",
+    "preferred_end",
+    "expected_attendance",
+    "required_layout",
+    "accessibility_needs",
+    "equipment_notes",
+    "registration_required",
+)
+
+
+def snapshot_for_edit(event: EventRequest) -> dict:
+    return {field: getattr(event, field) for field in EDITABLE_FIELDS}
+
+
+def record_event_edit(event: EventRequest, before: dict, user) -> list[str]:
+    """SCRUM-61 AC4 - record who changed which fields; call inside the save transaction.
+
+    A change to the date, time or attendance supersedes any current safety
+    check (SCRUM-90 AC6). A save that changes nothing records nothing.
+    """
+    changed = [field for field in EDITABLE_FIELDS if getattr(event, field) != before[field]]
+    if not changed:
+        return []
+    event.updated_by = user
+    event.save(update_fields=["updated_by", "updated_at"])
+    record(
+        user,
+        f"Event {event.pk} edited",
+        allowed=True,
+        obj=event,
+        detail="Changed: " + ", ".join(changed),
+    )
+    safety_changes = [field for field in changed if field in SAFETY_RELEVANT_FIELDS]
+    if safety_changes and event.status != EventStatus.DRAFT:
+        from apps.safety.services import arrangements_changed
+
+        labels = ", ".join(field.replace("_", " ") for field in safety_changes)
+        arrangements_changed(event, f"The event's {labels} changed.", user)
+    return changed
 
 
 @transaction.atomic

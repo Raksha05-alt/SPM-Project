@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getEvent, submitEvent, updateDraft } from "../api/events";
+import { addClarificationNote, getEvent, submitEvent, updateDraft } from "../api/events";
 import type { EventRequest } from "../types";
 import { EventRequestForm } from "./EventRequestForm";
 
@@ -12,6 +12,7 @@ vi.mock("../api/events", () => ({
   createDraft: vi.fn(),
   updateDraft: vi.fn(),
   submitEvent: vi.fn(),
+  addClarificationNote: vi.fn(),
 }));
 
 function awaitingClarification(): EventRequest {
@@ -48,10 +49,12 @@ function awaitingClarification(): EventRequest {
         requested_by_name: "Cora Coordinator",
         requested_at: "2026-09-28T01:00:00Z",
         resolved_at: null,
+        comments: [],
       },
     ],
     missing_mandatory_fields: [],
-    is_editable: true,
+    // SCRUM-61 AC6 / SCRUM-92 AC3 - not editable by the client after submission.
+    is_editable: false,
     created_at: "2026-09-21T01:00:00Z",
     updated_at: "2026-09-28T01:00:00Z",
   };
@@ -74,13 +77,9 @@ function renderPage() {
 describe("EventRequestForm awaiting clarification", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("SCRUM-49 AC2: shows what the coordinator needs and lets the organiser edit and resubmit", async () => {
+  it("SCRUM-92 AC3: shows what the coordinator needs, but the client cannot edit or resubmit", async () => {
+    // Replaces the SCRUM-49 organiser edit-and-resubmit test (kept in Git history).
     vi.mocked(getEvent).mockResolvedValue(awaitingClarification());
-    vi.mocked(updateDraft).mockResolvedValue(awaitingClarification());
-    vi.mocked(submitEvent).mockResolvedValue({
-      ...awaitingClarification(),
-      status: "SUBMITTED",
-    });
 
     renderPage();
 
@@ -90,18 +89,38 @@ describe("EventRequestForm awaiting clarification", () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByText("Please check: Accessibility needs")).toBeInTheDocument();
+    expect(screen.getByLabelText("Accessibility needs")).toBeDisabled();
+    expect(
+      screen.queryByRole("button", {
+        name: /Resubmit|Send to ConnectSphere|Save draft|Save changes/,
+      }),
+    ).not.toBeInTheDocument();
+    expect(updateDraft).not.toHaveBeenCalled();
+    expect(submitEvent).not.toHaveBeenCalled();
+  });
 
-    const accessibility = screen.getByLabelText("Accessibility needs");
-    expect(accessibility).toBeEnabled();
-    await userEvent.type(accessibility, "Six wheelchair users");
-    await userEvent.click(screen.getByRole("button", { name: "Resubmit to ConnectSphere" }));
+  it("SCRUM-92 AC1: the client records a note from the offline conversation", async () => {
+    vi.mocked(getEvent).mockResolvedValue(awaitingClarification());
+    vi.mocked(addClarificationNote).mockResolvedValue(awaitingClarification());
 
-    expect(updateDraft).toHaveBeenCalledWith(
-      4,
-      expect.objectContaining({ accessibility_needs: "Six wheelchair users" }),
+    renderPage();
+    await userEvent.type(
+      await screen.findByLabelText("Add a note from your conversation"),
+      "Agreed by phone: six wheelchair users.",
     );
-    expect(submitEvent).toHaveBeenCalledWith(4);
-    expect(await screen.findByText("Dashboard")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save note" }));
+
+    expect(addClarificationNote).toHaveBeenCalledWith(4, "Agreed by phone: six wheelchair users.");
+  });
+
+  it("SCRUM-92 AC2: an empty note is not sent", async () => {
+    vi.mocked(getEvent).mockResolvedValue(awaitingClarification());
+
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Save note" }));
+
+    expect(screen.getByText("Write the note before saving it.")).toBeInTheDocument();
+    expect(addClarificationNote).not.toHaveBeenCalled();
   });
 
   it("SCRUM-49 AC3: shows the clarification history", async () => {

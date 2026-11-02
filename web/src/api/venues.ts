@@ -12,7 +12,21 @@ export type VenueInput = Omit<
   | "updated_by_name"
   | "created_at"
   | "updated_at"
->;
+> & {
+  /** INT-02 - remove a layout even though approved bookings use it. */
+  confirm_layout_removal?: boolean;
+};
+
+/** INT-02 - one approved booking that uses a layout being removed (409 body). */
+export type AffectedBooking = {
+  booking: number;
+  event: number;
+  event_name: string;
+  layout: string;
+  layout_name: string;
+  starts_at: string;
+  ends_at: string;
+};
 
 export const listVenues = () => request<Venue[]>("/api/venues/");
 

@@ -32,6 +32,15 @@ export type EventStatus =
   | "REJECTED";
 
 /** SCRUM-49 - one round of a coordinator asking the client for more information. */
+/** SCRUM-92 - a note from an offline clarification conversation. */
+export interface ClarificationNote {
+  id: number;
+  body: string;
+  author_name: string | null;
+  author_role: string | null;
+  created_at: string;
+}
+
 export interface Clarification {
   id: number;
   message: string;
@@ -39,6 +48,7 @@ export interface Clarification {
   requested_by_name: string | null;
   requested_at: string;
   resolved_at: string | null;
+  comments: ClarificationNote[];
 }
 
 export interface EventRequest {
@@ -75,6 +85,8 @@ export interface EventRequest {
   missing_mandatory_fields: string[];
   is_editable: boolean;
   created_at: string;
+  /** SCRUM-61 AC4 - who last edited the request. */
+  updated_by_name?: string | null;
   updated_at: string;
 }
 
@@ -149,6 +161,177 @@ export interface Venue {
   updated_by_name: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** SCRUM-91 - one entry in the room layout catalogue. */
+export interface LayoutType {
+  code: string;
+  name: string;
+  description: string;
+  is_active: boolean;
+  sort_order: number;
+  updated_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** SCRUM-71 - a requirement a venue does not meet. */
+export interface SuitabilityReason {
+  requirement: "CAPACITY" | "LAYOUT" | "ACCESSIBILITY" | "FACILITY" | "OPERATING_HOURS";
+  message: string;
+}
+
+/** SCRUM-71 - one venue checked against one event's requirements. */
+export interface VenueSuitability {
+  venue: number;
+  venue_name: string;
+  suitable: boolean;
+  reasons: SuitabilityReason[];
+  /** Shown beside the result; operational status is not a suitability reason. */
+  in_service: boolean;
+}
+
+/** SCRUM-71 - the requirements the venues were checked against. */
+export interface SuitabilityRequirements {
+  attendance: number | null;
+  layout: string;
+  layout_name: string;
+  required_facilities: string[];
+  wheelchair_access_required: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+}
+
+export interface EventSuitability {
+  event: number;
+  requirements: SuitabilityRequirements;
+  /** What this check does not cover, e.g. whether the venue is free. */
+  not_checked: string[];
+  venues: VenueSuitability[];
+}
+
+/** SCRUM-11 - a venue booking request for an event. */
+export type BookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "WITHDRAWN";
+
+export interface VenueBooking {
+  withdrawn_by_name?: string | null;
+  withdrawn_at?: string | null;
+  id: number;
+  event: number;
+  event_name: string;
+  organisation_name: string;
+  venue: number;
+  venue_name: string;
+  starts_at: string;
+  ends_at: string;
+  attendance: number;
+  layout: string;
+  layout_name: string;
+  required_facilities: string[];
+  wheelchair_access_required: boolean;
+  accessibility_notes: string;
+  status: BookingStatus;
+  status_label: string;
+  status_changed_at: string;
+  requested_by_name: string | null;
+  requested_at: string;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  decision_reason: string;
+}
+
+/** SCRUM-74 - one catalogue equipment type a coordinator can request. */
+export interface EquipmentType {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+}
+
+export type EquipmentRequestStatus = "REQUESTED" | "RESERVED" | "WITHDRAWN";
+
+/** SCRUM-74 - one equipment line requested for an event. */
+export interface EquipmentRequest {
+  id: number;
+  event: number;
+  equipment_type: number;
+  equipment_type_name: string;
+  quantity: number;
+  technical_requirements: string;
+  status: EquipmentRequestStatus;
+  status_label: string;
+  requested_by_name: string | null;
+  requested_at: string;
+}
+
+/** SCRUM-74 AC3 - the scoped event view Technical Support work from. */
+export interface TechnicalEvent {
+  id: number;
+  name: string;
+  status: EventStatus;
+  status_label: string;
+  preferred_start: string | null;
+  preferred_end: string | null;
+  expected_attendance: number | null;
+  coordinator_name: string | null;
+  equipment_requests: EquipmentRequest[];
+}
+
+/** SCRUM-12 - stock out of action regardless of the period (AC4). */
+export interface EquipmentUnavailableStock {
+  quantity: number;
+  cause: "DAMAGED" | "MAINTENANCE";
+  cause_label: string;
+  reason: string;
+  expected_return_at: string | null;
+}
+
+/** SCRUM-12 - one equipment type's availability for the period. */
+export interface EquipmentAvailabilityRow {
+  equipment_type: number;
+  code: string;
+  name: string;
+  in_service: boolean;
+  total_quantity: number;
+  unavailable_quantity: number;
+  unavailable: EquipmentUnavailableStock[];
+  reserved_for_other_events: number;
+  reserved_for_this_event: number;
+  available_quantity: number;
+  requested_quantity: number | null;
+  shortfall: number;
+  status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+}
+
+/** SCRUM-12 - GET /api/events/:id/equipment-availability/ */
+export interface EquipmentAvailability {
+  event: { id: number; name: string; preferred_start: string | null; preferred_end: string | null };
+  period: { starts_at: string; ends_at: string };
+  equipment: EquipmentAvailabilityRow[];
+  shortfalls: { name: string; requested: number; short_by: number }[];
+}
+
+/** SCRUM-76 - one reservation holding the equipment during the period. */
+export interface EquipmentHolder {
+  reservation: number;
+  quantity: number;
+  starts_at: string;
+  ends_at: string;
+  /** Technical Support only; coordinators see quantity and dates alone. */
+  event?: {
+    id: number;
+    name: string;
+    status: EventStatus;
+    status_label: string;
+    coordinator: { name: string; email: string } | null;
+  };
+}
+
+/** SCRUM-76 - GET /api/events/:id/equipment-availability/:typeId/ */
+export interface EquipmentHolders {
+  period: { starts_at: string; ends_at: string };
+  availability: EquipmentAvailabilityRow;
+  holders: EquipmentHolder[];
 }
 
 /** SCRUM-90 - the Operational Safety Check. */

@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework import status as http
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
@@ -29,26 +29,44 @@ from apps.events.serializers import (
     AssignedEventSerializer,
     AttendeeEventSerializer,
     ClarificationInputSerializer,
+    ClarificationNoteInputSerializer,
     EventQueueSerializer,
     EventRequestSerializer,
     RejectionInputSerializer,
 )
 from apps.events.services import (
     AssignmentConflict,
+    EmptyClarificationNote,
     InvalidCoordinator,
     MissingClarificationDetails,
     MissingMandatoryFields,
     MissingRejectionReason,
+    NoOpenClarification,
     NotAssignedCoordinator,
+    NotClarificationParty,
     NotCoordinatorLead,
+    add_clarification_comment,
     approve_event,
     assign_coordinator,
+    record_event_edit,
     reject_event,
     request_clarification,
+    resume_review,
+    snapshot_for_edit,
     submit_event,
 )
+from apps.venues.layouts import LayoutChoiceError, claim_layouts
 
 QUEUE_EXCLUDED = (EventStatus.DRAFT, EventStatus.REJECTED)
+
+
+def _claim_required_layout(validated_data, *, keep):
+    """SCRUM-91 - recheck the chosen layout under a catalogue row lock before saving."""
+    if layout := validated_data.get("required_layout"):
+        try:
+            claim_layouts([layout], keep=keep)
+        except LayoutChoiceError as exc:
+            raise ValidationError({"required_layout": [exc.message]}) from None
 
 
 class EventRequestViewSet(ModelViewSet):
@@ -123,7 +141,9 @@ class EventRequestViewSet(ModelViewSet):
             raise PermissionDenied("Only an Event Organiser can create an event request.")
         if user.organisation_id is None:
             raise PermissionDenied("Your account is not linked to a client organisation.")
-        serializer.save(created_by=user, organisation=user.organisation)
+        with transaction.atomic():
+            _claim_required_layout(serializer.validated_data, keep=[])
+            serializer.save(created_by=user, organisation=user.organisation)
 
     def perform_update(self, serializer):
         """Serialize organiser saves with submissions and coordinator decisions."""
@@ -143,7 +163,11 @@ class EventRequestViewSet(ModelViewSet):
                     locked, data=serializer.initial_data, partial=serializer.partial
                 )
                 current.is_valid(raise_exception=True)
+                _claim_required_layout(current.validated_data, keep=[locked.required_layout])
+                before = snapshot_for_edit(locked)
                 serializer.instance = current.save()
+                # SCRUM-61 AC4 - who changed which fields, in the same transaction.
+                record_event_edit(serializer.instance, before, self.request.user)
         if denied is not None:
             raise denied
 
@@ -284,6 +308,74 @@ class EventRequestViewSet(ModelViewSet):
             )
         event.refresh_from_db()
         return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["post"], url_path="resume-review")
+    def resume_review(self, request, pk=None):
+        """SCRUM-92 AC4 - return an answered request to review."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/resume-review/"
+        try:
+            if not request.user.is_coordinator:
+                raise NotAssignedCoordinator
+            resume_review(event, request.user)
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the assigned coordinator may resume review",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can resume its review."
+            ) from None
+        except InvalidTransition as exc:
+            record_denied(request.user, action=action_name, obj=event, detail=str(exc))
+            return Response({"detail": str(exc)}, status=http.HTTP_409_CONFLICT)
+        except MissingMandatoryFields as exc:
+            return Response(
+                {
+                    "detail": "The request is missing information it needs before review.",
+                    "missing_fields": exc.fields,
+                },
+                status=http.HTTP_400_BAD_REQUEST,
+            )
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data)
+
+    @action(detail=True, methods=["post"], url_path="clarification-notes")
+    def clarification_notes(self, request, pk=None):
+        """SCRUM-92 AC1/AC2 - record a note from an offline clarification conversation."""
+        event = self.get_object()
+        action_name = f"POST /api/events/{event.pk}/clarification-notes/"
+        payload = ClarificationNoteInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            add_clarification_comment(event, request.user, payload.validated_data.get("body", ""))
+        except NotClarificationParty:
+            record_denied(
+                request.user,
+                action=action_name,
+                obj=event,
+                detail="only the client and the assigned coordinator may add notes",
+            )
+            raise PermissionDenied(
+                "Only the client and the assigned coordinator can add clarification notes."
+            ) from None
+        except NoOpenClarification:
+            return Response(
+                {"detail": "This request has no clarification awaiting an answer."},
+                status=http.HTTP_409_CONFLICT,
+            )
+        except EmptyClarificationNote:
+            return Response(
+                {
+                    "detail": "Write the note before saving it.",
+                    "body": ["This field may not be blank."],
+                },
+                status=http.HTTP_400_BAD_REQUEST,
+            )
+        event.refresh_from_db()
+        return Response(self.get_serializer(event).data, status=http.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"])
     def queue(self, request):

@@ -1,8 +1,8 @@
 from rest_framework import serializers
 
-from apps.events.models import RoomLayout
 from apps.venues.discovery import assess_venue
-from apps.venues.models import Venue
+from apps.venues.layouts import cached_label_map
+from apps.venues.models import LayoutType, Venue
 from apps.venues.serializers import VenueSerializer
 
 
@@ -10,10 +10,16 @@ class VenueSearchCriteriaSerializer(serializers.Serializer):
     start = serializers.DateTimeField(required=False)
     end = serializers.DateTimeField(required=False)
     attendance = serializers.IntegerField(required=False, min_value=1)
-    layout = serializers.ChoiceField(choices=RoomLayout.choices, required=False, allow_blank=True)
+    layout = serializers.CharField(max_length=20, required=False, allow_blank=True)
     facilities = serializers.ListField(
         child=serializers.CharField(max_length=200), required=False, default=list, max_length=50
     )
+
+    def validate_layout(self, value):
+        # SCRUM-91 - search by any catalogue layout, including retired ones still on venues.
+        if value and not LayoutType.objects.filter(code=value).exists():
+            raise serializers.ValidationError("Unknown layout.")
+        return value
 
     def validate(self, attrs):
         if ("start" in attrs) != ("end" in attrs):
@@ -57,4 +63,6 @@ class VenueShortlistEntrySerializer(serializers.Serializer):
                 start=obj.event.preferred_start.isoformat(),
                 end=obj.event.preferred_end.isoformat(),
             )
-        return VenueMatchSerializer(assess_venue(obj.venue, criteria)).data
+        labels = cached_label_map(self.context)
+        match = assess_venue(obj.venue, criteria, labels)
+        return VenueMatchSerializer(match, context=self.context).data
