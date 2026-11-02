@@ -307,3 +307,26 @@ export interface EquipmentAvailability {
   equipment: EquipmentAvailabilityRow[];
   shortfalls: { name: string; requested: number; short_by: number }[];
 }
+
+/** SCRUM-76 - one reservation holding the equipment during the period. */
+export interface EquipmentHolder {
+  reservation: number;
+  quantity: number;
+  starts_at: string;
+  ends_at: string;
+  /** Technical Support only; coordinators see quantity and dates alone. */
+  event?: {
+    id: number;
+    name: string;
+    status: EventStatus;
+    status_label: string;
+    coordinator: { name: string; email: string } | null;
+  };
+}
+
+/** SCRUM-76 - GET /api/events/:id/equipment-availability/:typeId/ */
+export interface EquipmentHolders {
+  period: { starts_at: string; ends_at: string };
+  availability: EquipmentAvailabilityRow;
+  holders: EquipmentHolder[];
+}

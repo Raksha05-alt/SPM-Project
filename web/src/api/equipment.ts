@@ -1,6 +1,7 @@
 import { request } from "./client";
 import type {
   EquipmentAvailability,
+  EquipmentHolders,
   EquipmentRequest,
   EquipmentType,
   TechnicalEvent,
@@ -35,5 +36,16 @@ export function getEquipmentAvailability(
   const query = period ? `?${new URLSearchParams(period).toString()}` : "";
   return request<EquipmentAvailability>(
     `/api/events/${eventId}/equipment-availability/${query}`,
+  );
+}
+
+/** SCRUM-76 - one equipment type's holders for the same period. */
+export function getEquipmentHolders(
+  eventId: number,
+  equipmentTypeId: number,
+  period: { starts_at: string; ends_at: string },
+) {
+  return request<EquipmentHolders>(
+    `/api/events/${eventId}/equipment-availability/${equipmentTypeId}/?${new URLSearchParams(period).toString()}`,
   );
 }

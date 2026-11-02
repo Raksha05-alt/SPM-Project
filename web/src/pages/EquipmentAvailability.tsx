@@ -6,6 +6,7 @@ import { getEquipmentAvailability, listEquipmentInbox } from "../api/equipment";
 import { fetchMyEvents } from "../api/events";
 import { useAuth } from "../auth/AuthContext";
 import { inputClass } from "../components/Field";
+import { EquipmentHoldersPanel } from "../components/equipment/EquipmentHoldersPanel";
 import type { EquipmentAvailabilityRow } from "../types";
 
 /** An ISO instant as a datetime-local value in the viewer's time zone. */
@@ -95,13 +96,16 @@ function OutOfAction({ row }: { row: EquipmentAvailabilityRow }) {
 /**
  * SCRUM-12 - Technical Support (or the event's coordinator) check how much of
  * each equipment type is available for the event period, what is out of action
- * and why, and whether the requested quantities can be supplied.
+ * and why, and whether the requested quantities can be supplied. SCRUM-76 -
+ * selecting a held or out-of-action type shows who is holding it.
  */
 export function EquipmentAvailabilityPage() {
   const { id } = useParams();
   const eventId = Number(id);
   const [draft, setDraft] = useState<{ starts_at: string; ends_at: string } | null>(null);
   const [period, setPeriod] = useState<{ starts_at: string; ends_at: string } | undefined>();
+  // SCRUM-76 - the equipment type whose holders are shown.
+  const [selected, setSelected] = useState<number | null>(null);
 
   const { data, isFetching, error } = useQuery({
     queryKey: ["equipment-availability", eventId, period],
@@ -227,7 +231,19 @@ export function EquipmentAvailabilityPage() {
                     </td>
                     <td className="px-4 py-3">{row.total_quantity}</td>
                     <td className="px-4 py-3">{row.unavailable_quantity}</td>
-                    <td className="px-4 py-3">{row.reserved_for_other_events}</td>
+                    <td className="px-4 py-3">
+                      {row.reserved_for_other_events}
+                      {(row.reserved_for_other_events > 0 || row.unavailable_quantity > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelected(row.equipment_type)}
+                          className="mt-1 block text-xs text-navy-700 underline"
+                          aria-label={`See who is holding ${row.name}`}
+                        >
+                          See who is holding it
+                        </button>
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-semibold">{row.available_quantity}</td>
                     <td className="px-4 py-3">
                       {row.requested_quantity ?? "—"}
@@ -254,6 +270,15 @@ export function EquipmentAvailabilityPage() {
               </tbody>
             </table>
           </div>
+          {selected !== null && (
+            <EquipmentHoldersPanel
+              key={`${selected}-${data.period.starts_at}-${data.period.ends_at}`}
+              eventId={eventId}
+              equipmentTypeId={selected}
+              period={data.period}
+              onClose={() => setSelected(null)}
+            />
+          )}
         </>
       )}
     </div>
