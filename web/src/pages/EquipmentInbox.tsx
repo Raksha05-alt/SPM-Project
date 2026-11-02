@@ -23,6 +23,7 @@ export function EquipmentInbox() {
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-navy-700">Equipment requests</h1>
+      <p className="mb-4"><Link className="text-navy-700 underline" to="/equipment/plans">Review equipment plans</Link></p>
 
       {isLoading && <p className="text-slate-500">Loading equipment requests…</p>}
       {isError && <p role="alert">We could not load the equipment requests.</p>}
@@ -42,6 +43,7 @@ export function EquipmentInbox() {
             <h2 className="text-lg font-semibold text-navy-700">{event.name}</h2>
             <span className="flex items-baseline gap-3 text-sm">
               <span className="font-medium text-slate-600">{event.status_label}</span>
+              <Link to={`/equipment/plans/${event.id}`} className="text-navy-700 underline">Manage reservations</Link>
               <Link
                 to={`/equipment/availability/${event.id}`}
                 className="text-navy-700 underline"

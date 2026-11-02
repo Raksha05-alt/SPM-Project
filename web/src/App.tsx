@@ -13,6 +13,7 @@ import { OrganiserDashboard } from "./pages/OrganiserDashboard";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { EquipmentAvailabilityPage } from "./pages/EquipmentAvailability";
 import { EquipmentInbox } from "./pages/EquipmentInbox";
+import { EquipmentPlanPage } from "./pages/EquipmentPlan";
 import { RoomLayouts } from "./pages/RoomLayouts";
 import { VenueBookingInbox } from "./pages/VenueBookingInbox";
 import { VenueCatalogue } from "./pages/VenueCatalogue";
@@ -147,6 +148,9 @@ export default function App() {
             }
           />
           {/* SCRUM-12 - Technical Support or the assigned coordinator. */}
+          {["/equipment/plans", "/equipment/plans/:id"].map((path) => (
+            <Route key={path} path={path} element={<RequireRole roles={["TECH_SUPPORT", "COORDINATOR"]}><EquipmentPlanPage /></RequireRole>} />
+          ))}
           {["/equipment/availability", "/equipment/availability/:id"].map((path) => (
             <Route
               key={path}

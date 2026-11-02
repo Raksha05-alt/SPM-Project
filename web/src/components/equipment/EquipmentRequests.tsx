@@ -70,6 +70,7 @@ export function EquipmentRequests({ event }: { event: EventRequest }) {
     >
       <div className="mb-3 flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold text-navy-700">Equipment requests</h2>
+        <Link to={`/equipment/plans/${event.id}`} className="text-sm text-navy-700 underline">Equipment plan and reservations</Link>
         <Link to={`/equipment/availability/${event.id}`} className="text-sm text-navy-700 underline">
           Check availability
         </Link>
