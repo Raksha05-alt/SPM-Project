@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { listEquipmentTypes, listEventEquipment, requestEquipment } from "../../api/equipment";
 import type { EventRequest } from "../../types";
@@ -67,7 +68,12 @@ export function EquipmentRequests({ event }: { event: EventRequest }) {
       aria-label="Equipment requests"
       className="mt-6 rounded-lg border border-slate-200 bg-white p-6"
     >
-      <h2 className="mb-3 text-sm font-semibold text-navy-700">Equipment requests</h2>
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold text-navy-700">Equipment requests</h2>
+        <Link to={`/equipment/availability/${event.id}`} className="text-sm text-navy-700 underline">
+          Check availability
+        </Link>
+      </div>
 
       {requests.isError && <p role="alert">We could not load this event's equipment requests.</p>}
       {(requests.data ?? []).length === 0 && !requests.isLoading && !requests.isError && (

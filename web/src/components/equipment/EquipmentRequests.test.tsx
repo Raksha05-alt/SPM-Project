@@ -6,6 +6,7 @@ import { ApiError } from "../../api/client";
 import { listEquipmentTypes, listEventEquipment, requestEquipment } from "../../api/equipment";
 import type { EquipmentRequest, EventRequest } from "../../types";
 import { EquipmentRequests } from "./EquipmentRequests";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../../api/equipment", () => ({
   listEquipmentTypes: vi.fn(),
@@ -36,7 +37,9 @@ function renderSection(event: EventRequest = EVENT) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <EquipmentRequests event={event} />
+      <MemoryRouter>
+        <EquipmentRequests event={event} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

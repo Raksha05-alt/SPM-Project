@@ -175,3 +175,122 @@ def create_request(
         ]
     )
     return request
+
+
+# --------------------------------------------------------------------------
+# SCRUM-12 - equipment availability for an event period (Sprint 3 gate G15)
+# --------------------------------------------------------------------------
+#
+# Usable stock is total stock minus active damaged/maintenance records.
+# Available for a period is usable stock minus active reservations of other,
+# non-cancelled events that overlap it, using half-open [start, end) periods:
+# a reservation ending exactly when the period starts does not reduce it.
+# Equipment uses the event's actual period; venue setup/turnaround buffers do
+# not apply (Sprint 4, SCRUM-85).
+#
+# The SCRUM-16 reservation action (G16a) should lock the equipment-type rows
+# (contracts.lock_equipment_types) and then call ``available_quantity`` to
+# refuse over-allocation, so the check and the write see the same stock.
+
+
+class AvailabilityStatus:
+    AVAILABLE = "AVAILABLE"
+    PARTIAL = "PARTIAL"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+def _active_unavailability(equipment_type):
+    return equipment_type.unavailability_records.filter(restored_at__isnull=True).order_by(
+        "created_at", "pk"
+    )
+
+
+def reserved_quantity(equipment_type, starts_at, ends_at, *, exclude_event=None) -> int:
+    """Quantity held by active reservations overlapping ``[starts_at, ends_at)``.
+
+    Reservations of cancelled events and released reservations never count
+    (``ReservationQuerySet.active``). ``exclude_event`` leaves out that event's
+    own reservations, so an event's equipment is not unavailable to itself.
+    """
+    from django.db.models import Sum
+
+    from apps.equipment.models import EquipmentReservation
+
+    reservations = (
+        EquipmentReservation.objects.active()
+        .overlapping(starts_at, ends_at)
+        .filter(request__equipment_type=equipment_type)
+    )
+    if exclude_event is not None:
+        reservations = reservations.exclude(request__plan__event=exclude_event)
+    return reservations.aggregate(total=Sum("quantity"))["total"] or 0
+
+
+def available_quantity(equipment_type, starts_at, ends_at, *, exclude_event=None) -> int:
+    """SCRUM-12 AC2 - how many units can still be promised for the period.
+
+    Usable stock (total minus damaged or under maintenance) minus overlapping
+    reservations for other events, never below zero. A type that is no longer
+    offered has none available.
+    """
+    from apps.equipment.contracts import validate_period
+
+    validate_period(starts_at, ends_at)
+    if not equipment_type.in_service:
+        return 0
+    usable = equipment_type.total_quantity - equipment_type.unavailable_quantity
+    reserved = reserved_quantity(equipment_type, starts_at, ends_at, exclude_event=exclude_event)
+    return max(0, usable - reserved)
+
+
+def availability_row(equipment_type, starts_at, ends_at, *, requested=None, event=None) -> dict:
+    """SCRUM-12 AC2-AC5 - one equipment type's availability for the period.
+
+    Reports the available quantity, what is unavailable regardless of the
+    period (with its reason and expected return when recorded), how much other
+    events have reserved (quantities only: SCRUM-76 shows which events), and
+    the shortfall against ``requested``.
+    """
+    from apps.equipment.contracts import validate_period
+
+    validate_period(starts_at, ends_at)
+    records = list(_active_unavailability(equipment_type))
+    unavailable = sum(r.quantity for r in records)
+    reserved_elsewhere = reserved_quantity(equipment_type, starts_at, ends_at, exclude_event=event)
+    reserved_here = (
+        reserved_quantity(equipment_type, starts_at, ends_at) - reserved_elsewhere
+        if event is not None
+        else 0
+    )
+    available = available_quantity(equipment_type, starts_at, ends_at, exclude_event=event)
+    shortfall = max(0, requested - available) if requested is not None else 0
+    if available == 0:
+        status = AvailabilityStatus.UNAVAILABLE
+    elif shortfall or available < equipment_type.total_quantity:
+        status = AvailabilityStatus.PARTIAL
+    else:
+        status = AvailabilityStatus.AVAILABLE
+    return {
+        "equipment_type": equipment_type.pk,
+        "code": equipment_type.code,
+        "name": equipment_type.name,
+        "in_service": equipment_type.in_service,
+        "total_quantity": equipment_type.total_quantity,
+        "unavailable_quantity": unavailable,
+        "unavailable": [
+            {
+                "quantity": r.quantity,
+                "cause": r.cause,
+                "cause_label": r.get_cause_display(),
+                "reason": r.reason,
+                "expected_return_at": r.expected_return_at,
+            }
+            for r in records
+        ],
+        "reserved_for_other_events": reserved_elsewhere,
+        "reserved_for_this_event": reserved_here,
+        "available_quantity": available,
+        "requested_quantity": requested,
+        "shortfall": shortfall,
+        "status": status,
+    }
