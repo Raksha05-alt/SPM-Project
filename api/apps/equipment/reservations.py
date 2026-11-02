@@ -207,3 +207,40 @@ def approve_no_equipment(*, event, actor, expected_revision, acknowledged=False,
         event, f'Technical Support confirmed no equipment is needed for "{event.name}".'
     )
     return approval
+
+
+@transaction.atomic
+def approve_revised_plan(*, event, actor, expected_revision):
+    """Technical Support reviews retained reservations after coordinator amendments."""
+    require_technical_staff(actor)
+    event = EventRequest.objects.select_for_update().get(pk=event.pk)
+    require_open_event(event)
+    plan, _ = EquipmentPlan.objects.get_or_create(event=event)
+    stocks = lock_equipment_types(plan.requests.values_list("equipment_type_id", flat=True))
+    plan = EquipmentPlan.objects.select_for_update().get(pk=plan.pk)
+    check_revision(plan, expected_revision)
+    if plan.technical_approvals.filter(status=TechnicalApprovalStatus.APPROVED).exists():
+        raise EquipmentActionError("This plan already has technical approval.")
+    if not plan.requests.exclude(
+        status=EquipmentRequestStatus.WITHDRAWN
+    ).exists() or not _fully_reserved(plan, event):
+        raise EquipmentActionError(
+            "Reserve every outstanding request before approving the revised plan."
+        )
+    for stock in stocks:
+        if available_quantity(
+            stock, event.preferred_start, event.preferred_end, exclude_event=event
+        ) < sum(
+            item.quantity
+            for item in plan.requests.filter(
+                equipment_type=stock, status=EquipmentRequestStatus.RESERVED
+            )
+        ):
+            raise EquipmentActionError("The reserved equipment is no longer fully available.")
+    advance_plan(plan, actor, "Revised equipment arrangements reviewed.")
+    approval = approve_plan(plan, actor)
+    arrangements_changed(event, "Revised equipment arrangements approved.", actor)
+    notify_coordinator(
+        event, f'Technical Support approved the revised equipment plan for "{event.name}".'
+    )
+    return approval

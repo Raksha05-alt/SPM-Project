@@ -1,8 +1,8 @@
 """SCRUM-74 - the assigned coordinator records the equipment an event requires.
 
 Sprint 3 gate G14. Reservation (SCRUM-16), release (SCRUM-77) and amendment or
-withdrawal (SCRUM-75) are separate actions owned by later gates; this module
-only creates requests.
+withdrawal (SCRUM-75) share the equipment contract. This module creates,
+amends and withdraws requests.
 """
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -294,3 +294,142 @@ def availability_row(equipment_type, starts_at, ends_at, *, requested=None, even
         "shortfall": shortfall,
         "status": status,
     }
+
+
+# SCRUM-75 uses the existing reservation/release contract; imports stay local
+# because reservations also consumes the availability helpers above.
+def _release_surplus(reservation, quantity, *, plan, actor):
+    """Retain the reservation and record precisely how many units were freed."""
+    before = reservation.quantity
+    reservation.quantity = quantity
+    reservation.save(update_fields=["quantity", "updated_at"])
+    EquipmentHistory.objects.create(
+        plan=plan,
+        request=reservation.request,
+        reservation=reservation,
+        action=EquipmentHistoryAction.RELEASED,
+        plan_revision=plan.revision,
+        before={"quantity": before},
+        after={"quantity": quantity},
+        reason=f"Released {before - quantity} surplus units.",
+        actor=actor,
+    )
+
+
+def _change_request(
+    *,
+    equipment_request,
+    actor,
+    expected_revision,
+    quantity=None,
+    technical_requirements=None,
+    withdraw=False,
+):
+    from apps.accounts.models import Role, User
+    from apps.equipment.models import ReservationStatus
+    from apps.equipment.releases import release_record
+    from apps.equipment.reservations import (
+        EquipmentActionDenied,
+        EquipmentActionError,
+        advance_plan,
+        check_revision,
+        require_open_event,
+    )
+    from apps.events.models import EventRequest
+    from apps.notifications.models import Notification, NotificationKind
+    from apps.safety.services import arrangements_changed
+
+    event = EventRequest.objects.select_for_update().get(pk=equipment_request.plan.event_id)
+    if (
+        event.coordinator_id != actor.pk
+        or not User.objects.filter(
+            pk=actor.pk, role=Role.EVENT_COORDINATOR, is_active=True
+        ).exists()
+    ):
+        raise EquipmentActionDenied("Only the assigned coordinator can change equipment requests.")
+    require_open_event(event)
+    # Confirmed arrangements require the separate approved-change workflow.
+    if event.status == EventStatus.CONFIRMED:
+        raise EquipmentActionError("Confirmed arrangements require an approved change request.")
+    [stock] = lock_equipment_types([equipment_request.equipment_type_id])
+    plan = EquipmentPlan.objects.select_for_update().get(event=event)
+    check_revision(plan, expected_revision)
+    item = EquipmentRequest.objects.select_for_update().get(pk=equipment_request.pk)
+    if item.status == EquipmentRequestStatus.WITHDRAWN:
+        raise EquipmentActionError("This equipment request has already been withdrawn.")
+    rows = list(item.reservations.select_for_update().filter(status=ReservationStatus.ACTIVE))
+    before = _snapshot(item)
+    if not withdraw:
+        try:
+            cleaned = _clean(item.equipment_type_id, quantity, technical_requirements)
+        except EquipmentRequestError as exc:
+            raise EquipmentActionError(str(exc), status=400, **exc.errors) from None
+        if (
+            item.quantity == cleaned["quantity"]
+            and item.technical_requirements == cleaned["technical_requirements"]
+        ):
+            return item
+        if rows and cleaned["quantity"] > item.quantity:
+            available = available_quantity(stock, event.preferred_start, event.preferred_end)
+            if cleaned["quantity"] - sum(row.quantity for row in rows) > available:
+                raise EquipmentActionError("The increased quantity exceeds available equipment.")
+    reason = "Equipment request withdrawn." if withdraw else "Equipment request amended."
+    advance_plan(plan, actor, reason)
+    if withdraw:
+        for row in rows:
+            release_record(row, plan=plan, actor=actor, reason=reason)
+        item.status = EquipmentRequestStatus.WITHDRAWN
+    else:
+        item.quantity = cleaned["quantity"]
+        item.technical_requirements = cleaned["technical_requirements"]
+        for row in rows:
+            if item.quantity < row.quantity:
+                _release_surplus(row, item.quantity, plan=plan, actor=actor)
+            elif item.quantity > row.quantity:
+                # Additional equipment must be reserved by Technical Support.
+                item.status = EquipmentRequestStatus.REQUESTED
+                release_record(row, plan=plan, actor=actor, reason=reason)
+    item.save(update_fields=["quantity", "technical_requirements", "status", "updated_at"])
+    EquipmentHistory.objects.create(
+        plan=plan,
+        request=item,
+        action=EquipmentHistoryAction.WITHDRAWN if withdraw else EquipmentHistoryAction.AMENDED,
+        plan_revision=plan.revision,
+        before=before,
+        after=_snapshot(item),
+        actor=actor,
+    )
+    arrangements_changed(event, reason, actor)
+    Notification.objects.bulk_create(
+        [
+            Notification(
+                recipient=staff,
+                event=event,
+                kind=NotificationKind.EQUIPMENT_UPDATED,
+                message=f'{stock.name} request for "{event.name}": {reason}',
+            )
+            for staff in User.objects.filter(role=Role.TECHNICAL_SUPPORT, is_active=True)
+        ]
+    )
+    return item
+
+
+@transaction.atomic
+def amend_request(*, equipment_request, actor, expected_revision, quantity, technical_requirements):
+    return _change_request(
+        equipment_request=equipment_request,
+        actor=actor,
+        expected_revision=expected_revision,
+        quantity=quantity,
+        technical_requirements=technical_requirements,
+    )
+
+
+@transaction.atomic
+def withdraw_request(*, equipment_request, actor, expected_revision):
+    return _change_request(
+        equipment_request=equipment_request,
+        actor=actor,
+        expected_revision=expected_revision,
+        withdraw=True,
+    )
