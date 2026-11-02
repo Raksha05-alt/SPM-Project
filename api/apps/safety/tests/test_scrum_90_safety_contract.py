@@ -346,8 +346,10 @@ def test_c04b_superseding_a_pending_check_also_tells_the_safety_officers(
 
 
 def test_c04c_with_no_current_check_nothing_is_superseded_or_sent(ready_event, coordinator):
+    # The real venue and equipment actions have already sent their own notices.
+    before = Notification.objects.count()
     assert arrangements_changed(ready_event, "Anything.", coordinator) is None
-    assert not Notification.objects.exists()
+    assert Notification.objects.count() == before
     ready_event.refresh_from_db()
     assert ready_event.status == EventStatus.PLANNING
 

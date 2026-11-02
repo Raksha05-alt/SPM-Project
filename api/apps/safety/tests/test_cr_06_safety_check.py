@@ -25,12 +25,11 @@ from apps.safety.services import (
     ConfirmationBlocked,
     NotSafetyOfficer,
     SafetyRefused,
-    arrangements_changed,
     decide,
     request_check,
 )
-from apps.venues.bookings import create_booking_record, transition_booking
-from apps.venues.models import BookingStatus
+from apps.venues.bookings import request_booking, withdraw_booking
+from apps.venues.models import BookingStatus, Venue
 from conftest import _make_user, make_event
 
 from .conftest import approve_equipment, approve_venue, make_venue
@@ -92,13 +91,14 @@ def test_ac1b_before_venue_approval_the_request_is_refused_and_gaps_listed(
     api, planning_event, coordinator, venue, tech
 ):
     approve_equipment(planning_event, tech)
-    create_booking_record(
-        requested_by=coordinator,
+    request_booking(
         event=planning_event,
         venue=venue,
+        requested_by=coordinator,
         starts_at=planning_event.preferred_start,
         ends_at=planning_event.preferred_end,
         attendance=100,
+        layout="THEATRE",
     )
     api.force_authenticate(coordinator)
 
@@ -251,13 +251,16 @@ def test_ac2b_missing_or_worrying_recorded_facts_are_shown_explicitly(
 ):
     cramped = make_venue(
         "Garden Pavilion",
-        capacity=80,
+        capacity=150,
         wheelchair_access=False,
         emergency_access="",
         known_restrictions="",
     )
     approve_venue(planning_event, cramped, venue_staff, attendance=100)
     approve_equipment(planning_event, tech)
+    # The real booking action refuses an over-capacity request, so the capacity
+    # concern can only arise when Venue Staff later correct the venue record.
+    Venue.objects.filter(pk=cramped.pk).update(capacity=80)
 
     check = request_check(planning_event, coordinator)
 
@@ -434,7 +437,9 @@ def test_ac4a_event_stays_in_planning_and_the_coordinator_requests_a_new_check(
 
     # The coordinator revises the venue arrangement, then asks again.
     old = event.venue_bookings.get(status=BookingStatus.APPROVED)
-    transition_booking(old, BookingStatus.WITHDRAWN, coordinator)
+    withdraw_booking(
+        booking=old, actor=coordinator, expected_status=BookingStatus.APPROVED, confirm_release=True
+    )
     approve_venue(event, make_venue("Skyline Room"), venue_staff)
     api.force_authenticate(coordinator)
     assert api.get(request_url(event)).data["can_request"] is True
@@ -490,7 +495,12 @@ def test_ac6a_losing_the_venue_after_confirmation_reopens_planning_and_blocks_re
     event = transition_event(approved_check.event, EventStatus.CONFIRMED, coordinator)
     booking = event.venue_bookings.get(status=BookingStatus.APPROVED)
 
-    transition_booking(booking, BookingStatus.WITHDRAWN, coordinator)
+    withdraw_booking(
+        booking=booking,
+        actor=coordinator,
+        expected_status=BookingStatus.APPROVED,
+        confirm_release=True,
+    )
 
     event.refresh_from_db()
     approved_check.refresh_from_db()
@@ -505,17 +515,42 @@ def test_ac6a_losing_the_venue_after_confirmation_reopens_planning_and_blocks_re
 def test_ac6b_an_equipment_change_makes_the_approval_stale_and_a_new_check_requestable(
     api, approved_check, coordinator, tech
 ):
+    """G20 - through the real SCRUM-75 amendment and revised-plan approval actions."""
     event = approved_check.event
-    EquipmentReservation.objects.update(quantity=1)
-    EquipmentPlan.objects.get(event=event).requests.update(quantity=1)
-    arrangements_changed(event, "Projectors reduced from 2 to 1.", tech)
+    plan = EquipmentPlan.objects.get(event=event)
+    item = plan.requests.get()
 
     api.force_authenticate(coordinator)
-    data = api.get(request_url(event)).data
-    assert data["can_request"] is True
-    assert data["checks"][0]["status"] == SafetyStatus.SUPERSEDED
-    assert data["checks"][0]["superseded_reason"] == "Projectors reduced from 2 to 1."
+    amended = api.post(
+        f"/api/equipment/requests/{item.pk}/amend/",
+        {
+            "expected_revision": plan.revision,
+            "quantity": 1,
+            "technical_requirements": item.technical_requirements,
+        },
+        format="json",
+    )
+    assert amended.status_code == 200, amended.data
 
+    data = api.get(request_url(event)).data
+    assert data["checks"][0]["status"] == SafetyStatus.SUPERSEDED
+    assert data["checks"][0]["superseded_reason"] == "Equipment request amended."
+    # The amended plan needs Technical Support again before Safety can review it.
+    assert data["can_request"] is False
+    assert data["arrangement_gaps"]
+    assert EquipmentReservation.objects.get(request=item).quantity == 1
+
+    plan.refresh_from_db()
+    api.force_authenticate(tech)
+    approved = api.post(
+        f"/api/events/{event.pk}/approve-revised-equipment/",
+        {"expected_revision": plan.revision},
+        format="json",
+    )
+    assert approved.status_code == 200, approved.data
+
+    api.force_authenticate(coordinator)
+    assert api.get(request_url(event)).data["can_request"] is True
     response = api.post(request_url(event), {})
     assert response.status_code == 201
     assert response.data["facts"]["equipment"][0]["quantity"] == 1
