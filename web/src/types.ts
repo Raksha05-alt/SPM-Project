@@ -273,3 +273,37 @@ export interface TechnicalEvent {
   coordinator_name: string | null;
   equipment_requests: EquipmentRequest[];
 }
+
+/** SCRUM-12 - stock out of action regardless of the period (AC4). */
+export interface EquipmentUnavailableStock {
+  quantity: number;
+  cause: "DAMAGED" | "MAINTENANCE";
+  cause_label: string;
+  reason: string;
+  expected_return_at: string | null;
+}
+
+/** SCRUM-12 - one equipment type's availability for the period. */
+export interface EquipmentAvailabilityRow {
+  equipment_type: number;
+  code: string;
+  name: string;
+  in_service: boolean;
+  total_quantity: number;
+  unavailable_quantity: number;
+  unavailable: EquipmentUnavailableStock[];
+  reserved_for_other_events: number;
+  reserved_for_this_event: number;
+  available_quantity: number;
+  requested_quantity: number | null;
+  shortfall: number;
+  status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+}
+
+/** SCRUM-12 - GET /api/events/:id/equipment-availability/ */
+export interface EquipmentAvailability {
+  event: { id: number; name: string; preferred_start: string | null; preferred_end: string | null };
+  period: { starts_at: string; ends_at: string };
+  equipment: EquipmentAvailabilityRow[];
+  shortfalls: { name: string; requested: number; short_by: number }[];
+}

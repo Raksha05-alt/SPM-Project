@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { listEquipmentInbox } from "../api/equipment";
 import type { TechnicalEvent } from "../types";
 import { EquipmentInbox } from "./EquipmentInbox";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../api/equipment", () => ({ listEquipmentInbox: vi.fn() }));
 
@@ -48,7 +49,9 @@ function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <EquipmentInbox />
+      <MemoryRouter>
+        <EquipmentInbox />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

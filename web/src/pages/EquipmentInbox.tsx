@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { listEquipmentInbox } from "../api/equipment";
 
 function when(start: string | null, end: string | null) {
@@ -39,7 +40,15 @@ export function EquipmentInbox() {
         >
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-lg font-semibold text-navy-700">{event.name}</h2>
-            <span className="text-sm font-medium text-slate-600">{event.status_label}</span>
+            <span className="flex items-baseline gap-3 text-sm">
+              <span className="font-medium text-slate-600">{event.status_label}</span>
+              <Link
+                to={`/equipment/availability/${event.id}`}
+                className="text-navy-700 underline"
+              >
+                Check availability
+              </Link>
+            </span>
           </div>
           <p className="mb-4 text-sm text-slate-600">
             {when(event.preferred_start, event.preferred_end)}
