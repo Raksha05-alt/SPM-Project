@@ -249,7 +249,11 @@ def _supersede(check: SafetyCheck, event: EventRequest, reason: str, actor) -> S
         event,
         NotificationKind.SAFETY_SUPERSEDED,
         f'The safety check for "{event.name}" no longer applies: {reason} '
-        "A new check is needed before the event can be confirmed.",
+        + (
+            "The event has been cancelled."
+            if event.status == EventStatus.CANCELLED
+            else "A new check is needed before the event can be confirmed."
+        ),
         skip=actor,
     )
     return check

@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { approveNoEquipment, getEquipmentPlan, listEquipmentPlans, reserveEquipment } from "../api/equipmentPlans";
 import { useAuth } from "../auth/AuthContext";
 import { inputClass } from "../components/Field";
+import { EquipmentRelease } from "../components/equipment/EquipmentRelease";
 
 const when = (value: string | null) => value ? new Date(value).toLocaleString("en-SG") : "Not set";
 
@@ -93,6 +94,7 @@ export function EquipmentPlanPage() {
         <p>{when(row.starts_at)} – {when(row.ends_at)}</p>
         <p>Reserved by {row.reserved_by_name} on {when(row.reserved_at)}</p>
         {row.released_at && <p>Released by {row.released_by_name} on {when(row.released_at)}: {row.release_reason}</p>}
+        {isTech && open && <EquipmentRelease reservation={row} revision={data.revision} refresh={refresh} />}
       </div>)}
     </section>
   </div>;

@@ -24,6 +24,7 @@ class NotificationKind(models.TextChoices):
     # SCRUM-74 - a coordinator's equipment request reaches Technical Support.
     EQUIPMENT_REQUESTED = "EQUIPMENT_REQUESTED", "Equipment requested"
     EQUIPMENT_UPDATED = "EQUIPMENT_UPDATED", "Equipment arrangement updated"
+    EVENT_CANCELLED = "EVENT_CANCELLED", "Event cancelled"
 
 
 # Assignment notices are unique per occurrence, not per lifetime of an event.
