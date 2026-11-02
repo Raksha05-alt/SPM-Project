@@ -4,13 +4,18 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
-import { getEquipmentAvailability, listEquipmentInbox } from "../api/equipment";
+import {
+  getEquipmentAvailability,
+  getEquipmentHolders,
+  listEquipmentInbox,
+} from "../api/equipment";
 import { fetchMyEvents } from "../api/events";
 import type { EquipmentAvailability } from "../types";
 import { EquipmentAvailabilityPage, toLocalInput } from "./EquipmentAvailability";
 
 vi.mock("../api/equipment", () => ({
   getEquipmentAvailability: vi.fn(),
+  getEquipmentHolders: vi.fn(),
   listEquipmentInbox: vi.fn(),
 }));
 vi.mock("../api/events", () => ({ fetchMyEvents: vi.fn() }));
@@ -124,7 +129,10 @@ describe("EquipmentAvailability (SCRUM-12)", () => {
     renderAt("/equipment/availability/9");
 
     const projector = await screen.findByRole("row", { name: "Projector" });
-    const cells = within(projector).getAllByRole("cell").map((c) => c.textContent);
+    // The leading number of each cell; the reserved cell also holds the SCRUM-76 button.
+    const cells = within(projector)
+      .getAllByRole("cell")
+      .map((c) => c.textContent?.match(/^\d+/)?.[0]);
     expect(cells.slice(1, 5)).toEqual(["10", "2", "5", "3"]);
     expect(within(projector).getByText(/1 damaged: Lens cracked · return date not recorded/))
       .toBeInTheDocument();
@@ -181,5 +189,21 @@ describe("EquipmentAvailability (SCRUM-12)", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Only Technical Support");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("SCRUM-76 AC1: selecting held equipment opens who is holding it for the same period", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getEquipmentAvailability).mockResolvedValue(RESULT);
+    vi.mocked(getEquipmentHolders).mockResolvedValue({
+      period: RESULT.period,
+      availability: RESULT.equipment[1],
+      holders: [],
+    });
+    renderAt("/equipment/availability/9");
+
+    await user.click(await screen.findByRole("button", { name: "See who is holding Microphone" }));
+
+    expect(await screen.findByRole("region", { name: "Holding events" })).toBeInTheDocument();
+    expect(getEquipmentHolders).toHaveBeenCalledWith(9, 2, RESULT.period);
   });
 });

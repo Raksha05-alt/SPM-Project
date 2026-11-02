@@ -5,6 +5,8 @@ Missing operating hours are unavailable rather than assumed to be open.
 Approved bookings occupy the actual event period; holds belong to Sprint 4.
 """
 
+from datetime import datetime, timedelta
+
 from django.utils import timezone
 
 from apps.venues.occupancy import conflict_references
@@ -85,4 +87,54 @@ def availability(venue, start, end):
             {"id": b.pk, "reason": b.reason, "starts_at": b.starts_at, "ends_at": b.ends_at}
             for b in blocks
         ],
+    }
+
+
+def comparison_availability(venue, start, end):
+    """Subtract the union of current obstructions from recorded opening windows.
+
+    Return timing and generic reasons only: comparison never discloses another
+    event's identity, private requirements or staff-entered block notes.
+    """
+    current = availability(venue, start, end)
+    occupied = sorted(
+        (max(start, item["starts_at"]), min(end, item["ends_at"]))
+        for item in current["blocks"] + current["conflicts"]
+    )
+    free = []
+    reasons = []
+    if not venue.in_service:
+        reasons.append("Venue is out of service.")
+    hours_problem = operating_hours_problem(venue, start, end)
+    if hours_problem:
+        reasons.append(hours_problem)
+    if current["blocks"]:
+        reasons.append("Recorded venue blocks overlap this period.")
+    if current["conflicts"]:
+        reasons.append("Approved bookings overlap this period.")
+    if venue.in_service and venue.opens_at and venue.closes_at and venue.operating_days:
+        day = timezone.localtime(start).date()
+        last_day = timezone.localtime(end).date()
+        while day <= last_day:
+            if day.weekday() in venue.operating_days:
+                opening = timezone.make_aware(datetime.combine(day, venue.opens_at))
+                closing = timezone.make_aware(datetime.combine(day, venue.closes_at))
+                cursor, limit = max(start, opening), min(end, closing)
+                for left, right in occupied:
+                    if right <= cursor or left >= limit:
+                        continue
+                    if left > cursor:
+                        free.append({"starts_at": cursor, "ends_at": left})
+                    cursor = max(cursor, right)
+                if cursor < limit:
+                    free.append({"starts_at": cursor, "ends_at": limit})
+            day += timedelta(days=1)
+    full = len(free) == 1 and free[0] == {"starts_at": start, "ends_at": end}
+    return {
+        "venue_id": venue.pk,
+        "name": venue.name,
+        "status": "available" if full else "partial" if free else "unavailable",
+        "available": full,
+        "free_segments": free,
+        "reasons": reasons,
     }

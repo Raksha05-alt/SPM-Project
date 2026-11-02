@@ -433,3 +433,73 @@ def withdraw_request(*, equipment_request, actor, expected_revision):
         expected_revision=expected_revision,
         withdraw=True,
     )
+
+
+# --------------------------------------------------------------------------
+# SCRUM-76 - which events are holding the equipment (Sprint 3 gate G18)
+# --------------------------------------------------------------------------
+#
+# The holders are exactly the reservations SCRUM-12 subtracts: active
+# reservations, of events that are not cancelled, overlapping the period
+# (half-open). A cancelled event's reservations are released by the
+# cancellation action (SCRUM-77 / INT-03) and, even before that, never count,
+# so the next availability check shows the equipment as available again (AC4).
+
+
+def holding_reservations(equipment_type, starts_at, ends_at, *, exclude_event=None):
+    """Active reservations of other, non-cancelled events holding ``equipment_type``
+    during ``[starts_at, ends_at)``, earliest first."""
+    from apps.equipment.contracts import validate_period
+    from apps.equipment.models import EquipmentReservation
+
+    validate_period(starts_at, ends_at)
+    reservations = (
+        EquipmentReservation.objects.active()
+        .overlapping(starts_at, ends_at)
+        .filter(request__equipment_type=equipment_type)
+        .select_related("request__plan__event__coordinator")
+        .order_by("starts_at", "pk")
+    )
+    if exclude_event is not None:
+        reservations = reservations.exclude(request__plan__event=exclude_event)
+    return list(reservations)
+
+
+def _person(user):
+    if user is None:
+        return None
+    return {"name": user.get_full_name() or user.email, "email": user.email}
+
+
+def holders(equipment_type, starts_at, ends_at, *, viewer, event=None) -> list[dict]:
+    """SCRUM-76 AC1/AC3 - the events holding the equipment, scoped to ``viewer``.
+
+    Technical Support, who negotiate for the equipment, see each holding event's
+    name, status and coordinator contact with the reserved quantity and period.
+    The requesting event's coordinator sees only the quantity and period held
+    elsewhere: another client's event is not theirs to see (US-01.2). Nobody is
+    shown the holding event's organisation or client details.
+    """
+    from apps.accounts.models import Role
+
+    entries = []
+    for reservation in holding_reservations(
+        equipment_type, starts_at, ends_at, exclude_event=event
+    ):
+        entry = {
+            "reservation": reservation.pk,
+            "quantity": reservation.quantity,
+            "starts_at": reservation.starts_at,
+            "ends_at": reservation.ends_at,
+        }
+        if viewer.role == Role.TECHNICAL_SUPPORT:
+            held_by = reservation.request.plan.event
+            entry["event"] = {
+                "id": held_by.pk,
+                "name": held_by.name,
+                "status": held_by.status,
+                "status_label": held_by.get_status_display(),
+                "coordinator": _person(held_by.coordinator),
+            }
+        entries.append(entry)
+    return entries

@@ -6,6 +6,7 @@ import { getAvailability, getBlocks, getBlockHistory, saveBlock, removeBlock, fi
 import type { VenueBlock } from "../api/availability";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { VenueComparison } from "./VenueComparison";
 
 const inputClass = "block rounded border border-slate-300 p-2 text-sm";
 const buttonClass = "rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50";
@@ -66,6 +67,7 @@ export function VenueAvailability() {
     <Link to={staff ? "/venues" : "/coordinator"} className="text-navy-700 underline">Back</Link>
     <h1 className="text-2xl font-semibold text-navy-700">Venue availability</h1>
     <p className="text-sm text-slate-600">All dates and times use Singapore time (UTC+08:00). End times are exclusive.</p>
+    <VenueComparison />
     <form className="flex flex-wrap items-end gap-4" onSubmit={e => {
       e.preventDefault();
       if (searchPeriod?.start === start && searchPeriod?.end === end) void search.refetch();

@@ -11,6 +11,7 @@ from apps.equipment.action_views import (
     WithdrawEquipmentRequestView,
 )
 from apps.equipment.views import (
+    EquipmentHoldersView,
     EquipmentTypeListView,
     EventEquipmentAvailabilityView,
     EventEquipmentRequestsView,
@@ -50,6 +51,11 @@ urlpatterns = [
         "events/<int:event_id>/equipment-availability/",
         EventEquipmentAvailabilityView.as_view(),
         name="event-equipment-availability",
+    ),
+    path(
+        "events/<int:event_id>/equipment-availability/<int:equipment_type_id>/",
+        EquipmentHoldersView.as_view(),
+        name="event-equipment-holders",
     ),
     path(
         "equipment/requests/",

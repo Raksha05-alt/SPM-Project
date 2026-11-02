@@ -6,13 +6,14 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import Role
 from apps.core.permissions import HasAnyRole
-from apps.venues.availability import availability
+from apps.venues.availability import availability, comparison_availability
 from apps.venues.block_serializers import (
     PeriodSerializer,
     VenueBlockHistorySerializer,
     VenueBlockSerializer,
 )
 from apps.venues.models import Venue, VenueBlockHistory
+from apps.venues.occupancy import occupancy_prefetch
 from apps.venues.serializers import VenueSerializer
 
 CALENDAR_READERS = frozenset({Role.EVENT_COORDINATOR, Role.VENUE_STAFF})
@@ -42,6 +43,29 @@ class AvailableVenuesView(CalendarView):
         start, end = period.validated_data["starts_at"], period.validated_data["ends_at"]
         venues = [v for v in Venue.objects.all() if availability(v, start, end)["available"]]
         return Response(VenueSerializer(venues, many=True).data)
+
+
+class CompareAvailabilityView(CalendarView):
+    """SCRUM-62: all venues, including partially and wholly obstructed rooms."""
+
+    def get(self, request):
+        period = PeriodSerializer(data=request.query_params)
+        period.is_valid(raise_exception=True)
+        start, end = period.validated_data["starts_at"], period.validated_data["ends_at"]
+        venues = Venue.objects.order_by("name", "pk").prefetch_related(
+            "blocks", occupancy_prefetch()
+        )
+        results = [comparison_availability(venue, start, end) for venue in venues]
+        return Response(
+            {
+                "starts_at": start,
+                "ends_at": end,
+                "venues": results,
+                "message": ""
+                if any(v["available"] for v in results)
+                else "No venues are available for the whole period.",
+            }
+        )
 
 
 def snapshot(block, actor, action):
