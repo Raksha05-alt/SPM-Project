@@ -77,6 +77,19 @@ def plan_data(event):
         ]
         if plan
         else [],
+        "history": [
+            {
+                "id": h.pk,
+                "action": h.action,
+                "before": h.before,
+                "after": h.after,
+                "actor": h.actor.get_full_name() or h.actor.email,
+                "created_at": h.created_at,
+            }
+            for h in plan.history.select_related("actor").all()
+        ]
+        if plan
+        else [],
         "technical_approval": (
             {
                 "id": approval.pk,
@@ -192,5 +205,54 @@ class ReleaseEquipmentView(EquipmentActionView):
                 actor=request.user,
                 expected_revision=request.data.get("expected_revision"),
                 reason=request.data.get("reason", ""),
+            ),
+        )
+
+
+class AmendEquipmentRequestView(EquipmentActionView):
+    allowed_roles = frozenset({Role.EVENT_COORDINATOR})
+    withdraw = False
+
+    def post(self, request, request_id):
+        from apps.equipment.services import amend_request, withdraw_request
+
+        item = get_object_or_404(
+            EquipmentRequest.objects.select_related("plan__event"), pk=request_id
+        )
+
+        def change():
+            args = dict(
+                equipment_request=item,
+                actor=request.user,
+                expected_revision=request.data.get("expected_revision"),
+            )
+            if self.withdraw:
+                withdraw_request(**args)
+            else:
+                amend_request(
+                    **args,
+                    quantity=request.data.get("quantity"),
+                    technical_requirements=request.data.get("technical_requirements"),
+                )
+
+        return self.perform(request, item.plan.event, change)
+
+
+class WithdrawEquipmentRequestView(AmendEquipmentRequestView):
+    withdraw = True
+
+
+class ApproveRevisedEquipmentView(EquipmentActionView):
+    def post(self, request, event_id):
+        from apps.equipment.reservations import approve_revised_plan
+
+        event = get_object_or_404(EventRequest, pk=event_id)
+        return self.perform(
+            request,
+            event,
+            lambda: approve_revised_plan(
+                event=event,
+                actor=request.user,
+                expected_revision=request.data.get("expected_revision"),
             ),
         )

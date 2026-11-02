@@ -3,10 +3,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { approveNoEquipment, getEquipmentPlan, listEquipmentPlans, reserveEquipment, type EquipmentPlan } from "../api/equipmentPlans";
+import { approveRevisedEquipment, approveNoEquipment, getEquipmentPlan, listEquipmentPlans, reserveEquipment, type EquipmentPlan } from "../api/equipmentPlans";
 import { EquipmentPlanPage } from "./EquipmentPlan";
 
-vi.mock("../api/equipmentPlans", () => ({ approveNoEquipment: vi.fn(), getEquipmentPlan: vi.fn(), listEquipmentPlans: vi.fn(), reserveEquipment: vi.fn() }));
+vi.mock("../api/equipmentPlans", () => ({ approveRevisedEquipment: vi.fn(), approveNoEquipment: vi.fn(), getEquipmentPlan: vi.fn(), listEquipmentPlans: vi.fn(), reserveEquipment: vi.fn() }));
 const auth = { user: { id: 2, role: "TECH_SUPPORT" } };
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => auth }));
 const BASE: EquipmentPlan = {
@@ -103,4 +103,25 @@ describe("SCRUM-16 equipment reservation screen", () => {
     const { user } = setup(); await user.click(await screen.findByRole("button", { name: "Refresh plan" }));
     await waitFor(() => expect(vi.mocked(getEquipmentPlan).mock.calls.length).toBeGreaterThan(1));
   });
+});
+
+it("U75-01 technical staff can approve a revised plan with retained units", async () => {
+  const value = { ...BASE, requests: [{ ...BASE.requests[0], status: "RESERVED" as const, status_label: "Reserved" }] };
+  vi.mocked(approveRevisedEquipment).mockResolvedValue(value);
+  const { user, invalidate } = setup(value);
+  await user.click(await screen.findByRole("button", { name: "Approve revised equipment plan" }));
+  expect(approveRevisedEquipment).toHaveBeenCalledWith(9, 3);
+  expect(await screen.findByRole("status")).toHaveTextContent("Revised technical arrangements approved");
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["equipment-plan"] }));
+});
+
+it("U75-02 displays retained changes with values actor and time", async () => {
+  auth.user.role = "COORDINATOR";
+  setup({ ...BASE, history: [{ id: 1, action: "AMENDED", before: { quantity: 5, technical_requirements: "HDMI", status: "REQUESTED" }, after: { quantity: 3, technical_requirements: "USB-C", status: "RESERVED" }, actor: "Cora Coordinator", created_at: "2026-11-02T01:00:00Z" }] });
+  const history = await screen.findByRole("region", { name: "Request change history" });
+  await waitFor(() => expect(history).toHaveTextContent("AMENDED by Cora Coordinator on"));
+  expect(history).toHaveTextContent("Quantity: 5 to 3");
+  expect(history).toHaveTextContent("Technical requirements: HDMI to USB-C");
+  expect(history).toHaveTextContent("Status: REQUESTED to RESERVED");
+  expect(history).toHaveTextContent(new Date("2026-11-02T01:00:00Z").toLocaleString("en-SG"));
 });
