@@ -11,6 +11,14 @@ export interface Availability {
   starts_at: string; ends_at: string; blocks: VenueBlock[];
   conflicts?: { id: number; event_id: number; starts_at: string; ends_at: string }[];
 }
+export interface VenueComparison {
+  starts_at: string; ends_at: string; message: string;
+  venues: { venue_id: number; name: string; status: "available" | "partial" | "unavailable";
+    available: boolean; reasons: string[];
+    free_segments: { starts_at: string; ends_at: string }[] }[];
+}
+export const compareAvailability = (start: string, end: string) =>
+  request<VenueComparison>(`/api/venues/compare-availability/?${new URLSearchParams({ starts_at: start, ends_at: end })}`);
 const base = (id: number) => `/api/venues/${id}`;
 export const getAvailability = (id: number, start: string, end: string) =>
   request<Availability>(`${base(id)}/availability/?${new URLSearchParams({ starts_at: start, ends_at: end })}`);

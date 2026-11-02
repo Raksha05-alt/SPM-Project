@@ -7,6 +7,7 @@ from apps.venues.availability_views import (
     BlockHistoryView,
     BlockView,
     CalendarView,
+    CompareAvailabilityView,
 )
 from apps.venues.booking_views import (
     EventVenueBookingsView,
@@ -35,6 +36,7 @@ urlpatterns = [
         name="withdraw-venue-booking",
     ),
     path("venues/available/", AvailableVenuesView.as_view()),
+    path("venues/compare-availability/", CompareAvailabilityView.as_view()),
     path("venues/<int:pk>/availability/", CalendarView.as_view()),
     path("venues/<int:pk>/blocks/", BlockView.as_view()),
     path("venues/<int:pk>/blocks/history/", BlockHistoryView.as_view()),
