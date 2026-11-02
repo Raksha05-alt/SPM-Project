@@ -1,11 +1,14 @@
 from django.urls import path
 
 from apps.equipment.action_views import (
+    AmendEquipmentRequestView,
+    ApproveRevisedEquipmentView,
     EquipmentPlanView,
     NoEquipmentApprovalView,
     ReleaseEquipmentView,
     ReserveEquipmentView,
     TechnicalPlanListView,
+    WithdrawEquipmentRequestView,
 )
 from apps.equipment.views import (
     EquipmentTypeListView,
@@ -15,6 +18,9 @@ from apps.equipment.views import (
 )
 
 urlpatterns = [
+    path("events/<int:event_id>/approve-revised-equipment/", ApproveRevisedEquipmentView.as_view()),
+    path("equipment/requests/<int:request_id>/amend/", AmendEquipmentRequestView.as_view()),
+    path("equipment/requests/<int:request_id>/withdraw/", WithdrawEquipmentRequestView.as_view()),
     path(
         "equipment/reservations/<int:reservation_id>/release/",
         ReleaseEquipmentView.as_view(),

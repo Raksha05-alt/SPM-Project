@@ -168,3 +168,12 @@ docs/
 - Access control lives in DRF permission classes, never in view bodies.
 - Business rules live in `services.py`, not in serializers or views.
 - Every refused request is written to `core.AuditLog`.
+
+### Amend or withdraw equipment (SCRUM-75)
+
+Open an assigned event, then **Equipment plan and reservations**. Before event
+confirmation, the assigned coordinator can amend a request or confirm its withdrawal.
+Reductions release only surplus units; withdrawal releases its reservations and keeps
+its history. Technical Support receives a notification and can approve a revised
+plan with retained reservations. Changed arrangements require a fresh Safety check.
+See [the API and acceptance-test map](docs/scrum-75-equipment-amendment.md).

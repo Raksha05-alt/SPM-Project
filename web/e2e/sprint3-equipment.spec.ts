@@ -11,6 +11,7 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 test.use({ timezoneId: "Asia/Singapore" });
+test.setTimeout(90_000);
 
 const PASSWORD = "connectsphere-demo";
 const ORGANISER = "organiser@acme.example";
@@ -22,6 +23,8 @@ const NOTE = "HDMI and USB-C inputs; mount at the back of the hall";
 
 async function signIn(page: Page, email: string) {
   await page.goto("/login");
+  // Complete the initial session lookup before submitting a different account.
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -137,6 +140,45 @@ test("J3 G16: request, reserve, release, re-reserve and cancel real equipment an
   await expect(page.getByRole("region", { name: "Projector" })).toContainText("Reserved");
   await signOut(page);
 
+  // SCRUM-75: coordinator reduces the actual reservation, reopens it, then withdraws.
+  await signIn(page, COORDINATOR);
+  await page.goto(`/equipment/plans/${eventId}`);
+  await page.getByRole("button", { name: "Amend request" }).click();
+  await page.getByLabel("Revised quantity").fill("2");
+  await page.getByLabel("Revised technical requirements").fill("Updated HDMI requirements");
+  await page.getByRole("button", { name: "Save amendment" }).click();
+  await expect(page.getByRole("region", { name: "Projector" })).toContainText("2 \u00d7 Projector");
+  await page.reload();
+  const amended = await (await page.request.get(`/api/events/${eventId}/equipment-plan/`)).json();
+  expect(amended.reservations.find((row: { status: string }) => row.status === "ACTIVE").quantity).toBe(2);
+  expect(amended.technical_approval).toBeNull();
+  await expect(page.getByRole("region", { name: "Request change history" })).toContainText("Updated HDMI requirements");
+  await signOut(page);
+  await signIn(page, TECH);
+  await page.goto(`/equipment/plans/${eventId}`);
+  await page.getByRole("button", { name: "Approve revised equipment plan" }).click();
+  await expect(page.getByText(/Technical arrangements approved by/)).toBeVisible();
+  await signOut(page);
+  await signIn(page, COORDINATOR);
+  await page.goto(`/equipment/plans/${eventId}`);
+  await page.getByRole("button", { name: "Withdraw request" }).click();
+  await page.getByRole("button", { name: "Confirm withdrawal" }).click();
+  await expect(page.getByRole("region", { name: "Projector" })).toContainText("Withdrawn");
+  const withdrawn = await (await page.request.get(`/api/events/${eventId}/equipment-plan/`)).json();
+  expect(withdrawn.reservations.every((row: { status: string }) => row.status === "RELEASED")).toBe(true);
+  // Request again through the real API, then staff reserve for the cancellation journey.
+  const replacement = await page.request.post(`/api/events/${eventId}/equipment-requests/`, {
+    headers: { "X-CSRFToken": await csrf(page) },
+    data: { equipment_type: amended.requests[0].equipment_type, quantity: 3, technical_requirements: NOTE },
+  });
+  expect(replacement.status()).toBe(201);
+  await signOut(page);
+  await signIn(page, TECH);
+  await page.goto(`/equipment/plans/${eventId}`);
+  await page.getByRole("button", { name: "Reserve 3 \u00d7 Projector" }).click();
+  await expect(page.getByText(/Technical arrangements approved by/)).toBeVisible();
+  await signOut(page);
+
   // Real venue API preconditions; the J2 browser case covers the booking forms.
   await signIn(page, COORDINATOR);
   const plannedEvent = await (await page.request.get(`/api/events/${eventId}/`)).json();
@@ -170,7 +212,7 @@ test("J3 G16: request, reserve, release, re-reserve and cancel real equipment an
   await expect(cancellation.getByRole("status")).toContainText("Event cancelled.");
   const finalPlan = await (await page.request.get(`/api/events/${eventId}/equipment-plan/`)).json();
   expect(finalPlan.event.status).toBe("CANCELLED");
-  expect(finalPlan.reservations).toHaveLength(2);
+  expect(finalPlan.reservations).toHaveLength(3);
   expect(finalPlan.reservations.every((row: { status: string }) => row.status === "RELEASED")).toBe(true);
   expect(finalPlan.requests[0].status).toBe("WITHDRAWN");
   const period = new URLSearchParams({ starts_at: plannedEvent.preferred_start, ends_at: plannedEvent.preferred_end });
