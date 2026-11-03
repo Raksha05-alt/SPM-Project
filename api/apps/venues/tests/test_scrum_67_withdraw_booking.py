@@ -98,7 +98,7 @@ def test_reassignment_and_wrong_roles(api, second_coordinator, venue_staff, book
     assert booking.status == BookingStatus.PENDING
 
 
-def test_notification_failure_rolls_back(coordinator, booking):
+def test_notification_failure_rolls_back(coordinator, venue_staff, booking):
     with patch(
         "apps.notifications.models.Notification.objects.bulk_create",
         side_effect=RuntimeError("failure"),

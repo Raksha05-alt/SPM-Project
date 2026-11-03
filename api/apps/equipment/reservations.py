@@ -24,7 +24,8 @@ from apps.equipment.models import (
 )
 from apps.equipment.services import available_quantity
 from apps.events.models import EventRequest
-from apps.notifications.models import Notification, NotificationKind
+from apps.notifications.models import NotificationKind
+from apps.notifications.services import notify
 from apps.safety.services import arrangements_changed
 
 OPEN_STATUSES = frozenset({EventStatus.APPROVED, EventStatus.PLANNING, EventStatus.CONFIRMED})
@@ -90,14 +91,25 @@ def advance_plan(plan, actor, reason):
     plan.save(update_fields=["revision", "updated_at"])
 
 
+def plan_occurrence(event) -> str:
+    """The equipment action just recorded: every action writes a history row first."""
+    latest = (
+        EquipmentHistory.objects.filter(plan__event=event)
+        .order_by("-pk")
+        .values_list("pk", flat=True)
+        .first()
+    )
+    return f"equipment-history:{latest}"
+
+
 def notify_coordinator(event, message):
-    if event.coordinator_id:
-        Notification.objects.create(
-            recipient_id=event.coordinator_id,
-            event=event,
-            kind=NotificationKind.EQUIPMENT_UPDATED,
-            message=message,
-        )
+    notify(
+        event=event,
+        kind=NotificationKind.EQUIPMENT_UPDATED,
+        occurrence=plan_occurrence(event),
+        recipients=[event.coordinator_id],
+        message=message,
+    )
 
 
 def approve_plan(plan, actor, *, no_equipment=False, notes=""):

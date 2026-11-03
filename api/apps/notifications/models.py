@@ -28,6 +28,20 @@ class NotificationKind(models.TextChoices):
     # SCRUM-58 - an essential resource is unavailable, and the event is confirmed.
     RESOURCE_UNAVAILABLE = "RESOURCE_UNAVAILABLE", "Arrangement unavailable"
     EVENT_CONFIRMED = "EVENT_CONFIRMED", "Event confirmed"
+    # SCRUM-79 AC1 (Week 7 change 5) - a submitted request reaches the Lead queue.
+    SUBMITTED = "SUBMITTED", "Request submitted"
+
+
+class NotificationTarget(models.TextChoices):
+    """SCRUM-82 - the record a notice points at, beyond its event.
+
+    The screen a notice opens is decided when it is read, from the recipient's
+    current access (``apps.notifications.services.destination``); storing a
+    target never grants access.
+    """
+
+    SAFETY_CHECK = "SAFETY_CHECK", "Safety check"
+    VENUE_BOOKING = "VENUE_BOOKING", "Venue booking"
 
 
 # Assignment notices are unique per occurrence, not per lifetime of an event.
@@ -55,6 +69,18 @@ class Notification(models.Model):
     )
     message = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    # SCRUM-79/82 - the business occurrence this notice reports (for example
+    # "event-status:41" or "assignment:7"). Unique per recipient, so replaying an
+    # action never duplicates a notice while a later occurrence still notifies.
+    # Blank for notices written before Sprint 4 and by producers not yet moved
+    # to ``notify()``.
+    occurrence = models.CharField(max_length=120, blank=True, default="")
+    target_type = models.CharField(
+        max_length=20, choices=NotificationTarget.choices, blank=True, default=""
+    )
+    target_id = models.PositiveBigIntegerField(null=True, blank=True)
+    # SCRUM-82 - set the first time the recipient opens the notice.
+    read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at", "-pk"]
@@ -66,6 +92,18 @@ class Notification(models.Model):
             ),
             models.UniqueConstraint(
                 fields=["recipient", "assignment"], name="unique_assignment_notice_recipient"
+            ),
+            models.UniqueConstraint(
+                fields=["recipient", "occurrence"],
+                condition=~models.Q(occurrence=""),
+                name="unique_notice_per_recipient_occurrence",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["recipient"],
+                condition=models.Q(read_at__isnull=True),
+                name="notification_unread_idx",
             ),
         ]
 

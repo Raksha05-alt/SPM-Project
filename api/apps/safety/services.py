@@ -35,7 +35,8 @@ from apps.equipment.models import (
     TechnicalApprovalStatus,
 )
 from apps.events.models import EventRequest
-from apps.notifications.models import Notification, NotificationKind
+from apps.notifications.models import NotificationKind, NotificationTarget
+from apps.notifications.services import notify, status_occurrence
 from apps.safety.models import CURRENT_STATUSES, DECISIONS, SafetyCheck, SafetyStatus
 from apps.venues.models import BookingStatus, VenueBlock
 
@@ -247,16 +248,26 @@ def ensure_can_confirm(event: EventRequest) -> None:
 # --------------------------------------------------------------------------
 
 
-def _notify(recipients, event: EventRequest, kind: str, message: str, *, skip=None) -> None:
-    unique = {}
-    for person in recipients:
-        if person is not None and person.pk != getattr(skip, "pk", None):
-            unique[person.pk] = person
-    Notification.objects.bulk_create(
-        [
-            Notification(recipient=person, event=event, kind=kind, message=message)
-            for person in unique.values()
-        ]
+def _notify(
+    recipients,
+    event: EventRequest,
+    kind: str,
+    message: str,
+    *,
+    occurrence: str,
+    check=None,
+    skip=None,
+) -> None:
+    """Safety notices go through the shared SCRUM-79 writer, pointing at their check."""
+    notify(
+        event=event,
+        kind=kind,
+        occurrence=occurrence,
+        recipients=recipients,
+        message=message,
+        target_type=NotificationTarget.SAFETY_CHECK if check else "",
+        target_id=check.pk if check else None,
+        skip=skip,
     )
 
 
@@ -280,6 +291,8 @@ def _supersede(check: SafetyCheck, event: EventRequest, reason: str, actor) -> S
             if event.status == EventStatus.CANCELLED
             else "A new check is needed before the event can be confirmed."
         ),
+        occurrence=f"safety-check:{check.pk}:superseded",
+        check=check,
         skip=actor,
     )
     return check
@@ -322,6 +335,7 @@ def arrangements_changed(event: EventRequest, reason: str, actor) -> SafetyCheck
             locked,
             NotificationKind.PLANNING_REOPENED,
             f'"{locked.name}" is back in planning while its arrangements are updated: {reason}',
+            occurrence=status_occurrence(locked),
             skip=actor,
         )
     event.refresh_from_db()
@@ -519,6 +533,8 @@ def request_check(event: EventRequest, actor, note: str = "") -> SafetyCheck:
         NotificationKind.SAFETY_REQUESTED,
         f'"{event.name}" on {_when(event.preferred_start)} is ready for an '
         "operational safety check.",
+        occurrence=f"safety-check:{check.pk}:requested",
+        check=check,
     )
     record(actor, f"Safety check requested for event {event.pk}", allowed=True, obj=check)
     return check
@@ -578,6 +594,8 @@ def decide(check: SafetyCheck, actor, decision: str, comment: str = "") -> Safet
                 event,
                 NotificationKind.SAFETY_DECIDED,
                 message,
+                occurrence=f"safety-check:{check.pk}:decided",
+                check=check,
             )
             record(
                 actor,

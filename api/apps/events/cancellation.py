@@ -20,7 +20,8 @@ from apps.equipment.releases import release_for_cancelled_event, release_reason
 from apps.equipment.reservations import EquipmentActionDenied, EquipmentActionError
 from apps.events.models import EventRequest
 from apps.events.services import transition_event
-from apps.notifications.models import Notification, NotificationKind
+from apps.notifications.models import NotificationKind
+from apps.notifications.services import notify, status_occurrence
 from apps.safety.services import arrangements_changed, current_check
 from apps.venues.bookings import transition_booking
 from apps.venues.models import BookingStatus, Venue
@@ -145,14 +146,11 @@ def cancel_event(*, event, actor, expected_version, confirm_cancel=False, reason
 
 
 def notify_cancellation(event, recipients, reason):
-    Notification.objects.bulk_create(
-        [
-            Notification(
-                recipient=person,
-                event=event,
-                kind=NotificationKind.EVENT_CANCELLED,
-                message=f'"{event.name}" was cancelled. Its venue bookings were withdrawn and equipment reservations released. Reason: {reason}',
-            )
-            for person in recipients.values()
-        ]
+    # The cancellation is the event's latest status change.
+    notify(
+        event=event,
+        kind=NotificationKind.EVENT_CANCELLED,
+        occurrence=status_occurrence(event),
+        recipients=recipients.values(),
+        message=f'"{event.name}" was cancelled. Its venue bookings were withdrawn and equipment reservations released. Reason: {reason}',
     )
