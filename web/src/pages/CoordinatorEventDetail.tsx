@@ -10,6 +10,7 @@ import {
 } from "../api/events";
 import { useAuth } from "../auth/AuthContext";
 import { ApprovalNote } from "../components/ApprovalNote";
+import { ChangeHistory } from "../components/ChangeHistory";
 import { CLARIFIABLE_FIELDS, ClarificationHistory } from "../components/Clarifications";
 import { ClarificationNoteForm } from "../components/ClarificationNoteForm";
 import { CoordinatorEventEditor } from "../components/CoordinatorEventEditor";
@@ -437,6 +438,9 @@ export function CoordinatorEventDetail() {
       {isAssigned && <ReadinessPanel eventId={event.id} status={event.status} />}
 
       <ClarificationHistory clarifications={event.clarifications ?? []} />
+
+      {/* SCRUM-60 - internal before/after history of the event's details. */}
+      {isAssigned && <ChangeHistory eventId={event.id} />}
     </div>
   );
 }

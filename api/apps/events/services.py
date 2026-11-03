@@ -329,7 +329,8 @@ def snapshot_for_edit(event: EventRequest) -> dict:
 
 
 def record_event_edit(event: EventRequest, before: dict, user) -> list[str]:
-    """SCRUM-61 AC4 - record who changed which fields; call inside the save transaction.
+    """SCRUM-61 AC4 / SCRUM-60 - record who changed which fields, and their before
+    and after values; call inside the save transaction.
 
     A change to the date, time or attendance supersedes any current safety
     check (SCRUM-90 AC6). A save that changes nothing records nothing.
@@ -337,6 +338,10 @@ def record_event_edit(event: EventRequest, before: dict, user) -> list[str]:
     changed = [field for field in EDITABLE_FIELDS if getattr(event, field) != before[field]]
     if not changed:
         return []
+    # SCRUM-60 - the before/after ledger, in this same transaction.
+    from apps.events.history import record_field_changes
+
+    record_field_changes(event=event, before=before, after=snapshot_for_edit(event), actor=user)
     event.updated_by = user
     event.save(update_fields=["updated_by", "updated_at"])
     record(
