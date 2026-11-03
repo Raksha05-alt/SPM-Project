@@ -445,3 +445,34 @@ export interface EventSafetyState {
   confirmation_gaps: string[];
   can_request: boolean;
 }
+
+export type ChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+/** SCRUM-20 - one proposed field, with its value when the request was made. */
+export interface ProposedChange {
+  field: string;
+  label: string;
+  current: string;
+  proposed: string;
+}
+
+/** SCRUM-20 - an organiser's request to change a submitted or confirmed event. */
+export interface ChangeRequest {
+  id: number;
+  event: number;
+  description: string;
+  reason: string;
+  proposed_values: Record<string, unknown>;
+  proposed_changes: ProposedChange[];
+  target_bookings: number[];
+  target_equipment_requests: number[];
+  revision: number;
+  status: ChangeRequestStatus;
+  status_label: string;
+  status_changed_at: string;
+  requested_by_name: string | null;
+  requested_at: string;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  decision_reason: string;
+}
