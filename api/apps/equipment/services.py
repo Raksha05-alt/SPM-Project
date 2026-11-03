@@ -88,7 +88,8 @@ def create_request(
     from apps.accounts.models import Role, User
     from apps.events.models import EventRequest
     from apps.events.services import transition_event
-    from apps.notifications.models import Notification, NotificationKind
+    from apps.notifications.models import NotificationKind
+    from apps.notifications.services import notify
     from apps.safety.services import arrangements_changed
 
     locked_event = EventRequest.objects.select_for_update().get(pk=event.pk)
@@ -143,7 +144,7 @@ def create_request(
         technical_requirements=cleaned["technical_requirements"],
         requested_by=requested_by,
     )
-    EquipmentHistory.objects.create(
+    requested = EquipmentHistory.objects.create(
         plan=plan,
         request=request,
         action=EquipmentHistoryAction.REQUESTED,
@@ -160,19 +161,15 @@ def create_request(
 
     staff = User.objects.filter(role=Role.TECHNICAL_SUPPORT, is_active=True)
     name = requested_by.get_full_name() or requested_by.email
-    Notification.objects.bulk_create(
-        [
-            Notification(
-                recipient=member,
-                event=locked_event,
-                kind=NotificationKind.EQUIPMENT_REQUESTED,
-                message=(
-                    f'{name} requested {request.quantity} x {item.name} for "{locked_event.name}". '
-                    "Review it in Equipment."
-                ),
-            )
-            for member in staff
-        ]
+    notify(
+        event=locked_event,
+        kind=NotificationKind.EQUIPMENT_REQUESTED,
+        occurrence=f"equipment-history:{requested.pk}",
+        recipients=staff,
+        message=(
+            f'{name} requested {request.quantity} x {item.name} for "{locked_event.name}". '
+            "Review it in Equipment."
+        ),
     )
     return request
 
@@ -336,7 +333,8 @@ def _change_request(
         require_open_event,
     )
     from apps.events.models import EventRequest
-    from apps.notifications.models import Notification, NotificationKind
+    from apps.notifications.models import NotificationKind
+    from apps.notifications.services import notify
     from apps.safety.services import arrangements_changed
 
     event = EventRequest.objects.select_for_update().get(pk=equipment_request.plan.event_id)
@@ -390,7 +388,7 @@ def _change_request(
                 item.status = EquipmentRequestStatus.REQUESTED
                 release_record(row, plan=plan, actor=actor, reason=reason)
     item.save(update_fields=["quantity", "technical_requirements", "status", "updated_at"])
-    EquipmentHistory.objects.create(
+    changed = EquipmentHistory.objects.create(
         plan=plan,
         request=item,
         action=EquipmentHistoryAction.WITHDRAWN if withdraw else EquipmentHistoryAction.AMENDED,
@@ -400,16 +398,12 @@ def _change_request(
         actor=actor,
     )
     arrangements_changed(event, reason, actor)
-    Notification.objects.bulk_create(
-        [
-            Notification(
-                recipient=staff,
-                event=event,
-                kind=NotificationKind.EQUIPMENT_UPDATED,
-                message=f'{stock.name} request for "{event.name}": {reason}',
-            )
-            for staff in User.objects.filter(role=Role.TECHNICAL_SUPPORT, is_active=True)
-        ]
+    notify(
+        event=event,
+        kind=NotificationKind.EQUIPMENT_UPDATED,
+        occurrence=f"equipment-history:{changed.pk}",
+        recipients=User.objects.filter(role=Role.TECHNICAL_SUPPORT, is_active=True),
+        message=f'{stock.name} request for "{event.name}": {reason}',
     )
     return item
 

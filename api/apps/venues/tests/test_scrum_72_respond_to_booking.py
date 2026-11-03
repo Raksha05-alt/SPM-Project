@@ -439,8 +439,9 @@ def test_s3_72_05_a_reassigned_event_notifies_the_current_coordinator(
 @pytest.mark.django_db
 def test_s3_72_05_a_failed_notice_leaves_no_partial_decision(booking, venue_staff):
     with (
+        # Every notice is written by the shared SCRUM-79 writer's bulk_create.
         mock.patch.object(
-            Notification.objects, "create", side_effect=RuntimeError("notification store down")
+            Notification.objects, "bulk_create", side_effect=RuntimeError("notification store down")
         ),
         pytest.raises(RuntimeError),
     ):

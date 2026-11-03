@@ -18,7 +18,8 @@ from apps.events.models import (
     EventRequest,
     EventStatusHistory,
 )
-from apps.notifications.models import Notification, NotificationKind
+from apps.notifications.models import NotificationKind
+from apps.notifications.services import notify, status_occurrence
 
 
 class MissingMandatoryFields(Exception):
@@ -114,17 +115,14 @@ def assign_coordinator(event, coordinator_id, user, expected_revision):
         person.pk: person for person in (coordinator, previous, locked.created_by) if person
     }
     name = coordinator.get_full_name() or coordinator.email
-    Notification.objects.bulk_create(
-        [
-            Notification(
-                recipient=recipient,
-                event=locked,
-                assignment=assignment,
-                kind=NotificationKind.ASSIGNMENT,
-                message=f'{name} ({coordinator.email}) is now the coordinator for "{locked.name}".',
-            )
-            for recipient in recipients.values()
-        ]
+    # SCRUM-79 AC1 (as amended by SCRUM-89): the coordinator hears on assignment.
+    notify(
+        event=locked,
+        kind=NotificationKind.ASSIGNMENT,
+        occurrence=f"assignment:{assignment.pk}",
+        recipients=recipients.values(),
+        assignment=assignment,
+        message=f'{name} ({coordinator.email}) is now the coordinator for "{locked.name}".',
     )
     record(
         user,
@@ -181,6 +179,19 @@ def submit_event(event: EventRequest, user) -> EventRequest:
     locked.assignment_requires_attention = True
     locked.save(update_fields=["coordinator", "supervising_lead", "assignment_requires_attention"])
     transition_event(locked, EventStatus.SUBMITTED, user)
+    # SCRUM-79 AC1, effective since Week 7 change 5 / SCRUM-89: a submission
+    # enters the unassigned Lead queue, so the active Leads are told; the
+    # coordinator is told on assignment. Recorded with the PO before closing 79.
+    notify(
+        event=locked,
+        kind=NotificationKind.SUBMITTED,
+        occurrence=status_occurrence(locked),
+        recipients=User.objects.filter(role=Role.EVENT_COORDINATOR_LEAD, is_active=True),
+        message=(
+            f'{locked.organisation.name} submitted "{locked.name}". '
+            "It is waiting for a coordinator to be assigned."
+        ),
+    )
     event.refresh_from_db()
     return event
 
@@ -200,10 +211,11 @@ def approve_event(event: EventRequest, user) -> EventRequest:
     locked.approved_by = user
     locked.approved_at = locked.status_changed_at
     locked.save(update_fields=["approved_by", "approved_at"])
-    Notification.objects.create(
-        recipient=locked.created_by,
+    notify(
         event=locked,
         kind=NotificationKind.APPROVED,
+        occurrence=status_occurrence(locked),
+        recipients=[locked.created_by],
         message=f'"{locked.name}" has been approved. Venue and equipment planning can begin.',
     )
     event.refresh_from_db()
@@ -222,13 +234,14 @@ def request_clarification(event: EventRequest, user, message: str, fields=()) ->
     if not message:
         raise MissingClarificationDetails
     transition_event(locked, EventStatus.UNDER_REVIEW, user)
-    ClarificationRequest.objects.create(
+    clarification = ClarificationRequest.objects.create(
         event=locked, requested_by=user, message=message, fields=list(fields)
     )
-    Notification.objects.create(
-        recipient=locked.created_by,
+    notify(
         event=locked,
         kind=NotificationKind.CLARIFICATION,
+        occurrence=f"clarification:{clarification.pk}",
+        recipients=[locked.created_by],
         message=f'Your coordinator needs more information about "{locked.name}": {message}',
     )
     event.refresh_from_db()
@@ -255,10 +268,11 @@ def resume_review(event: EventRequest, user) -> EventRequest:
     locked.clarifications.filter(resolved_at__isnull=True).update(
         resolved_at=locked.status_changed_at
     )
-    Notification.objects.create(
-        recipient=locked.created_by,
+    notify(
         event=locked,
         kind=NotificationKind.REVIEW_RESUMED,
+        occurrence=status_occurrence(locked),
+        recipients=[locked.created_by],
         message=f'Your coordinator has resumed reviewing "{locked.name}".',
     )
     event.refresh_from_db()
@@ -297,10 +311,11 @@ def add_clarification_comment(event: EventRequest, user, body: str) -> Clarifica
     recipient = locked.created_by if is_coordinator else locked.coordinator
     if recipient is not None and recipient.pk != user.pk:
         name = user.get_full_name() or user.email
-        Notification.objects.create(
-            recipient=recipient,
+        notify(
             event=locked,
             kind=NotificationKind.CLARIFICATION_NOTE,
+            occurrence=f"clarification-note:{comment.pk}",
+            recipients=[recipient],
             message=f'{name} added a clarification note to "{locked.name}": {body}',
         )
     return comment
@@ -371,10 +386,11 @@ def reject_event(event: EventRequest, user, reason: str) -> EventRequest:
     locked.rejected_at = locked.status_changed_at
     locked.rejection_reason = reason
     locked.save(update_fields=["rejected_by", "rejected_at", "rejection_reason"])
-    Notification.objects.create(
-        recipient=locked.created_by,
+    notify(
         event=locked,
         kind=NotificationKind.REJECTED,
+        occurrence=status_occurrence(locked),
+        recipients=[locked.created_by],
         message=f'ConnectSphere cannot support "{locked.name}". Reason: {reason}',
     )
     event.refresh_from_db()

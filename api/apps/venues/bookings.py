@@ -22,6 +22,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.statuses import EventStatus
+from apps.notifications.models import NotificationKind, NotificationTarget
+from apps.notifications.services import notify
 from apps.venues.layouts import LayoutChoiceError, check_choice, claim_layouts
 from apps.venues.models import BookingStatus, Venue, VenueBooking, VenueBookingHistory
 from apps.venues.serializers import is_facility_list, normalise_facilities
@@ -292,7 +294,6 @@ def request_booking(*, event, venue, requested_by, **values) -> VenueBooking:
     from apps.accounts.models import Role, User
     from apps.events.models import EventRequest
     from apps.events.services import transition_event
-    from apps.notifications.models import Notification, NotificationKind
     from apps.venues.suitability import Requirements, ensure_suitable
 
     locked_event = EventRequest.objects.select_for_update().get(pk=event.pk)
@@ -325,20 +326,18 @@ def request_booking(*, event, venue, requested_by, **values) -> VenueBooking:
     )
     staff = User.objects.filter(role=Role.VENUE_STAFF, is_active=True)
     name = requested_by.get_full_name() or requested_by.email
-    Notification.objects.bulk_create(
-        [
-            Notification(
-                recipient=member,
-                event=locked_event,
-                kind=NotificationKind.VENUE_REQUESTED,
-                message=(
-                    f'{name} requested {locked_venue.name} for "{locked_event.name}" '
-                    f"({_local(booking.starts_at)} to {_local(booking.ends_at)}). "
-                    "Review it in Booking requests."
-                ),
-            )
-            for member in staff
-        ]
+    notify(
+        event=locked_event,
+        kind=NotificationKind.VENUE_REQUESTED,
+        occurrence=booking_occurrence(booking),
+        recipients=staff,
+        target_type=NotificationTarget.VENUE_BOOKING,
+        target_id=booking.pk,
+        message=(
+            f'{name} requested {locked_venue.name} for "{locked_event.name}" '
+            f"({_local(booking.starts_at)} to {_local(booking.ends_at)}). "
+            "Review it in Booking requests."
+        ),
     )
     return booking
 
@@ -356,7 +355,6 @@ def withdraw_booking(*, booking, actor, expected_status, confirm_release=False):
     """SCRUM-67: withdraw under the shared resource locks, with durable staff notices."""
     from apps.accounts.models import Role, User
     from apps.events.models import EventRequest
-    from apps.notifications.models import Notification, NotificationKind
 
     identity = VenueBooking.objects.values("event_id", "venue_id").get(pk=booking.pk)
     event = EventRequest.objects.select_for_update().get(pk=identity["event_id"])
@@ -375,20 +373,18 @@ def withdraw_booking(*, booking, actor, expected_status, confirm_release=False):
             {"confirm_release": "This releases a confirmed venue arrangement. Confirm to continue."}
         )
     transition_booking(locked, BookingStatus.WITHDRAWN, actor)
-    Notification.objects.bulk_create(
-        [
-            Notification(
-                recipient=member,
-                event=event,
-                kind=NotificationKind.VENUE_WITHDRAWN,
-                message=(
-                    f"{actor.get_full_name() or actor.email} withdrew the booking "
-                    f'for {locked.venue.name} for "{event.name}" '
-                    f"({_local(locked.starts_at)} to {_local(locked.ends_at)})."
-                ),
-            )
-            for member in User.objects.filter(role=Role.VENUE_STAFF, is_active=True)
-        ]
+    notify(
+        event=event,
+        kind=NotificationKind.VENUE_WITHDRAWN,
+        occurrence=booking_occurrence(locked),
+        recipients=User.objects.filter(role=Role.VENUE_STAFF, is_active=True),
+        target_type=NotificationTarget.VENUE_BOOKING,
+        target_id=locked.pk,
+        message=(
+            f"{actor.get_full_name() or actor.email} withdrew the booking "
+            f'for {locked.venue.name} for "{event.name}" '
+            f"({_local(locked.starts_at)} to {_local(locked.ends_at)})."
+        ),
     )
     return locked
 
@@ -407,17 +403,21 @@ def _lock_for_decision(booking):
     return event, venue, locked
 
 
-def _notify_coordinator(event, booking, message) -> None:
-    """Tell the event's current coordinator (or, failing that, the requester)."""
-    from apps.notifications.models import Notification, NotificationKind
+def booking_occurrence(booking) -> str:
+    """The occurrence of the booking's latest status change (one history row each)."""
+    latest = booking.history.order_by("-pk").values_list("pk", flat=True).first()
+    return f"booking-status:{latest}"
 
-    recipient_id = event.coordinator_id or booking.requested_by_id
-    if recipient_id is None:
-        return
-    Notification.objects.create(
-        recipient_id=recipient_id,
+
+def _notify_coordinator(event, booking, message) -> None:
+    """SCRUM-79 AC3 - tell the event's current coordinator (or, failing that, the requester)."""
+    notify(
         event=event,
         kind=NotificationKind.VENUE_DECIDED,
+        occurrence=booking_occurrence(booking),
+        recipients=[event.coordinator_id or booking.requested_by_id],
+        target_type=NotificationTarget.VENUE_BOOKING,
+        target_id=booking.pk,
         message=message,
     )
 
@@ -482,5 +482,6 @@ def reject_booking(booking: VenueBooking, actor, reason: str) -> VenueBooking:
         event,
         f'{venue.name} is unavailable for "{event.name}", so the event is not confirmed. '
         f"Reason: {locked.decision_reason}",
+        occurrence=booking_occurrence(locked),
     )
     return locked

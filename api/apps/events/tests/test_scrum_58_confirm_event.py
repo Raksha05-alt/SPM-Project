@@ -129,7 +129,8 @@ def test_s3_58_01_ac5_the_organiser_is_notified_and_sees_the_arrangements(
 ):
     confirm_event(approved_event, coordinator)
 
-    notice = notices(NotificationKind.EVENT_CONFIRMED).get()
+    # SCRUM-79 AC4 also tells the involved staff; this is the organiser's notice.
+    notice = notices(NotificationKind.EVENT_CONFIRMED).get(recipient=organiser)
     assert notice.recipient == organiser
     assert "is confirmed" in notice.message
     assert "Harbour Hall" in notice.message
@@ -461,7 +462,10 @@ def test_s3_58_04_a_confirmed_event_cannot_be_confirmed_twice(approved_event, co
 
     with pytest.raises(ConfirmationRefused, match="already confirmed"):
         confirm_event(approved_event, coordinator)
-    assert notices(NotificationKind.EVENT_CONFIRMED).count() == 1
+    confirmed = notices(NotificationKind.EVENT_CONFIRMED)
+    assert confirmed.filter(recipient=approved_event.created_by).count() == 1
+    # One notice per recipient (organiser and the involved staff), never two.
+    assert confirmed.count() == confirmed.values("recipient").distinct().count()
 
 
 @pytest.mark.django_db
@@ -509,7 +513,8 @@ def test_s3_58_05_a_failed_notice_leaves_no_confirmation(approved_event, coordin
     from unittest import mock
 
     with (
-        mock.patch.object(Notification.objects, "create", side_effect=RuntimeError("down")),
+        # Every notice is written by the shared SCRUM-79 writer's bulk_create.
+        mock.patch.object(Notification.objects, "bulk_create", side_effect=RuntimeError("down")),
         pytest.raises(RuntimeError),
     ):
         confirm_event(approved_event, coordinator)
@@ -559,4 +564,6 @@ def test_s3_58_05_concurrent_confirmations_confirm_once(
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(attempt, range(2))) == ["confirmed", "refused"]
-    assert Notification.objects.filter(kind=NotificationKind.EVENT_CONFIRMED).count() == 1
+    confirmed = Notification.objects.filter(kind=NotificationKind.EVENT_CONFIRMED)
+    assert confirmed.filter(recipient=organiser).count() == 1
+    assert confirmed.count() == confirmed.values("recipient").distinct().count()
