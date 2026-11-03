@@ -40,6 +40,8 @@ class EquipmentHistoryAction(models.TextChoices):
     RELEASED = "RELEASED", "Released"
     APPROVED = "APPROVED", "Technical approval recorded"
     SUPERSEDED = "SUPERSEDED", "Technical approval superseded"
+    # SCRUM-58 AC3 - Technical Support record that a request cannot be met.
+    UNAVAILABLE = "UNAVAILABLE", "Recorded as unavailable"
 
 
 class EquipmentType(TimeStampedModel):

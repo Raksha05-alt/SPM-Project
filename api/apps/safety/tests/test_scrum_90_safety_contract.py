@@ -235,7 +235,10 @@ def test_c02g_a_stale_approval_cannot_confirm(approved_check, coordinator):
 
     with pytest.raises(ConfirmationBlocked) as refused:
         transition_event(event, EventStatus.CONFIRMED, coordinator)
-    assert refused.value.missing == [STALE]
+    assert refused.value.missing == [
+        "Equipment: the reservation for Projector no longer covers the requested quantity and event period.",
+        STALE,
+    ]
 
 
 def test_c02h_a_block_added_after_approval_prevents_confirmation(
@@ -346,8 +349,10 @@ def test_c04b_superseding_a_pending_check_also_tells_the_safety_officers(
 
 
 def test_c04c_with_no_current_check_nothing_is_superseded_or_sent(ready_event, coordinator):
+    # The real venue and equipment actions have already sent their own notices.
+    before = Notification.objects.count()
     assert arrangements_changed(ready_event, "Anything.", coordinator) is None
-    assert not Notification.objects.exists()
+    assert Notification.objects.count() == before
     ready_event.refresh_from_db()
     assert ready_event.status == EventStatus.PLANNING
 

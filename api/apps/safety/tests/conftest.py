@@ -1,11 +1,11 @@
 """Fixtures for SCRUM-90: a Planning event and helpers that approve its arrangements.
 
-Venue approval goes through the SCRUM-11 booking contract's
-``transition_booking``, the service the SCRUM-72 decision and SCRUM-67
-withdrawal actions call, so its AC6 hook runs as it will in those actions.
-Equipment rows use the SCRUM-16/77 foundation models directly: the reservation
-and amendment actions (G16a/G17) are not on main yet. These fixtures establish
-state for service tests; they are not evidence of those user workflows.
+G20: arrangements are approved through the real actions on main - the
+coordinator requests the venue (SCRUM-11 ``request_booking``) and Venue Staff
+approve it (SCRUM-72 ``approve_booking``); the coordinator requests equipment
+(SCRUM-74 ``create_request``) and Technical Support reserve it (SCRUM-16
+``reserve``, which approves the plan once everything is reserved). Each action
+runs its own Safety invalidation hook, as it does for users.
 """
 
 import datetime
@@ -15,18 +15,13 @@ from django.utils import timezone
 
 from apps.accounts.models import Role
 from apps.core.statuses import EventStatus
-from apps.equipment.models import (
-    EquipmentPlan,
-    EquipmentRequest,
-    EquipmentRequestStatus,
-    EquipmentReservation,
-    EquipmentType,
-    TechnicalApproval,
-)
+from apps.equipment.models import EquipmentType
+from apps.equipment.reservations import reserve
+from apps.equipment.services import create_request
 from apps.safety.models import SafetyCheck, SafetyStatus
 from apps.safety.services import arrangement_version
-from apps.venues.bookings import create_booking_record, transition_booking
-from apps.venues.models import BookingStatus, Venue
+from apps.venues.bookings import approve_booking, request_booking
+from apps.venues.models import Venue
 from conftest import _make_user, make_event
 
 
@@ -55,6 +50,8 @@ def make_venue(name="Harbour Hall", **overrides):
         "facilities": ["Projector"],
         "wheelchair_access": True,
         "accessibility_notes": "Step-free entrance.",
+        "emergency_access": "Two fire exits to the stairwell; assembly at the promenade.",
+        "known_restrictions": "No open flames. Stage load limit 500 kg.",
         "opens_at": datetime.time(7),
         "closes_at": datetime.time(23),
     }
@@ -67,8 +64,17 @@ def venue(db):
     return make_venue()
 
 
+def daytime_period(days_ahead=30):
+    """09:00-15:00 Singapore time, inside the venue's hours, so the real booking
+    action accepts it whatever time of day the suite runs."""
+    day = timezone.localdate() + datetime.timedelta(days=days_ahead)
+    start = timezone.make_aware(datetime.datetime.combine(day, datetime.time(9)))
+    return start, start + datetime.timedelta(hours=6)
+
+
 @pytest.fixture
 def planning_event(organiser, coordinator, lead):
+    start, end = daytime_period()
     return make_event(
         organiser,
         status=EventStatus.PLANNING,
@@ -76,48 +82,46 @@ def planning_event(organiser, coordinator, lead):
         supervising_lead=lead,
         required_layout="THEATRE",
         accessibility_needs="Two wheelchair users.",
+        preferred_start=start,
+        preferred_end=end,
     )
 
 
 def approve_venue(event, venue, approver, *, attendance=120, layout="THEATRE"):
-    booking = create_booking_record(
-        requested_by=event.coordinator,
+    """The coordinator requests the venue and Venue Staff approve it (real actions)."""
+    booking = request_booking(
         event=event,
         venue=venue,
+        requested_by=event.coordinator,
         starts_at=event.preferred_start,
         ends_at=event.preferred_end,
         attendance=attendance,
         layout=layout,
     )
-    return transition_booking(booking, BookingStatus.APPROVED, approver)
+    return approve_booking(booking, approver)
 
 
 def approve_equipment(event, tech, *, quantity=2, name="Projector"):
+    """The coordinator requests equipment and Technical Support reserve it.
+
+    ``reserve`` approves the technical plan itself once every line is reserved.
+    """
     equipment_type, _ = EquipmentType.objects.get_or_create(
         code=name.upper(), defaults={"name": name, "total_quantity": 10}
     )
-    plan, _ = EquipmentPlan.objects.get_or_create(event=event)
-    plan.revision += 1
-    plan.save(update_fields=["revision"])
-    item = EquipmentRequest.objects.create(
-        plan=plan,
-        equipment_type=equipment_type,
+    item = create_request(
+        event=event,
+        requested_by=event.coordinator,
+        equipment_type=equipment_type.pk,
         quantity=quantity,
         technical_requirements="HDMI to both stage screens",
-        status=EquipmentRequestStatus.RESERVED,
-        requested_by=event.coordinator,
     )
-    EquipmentReservation.objects.create(
-        request=item,
-        quantity=quantity,
-        starts_at=event.preferred_start,
-        ends_at=event.preferred_end,
-        reserved_by=tech,
-    )
-    approval = TechnicalApproval.objects.create(
-        plan=plan, plan_revision=plan.revision, approved_by=tech
-    )
-    return plan, item, approval
+    item.refresh_from_db()
+    reserve(equipment_request=item, actor=tech, expected_revision=item.plan.revision)
+    plan = item.plan
+    plan.refresh_from_db()
+    item.refresh_from_db()
+    return plan, item, plan.technical_approvals.order_by("-pk").first()
 
 
 @pytest.fixture

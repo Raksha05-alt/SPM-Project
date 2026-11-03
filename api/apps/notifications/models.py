@@ -25,6 +25,9 @@ class NotificationKind(models.TextChoices):
     EQUIPMENT_REQUESTED = "EQUIPMENT_REQUESTED", "Equipment requested"
     EQUIPMENT_UPDATED = "EQUIPMENT_UPDATED", "Equipment arrangement updated"
     EVENT_CANCELLED = "EVENT_CANCELLED", "Event cancelled"
+    # SCRUM-58 - an essential resource is unavailable, and the event is confirmed.
+    RESOURCE_UNAVAILABLE = "RESOURCE_UNAVAILABLE", "Arrangement unavailable"
+    EVENT_CONFIRMED = "EVENT_CONFIRMED", "Event confirmed"
 
 
 # Assignment notices are unique per occurrence, not per lifetime of an event.

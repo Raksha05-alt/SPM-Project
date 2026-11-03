@@ -74,7 +74,7 @@ jobs:
       - name: Unit tests
         run: |
           mkdir -p test-results
-          npm run test -- --reporter=default --reporter=json --outputFile=test-results/vitest.json --coverage --coverage.include=src/pages/EquipmentPlan.tsx --coverage.include=src/api/equipmentPlans.ts --coverage.include=src/api/cancellation.ts --coverage.include=src/components/EventCancellation.tsx --coverage.include=src/components/equipment/EquipmentRelease.tsx --coverage.reporter=text --coverage.reporter=json --coverage.reportsDirectory=test-results/coverage
+          npm run test -- --reporter=default --reporter=json --outputFile=test-results/vitest.json --coverage --coverage.include='src/**/*.{ts,tsx}' --coverage.exclude='src/**/*.test.*' --coverage.exclude='src/**/__mocks__/**' --coverage.exclude=src/setupTests.ts --coverage.reporter=text --coverage.reporter=json --coverage.reporter=json-summary --coverage.reportsDirectory=test-results/coverage
         working-directory: web
       - name: Production build
         run: npm run build

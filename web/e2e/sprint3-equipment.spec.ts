@@ -98,7 +98,7 @@ test("J3 G16: request, reserve, release, re-reserve and cancel real equipment an
   await expect(line).toContainText("by Cora Coordinator");
   // The first request started planning.
   await page.reload();
-  await expect(page.getByText("Planning").first()).toBeVisible();
+  await expect(page.getByText("Planning", { exact: true })).toBeVisible();
   await signOut(page);
 
   // AC5 - another coordinator cannot add equipment to this event.

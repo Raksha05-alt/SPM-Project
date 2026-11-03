@@ -90,6 +90,8 @@ class EventRequestSerializer(serializers.ModelSerializer):
     missing_mandatory_fields = serializers.SerializerMethodField()
     is_editable = serializers.SerializerMethodField()
     approved_by_name = serializers.SerializerMethodField()
+    # SCRUM-58 AC4 - who confirmed the event, and when.
+    confirmed_by_name = serializers.SerializerMethodField()
     rejected_by_name = serializers.SerializerMethodField()
     clarifications = ClarificationSerializer(many=True, read_only=True)
     updated_by_name = serializers.SerializerMethodField()
@@ -127,6 +129,8 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "approved_by",
             "approved_by_name",
             "approved_at",
+            "confirmed_by_name",
+            "confirmed_at",
             "rejected_by",
             "rejected_by_name",
             "rejected_at",
@@ -151,6 +155,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
             "assignment_revision",
             "approved_by",
             "approved_at",
+            "confirmed_at",
             "rejected_by",
             "rejected_at",
             "rejection_reason",
@@ -180,6 +185,9 @@ class EventRequestSerializer(serializers.ModelSerializer):
 
     def get_approved_by_name(self, obj) -> str | None:
         return _display_name(obj.approved_by)
+
+    def get_confirmed_by_name(self, obj) -> str | None:
+        return _display_name(obj.confirmed_by)
 
     def get_supervising_lead_name(self, obj) -> str | None:
         return _display_name(obj.supervising_lead)

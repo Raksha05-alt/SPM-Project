@@ -95,6 +95,7 @@ class EventRequestViewSet(ModelViewSet):
             "coordinator",
             "supervising_lead",
             "approved_by",
+            "confirmed_by",
             "rejected_by",
         ).prefetch_related("clarifications__requested_by")
         if user.role == Role.EVENT_ORGANISER:

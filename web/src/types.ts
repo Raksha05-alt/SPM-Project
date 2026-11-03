@@ -77,6 +77,9 @@ export interface EventRequest {
   /** Approval decision - only sent to internal users. */
   approved_by_name?: string | null;
   approved_at?: string | null;
+  /** SCRUM-58 AC4 - who confirmed the event, and when. */
+  confirmed_by_name?: string | null;
+  confirmed_at?: string | null;
   /** SCRUM-52 - the rejection reason and date are shown to the client too. */
   rejection_reason: string;
   rejected_at: string | null;
@@ -145,6 +148,9 @@ export interface Venue {
   layout_labels: string[];
   wheelchair_access: boolean | null;
   accessibility_notes: string;
+  /** SCRUM-90 AC2 - what the Safety Officer reviews. */
+  emergency_access: string;
+  known_restrictions: string;
   opens_at: string | null;
   closes_at: string | null;
   operating_days: number[];
@@ -329,4 +335,101 @@ export interface EquipmentHolders {
   period: { starts_at: string; ends_at: string };
   availability: EquipmentAvailabilityRow;
   holders: EquipmentHolder[];
+}
+
+/** SCRUM-90 - the Operational Safety Check. */
+export type SafetyStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "CHANGES_REQUESTED"
+  | "SUPERSEDED";
+
+export type SafetyDecision = "APPROVED" | "REJECTED" | "CHANGES_REQUESTED";
+
+export interface SafetyVenueFacts {
+  booking: number;
+  venue: string;
+  location: string;
+  capacity: number;
+  booked_attendance: number;
+  layout: string;
+  starts_at: string;
+  ends_at: string;
+  wheelchair_access: boolean | null;
+  accessibility_notes: string;
+  required_facilities: string[];
+  wheelchair_access_required: boolean;
+  booking_accessibility_notes: string;
+  emergency_access: string;
+  known_restrictions: string;
+}
+
+export interface SafetyEquipmentFacts {
+  equipment: string;
+  quantity: number;
+  reserved_quantity: number;
+  status: string;
+  technical_requirements: string;
+}
+
+/** AC2 - what the Safety Officer reviews before deciding. */
+export interface SafetyFacts {
+  event: number;
+  event_name: string;
+  organisation: string;
+  expected_attendance: number | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  required_layout: string;
+  accessibility_needs: string;
+  venues: SafetyVenueFacts[];
+  equipment: SafetyEquipmentFacts[];
+  technical_approval: {
+    approved_by: string | null;
+    approved_at: string | null;
+    no_equipment_required: boolean;
+    notes: string;
+  } | null;
+  concerns: string[];
+}
+
+export interface SafetyCheck {
+  id: number;
+  event: number;
+  event_name: string;
+  event_status: EventStatus;
+  event_status_display: string;
+  event_start: string | null;
+  organisation_name: string;
+  coordinator_name: string | null;
+  status: SafetyStatus;
+  status_display: string;
+  requested_by_name: string | null;
+  requested_at: string;
+  request_note: string;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  comment: string;
+  superseded_at: string | null;
+  superseded_reason: string;
+  /** A pending or approved check that no longer matches the arrangements. */
+  is_stale: boolean;
+}
+
+export interface SafetyCheckDetail extends SafetyCheck {
+  /** The facts when the check was requested - kept as evidence. */
+  facts: SafetyFacts;
+  /** For a pending check, the arrangements as they stand now. */
+  current_facts: SafetyFacts | null;
+}
+
+/** GET /api/events/:id/safety-checks/ */
+export interface EventSafetyState {
+  checks: SafetyCheck[];
+  /** Venue and technical arrangements still missing (blocks a request). */
+  arrangement_gaps: string[];
+  /** Everything that blocks confirmation, including the safety check. */
+  confirmation_gaps: string[];
+  can_request: boolean;
 }

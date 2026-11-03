@@ -18,6 +18,8 @@ import { layoutName, useLayouts } from "../components/layouts/useLayouts";
 import { EquipmentRequests } from "../components/equipment/EquipmentRequests";
 import { EventCancellation } from "../components/EventCancellation";
 import { RejectionNotice } from "../components/RejectionNotice";
+import { SafetyCheckPanel } from "../components/safety/SafetyCheckPanel";
+import { ReadinessPanel } from "../components/confirmation/ReadinessPanel";
 import { StatusBadge } from "../components/StatusBadge";
 import { VenueSuitability } from "../components/venues/VenueSuitability";
 import { VenuePlanner } from "../components/venues/VenuePlanner";
@@ -428,6 +430,11 @@ export function CoordinatorEventDetail() {
       {/* SCRUM-74 - record the equipment the event requires. */}
       {isAssigned && <EquipmentRequests event={event} />}
       {isAssigned && <EventCancellation event={event} />}
+
+      {isAssigned && <SafetyCheckPanel eventId={event.id} status={event.status} />}
+
+      {/* SCRUM-58 - confirm the event once every essential arrangement is approved. */}
+      {isAssigned && <ReadinessPanel eventId={event.id} status={event.status} />}
 
       <ClarificationHistory clarifications={event.clarifications ?? []} />
     </div>

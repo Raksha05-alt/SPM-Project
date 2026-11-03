@@ -92,7 +92,7 @@ test("J2: request, staff approval and confirmed venue withdrawal preserve the de
   await expect(planner.getByRole("cell", { name: /Pending/ })).toBeVisible();
   // The first request started planning.
   await page.reload();
-  await expect(page.getByText("Planning").first()).toBeVisible();
+  await expect(page.getByText("Planning", { exact: true })).toBeVisible();
   await signOut(page);
 
   // AC6 - another coordinator cannot request a venue for this event.

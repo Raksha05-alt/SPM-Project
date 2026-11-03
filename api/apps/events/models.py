@@ -70,6 +70,15 @@ class EventRequest(TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="supervised_event_requests",
     )
+    # SCRUM-58 AC4 - who confirmed the event, and when.
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="confirmed_event_requests",
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
     assignment_revision = models.PositiveIntegerField(default=0)
     rejected_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
