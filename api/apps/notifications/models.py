@@ -32,6 +32,9 @@ class NotificationKind(models.TextChoices):
     SUBMITTED = "SUBMITTED", "Request submitted"
     # SCRUM-20 - an organiser's change request reaches the coordinator (or Leads).
     CHANGE_REQUESTED = "CHANGE_REQUESTED", "Change requested"
+    # SCRUM-21/81 - an attendee's registration, and an event becoming full.
+    REGISTERED = "REGISTERED", "Registration confirmed"
+    REGISTRATION_FULL = "REGISTRATION_FULL", "Registration full"
 
 
 class NotificationTarget(models.TextChoices):

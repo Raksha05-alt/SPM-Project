@@ -5,6 +5,12 @@ import { listAttendeeEvents } from "../api/events";
 import { AttendeeEvents } from "./AttendeeEvents";
 
 vi.mock("../api/events", () => ({ listAttendeeEvents: vi.fn() }));
+// SCRUM-21 - the page also shows registration; its own tests are in components/registrations.
+vi.mock("../api/registrations", () => ({
+  listMyRegistrations: vi.fn().mockResolvedValue([]),
+  getRegistrationSummary: vi.fn().mockResolvedValue({ open: false, reason: "", my_status: null }),
+}));
+vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: null }) }));
 
 function renderPage() {
   const client = new QueryClient({
