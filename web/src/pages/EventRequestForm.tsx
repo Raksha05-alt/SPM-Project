@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { ConfirmedArrangementsPanel } from "../components/confirmation/ConfirmedArrangementsPanel";
+import { RegistrationPolicyForm } from "../components/registrations/RegistrationPolicyForm";
 import { createDraft, getEvent, submitEvent, updateDraft } from "../api/events";
 import type { EventDraft } from "../api/events";
 import { Field, inputClass } from "../components/Field";
@@ -157,6 +158,11 @@ export function EventRequestForm() {
       {/* SCRUM-58 AC5 - the confirmed plan the organiser can rely on. */}
       {existing && ["CONFIRMED", "COMPLETED"].includes(existing.status) && (
         <ConfirmedArrangementsPanel eventId={existing.id} />
+      )}
+
+      {/* SCRUM-81 - the organiser controls registration once the event is approved. */}
+      {existing && ["APPROVED", "PLANNING", "CONFIRMED"].includes(existing.status) && (
+        <RegistrationPolicyForm eventId={existing.id} />
       )}
 
       {/* US-02.2 AC2 - every field blocking submission is named. */}

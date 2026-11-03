@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { listAttendeeEvents } from "../api/events";
 import { StatusBadge } from "../components/StatusBadge";
+import { MyRegistrations } from "../components/registrations/MyRegistrations";
+import { RegisterPanel } from "../components/registrations/RegisterPanel";
 
 export function AttendeeEvents() {
   const { data, isLoading, isError } = useQuery({
@@ -17,6 +19,9 @@ export function AttendeeEvents() {
     <div>
       <h1 className="mb-1 text-2xl font-semibold text-navy-700">Events</h1>
       <p className="mb-6 text-sm text-slate-500">Confirmed and recently concluded events.</p>
+
+      {/* SCRUM-21 AC4 - my registered events. */}
+      <MyRegistrations />
 
       {events.length === 0 ? (
         <p className="rounded-md border border-dashed border-slate-300 p-8 text-center text-slate-500">
@@ -38,6 +43,8 @@ export function AttendeeEvents() {
                       ? ` · Status updated ${new Date(event.status_changed_at).toLocaleString("en-SG")}`
                       : ""}
                   </p>
+                  {/* SCRUM-21/81 - register while the event is confirmed and registration is open. */}
+                  {event.status === "CONFIRMED" && <RegisterPanel eventId={event.id} />}
                 </div>
                 <StatusBadge
                   status={event.status}
