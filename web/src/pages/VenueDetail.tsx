@@ -87,6 +87,8 @@ export function VenueDetail() {
         <Detail label="Emergency access" value={venue.emergency_access || null} />
         <Detail label="Known restrictions" value={venue.known_restrictions || null} />
         <Detail label="Supported room layouts" value={venue.layout_labels.join(", ") || null} />
+        <Detail label="Setup time" value={`${venue.setup_minutes ?? 0} minutes`} />
+        <Detail label="Turnaround time" value={`${venue.turnaround_minutes ?? 0} minutes`} />
         <Detail label="Operating hours" value={venue.operating_hours} />
       </dl>
       <p className="mt-3 text-xs text-slate-500">

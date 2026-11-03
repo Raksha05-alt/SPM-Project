@@ -72,6 +72,8 @@ class Venue(TimeStampedModel):
     known_restrictions = models.TextField(
         blank=True, help_text="Known safety restrictions, such as load limits or no open flames."
     )
+    setup_minutes = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+    turnaround_minutes = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
     opens_at = models.TimeField(null=True, blank=True)
     closes_at = models.TimeField(null=True, blank=True)
     operating_days = models.JSONField(default=every_day, blank=True)

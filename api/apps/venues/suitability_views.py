@@ -30,7 +30,6 @@ from apps.venues.suitability import Requirements, assess, clean_facilities
 NOT_CHECKED = [
     "Whether the venue is free: bookings, blocks and operational status are checked "
     "separately (venue availability).",
-    "Setup and turnaround buffers: added in Sprint 4 (SCRUM-85).",
 ]
 
 

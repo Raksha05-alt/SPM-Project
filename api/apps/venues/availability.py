@@ -2,14 +2,14 @@
 
 Intervals are half-open: a block ending at 10:00 does not obstruct a 10:00 start.
 Missing operating hours are unavailable rather than assumed to be open.
-Approved bookings occupy the actual event period; holds belong to Sprint 4.
+Approved bookings occupy their setup, event and turnaround period.
 """
 
 from datetime import datetime, timedelta
 
 from django.utils import timezone
 
-from apps.venues.occupancy import conflict_references
+from apps.venues.occupancy import booking_reference, conflict_references, effective_interval
 
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -52,18 +52,33 @@ def within_operating_hours(venue, start, end):
     return operating_hours_problem(venue, start, end) is None
 
 
+def buffer_hours_warning(venue, start, end):
+    if operating_hours_problem(venue, start, end):
+        return None
+    occupied_start, occupied_end = effective_interval(venue, start, end)
+    if operating_hours_problem(venue, occupied_start, occupied_end):
+        return "Setup or turnaround extends outside operating hours. Venue Staff may still approve."
+    return None
+
+
 def availability(venue, start, end):
+    occupied_start, occupied_end = effective_interval(venue, start, end)
     # Discovery checks several venues at once. Reuse its request-scoped prefetch
     # without changing the same half-open overlap rule used by direct checks.
     if "blocks" in getattr(venue, "_prefetched_objects_cache", {}):
-        blocks = [b for b in venue.blocks.all() if b.starts_at < end and b.ends_at > start]
+        blocks = [
+            b
+            for b in venue.blocks.all()
+            if b.starts_at < occupied_end and b.ends_at > occupied_start
+        ]
     else:
-        blocks = list(venue.blocks.filter(starts_at__lt=end, ends_at__gt=start))
+        blocks = list(venue.blocks.filter(starts_at__lt=occupied_end, ends_at__gt=occupied_start))
     if hasattr(venue, "occupancy_bookings"):
         conflicts = [
-            {"id": b.pk, "event_id": b.event_id, "starts_at": b.starts_at, "ends_at": b.ends_at}
+            booking_reference(venue, b)
             for b in venue.occupancy_bookings
-            if b.starts_at < end and b.ends_at > start
+            if effective_interval(venue, b.starts_at, b.ends_at)[0] < occupied_end
+            and effective_interval(venue, b.starts_at, b.ends_at)[1] > occupied_start
         ]
     else:
         conflicts = conflict_references(venue, start, end)
@@ -76,6 +91,7 @@ def availability(venue, start, end):
     else:
         status = "available"
     return {
+        "warnings": [w] if (w := buffer_hours_warning(venue, start, end)) else [],
         "venue_id": venue.pk,
         "starts_at": start,
         "ends_at": end,
@@ -98,7 +114,10 @@ def comparison_availability(venue, start, end):
     """
     current = availability(venue, start, end)
     occupied = sorted(
-        (max(start, item["starts_at"]), min(end, item["ends_at"]))
+        (
+            max(start, item["starts_at"] - timedelta(minutes=venue.turnaround_minutes)),
+            min(end, item["ends_at"] + timedelta(minutes=venue.setup_minutes)),
+        )
         for item in current["blocks"] + current["conflicts"]
     )
     free = []

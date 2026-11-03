@@ -46,6 +46,13 @@ def _name(user):
 
 
 class VenueBookingSerializer(serializers.ModelSerializer):
+    buffer_review = serializers.SerializerMethodField()
+
+    def get_buffer_review(self, obj):
+        from apps.venues.occupancy import booking_review
+
+        return booking_review(obj)
+
     event_name = serializers.CharField(source="event.name", read_only=True)
     organisation_name = serializers.CharField(source="event.organisation.name", read_only=True)
     venue_name = serializers.CharField(source="venue.name", read_only=True)
@@ -59,6 +66,7 @@ class VenueBookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = VenueBooking
         fields = [
+            "buffer_review",
             "id",
             "event",
             "event_name",

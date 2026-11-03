@@ -151,6 +151,8 @@ export interface Venue {
   /** SCRUM-90 AC2 - what the Safety Officer reviews. */
   emergency_access: string;
   known_restrictions: string;
+  setup_minutes?: number;
+  turnaround_minutes?: number;
   opens_at: string | null;
   closes_at: string | null;
   operating_days: number[];
@@ -188,6 +190,7 @@ export interface SuitabilityReason {
 export interface VenueSuitability {
   venue: number;
   venue_name: string;
+  warnings?: string[];
   suitable: boolean;
   reasons: SuitabilityReason[];
   /** Shown beside the result; operational status is not a suitability reason. */
@@ -240,6 +243,7 @@ export interface VenueBooking {
   requested_at: string;
   decided_by_name: string | null;
   decided_at: string | null;
+  buffer_review?: { occupied_starts_at: string; occupied_ends_at: string; warnings: string[] };
   decision_reason: string;
 }
 

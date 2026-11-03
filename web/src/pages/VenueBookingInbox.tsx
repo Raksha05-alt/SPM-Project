@@ -74,6 +74,12 @@ export function VenueBookingInbox() {
                   <td className="px-4 py-3">
                     {new Date(b.starts_at).toLocaleString("en-SG")} –{" "}
                     {new Date(b.ends_at).toLocaleTimeString("en-SG")}
+                    {b.buffer_review && (
+                      <span className="block text-xs text-slate-500">
+                        Including setup/turnaround: {new Date(b.buffer_review.occupied_starts_at).toLocaleString("en-SG")}
+                        {" to "}{new Date(b.buffer_review.occupied_ends_at).toLocaleString("en-SG")}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {b.attendance} people{b.layout_name ? ` · ${b.layout_name}` : ""}

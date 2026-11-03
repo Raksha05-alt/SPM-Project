@@ -12,8 +12,8 @@ every requirement it does not meet. It is used by:
 
 Suitability is separate from availability. A suitable room can still be booked,
 blocked or out of service, and a free room can still be unsuitable; occupancy
-and blocks belong to ``apps.venues.availability`` and SCRUM-69. Setup and
-turnaround buffer warnings (live AC6) are Sprint 4, SCRUM-85.
+and blocks belong to ``apps.venues.availability`` and SCRUM-69. SCRUM-85
+adds advisory setup/turnaround operating-hours warnings, separate from suitability.
 
 Rules:
 
@@ -31,7 +31,7 @@ Rules:
 
 from dataclasses import dataclass, field
 
-from apps.venues.availability import operating_hours_problem
+from apps.venues.availability import buffer_hours_warning, operating_hours_problem
 from apps.venues.layouts import label_map
 
 WHEELCHAIR_ACCESS = "Wheelchair access"
@@ -139,6 +139,7 @@ class Suitability:
     venue_id: int
     venue_name: str
     reasons: list[Reason] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def suitable(self) -> bool:
@@ -147,6 +148,7 @@ class Suitability:
 
     def as_dict(self) -> dict:
         return {
+            **({"warnings": self.warnings} if self.warnings else {}),
             "venue": self.venue_id,
             "venue_name": self.venue_name,
             "suitable": self.suitable,
@@ -231,6 +233,10 @@ def assess(venue, requirements: Requirements, *, labels: dict[str, str] | None =
     ):
         if reason is not None:
             result.reasons.append(reason)
+    if requirements.starts_at and requirements.ends_at:
+        warning = buffer_hours_warning(venue, requirements.starts_at, requirements.ends_at)
+        if warning:
+            result.warnings.append(warning)
     return result
 
 

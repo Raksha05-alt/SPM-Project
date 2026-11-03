@@ -42,6 +42,8 @@ const EMPTY: VenueInput = {
   accessibility_notes: "",
   emergency_access: "",
   known_restrictions: "",
+  setup_minutes: 0,
+  turnaround_minutes: 0,
   opens_at: null,
   closes_at: null,
   operating_days: [0, 1, 2, 3, 4, 5, 6],
@@ -229,6 +231,12 @@ export function VenueForm({
             ))}
           </div>
         </Field>
+        {(["setup_minutes", "turnaround_minutes"] as const).map((field) => (
+          <Field key={field} label={field === "setup_minutes" ? "Setup time (minutes)" : "Turnaround time (minutes)"} htmlFor={`v-${field}`} error={errors[field]}>
+            <input id={`v-${field}`} type="number" min="0" step="1" required className={inputClass}
+              value={form[field] ?? 0} onChange={(e) => set(field, Number(e.target.value))} />
+          </Field>
+        ))}
         <Field label="Opens at" htmlFor="v-opens" error={errors.opens_at}>
           <input
             id="v-opens"

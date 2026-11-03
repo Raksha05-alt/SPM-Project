@@ -67,6 +67,9 @@ export function BookingDecision({ booking }: { booking: VenueBooking }) {
             {booking.decided_by_name}, {new Date(booking.decided_at).toLocaleString("en-SG")}
           </span>
         )}
+        {booking.buffer_review?.warnings.map((warning) => (
+          <p key={warning} role="alert" className="text-sm text-amber-800">{warning}</p>
+        ))}
         {booking.decision_reason && <span className="block">Reason: {booking.decision_reason}</span>}
       </div>
     );
@@ -74,6 +77,9 @@ export function BookingDecision({ booking }: { booking: VenueBooking }) {
 
   return (
     <div className="space-y-2">
+      {booking.buffer_review?.warnings.map((warning) => (
+        <p key={warning} role="alert" className="text-sm text-amber-800">{warning}</p>
+      ))}
       {!rejecting && (
         <div className="flex gap-2">
           <button
