@@ -5,6 +5,7 @@ import { ApiError } from "../../api/client";
 import { assignCoordinator, getLeadEvent, listCoordinators, type CoordinatorChoice, type LeadEvent } from "../../api/leadAssignments";
 import { useAuth } from "../../auth/AuthContext";
 import { ChangeHistory } from "../../components/ChangeHistory";
+import { ChangeRequests } from "../../components/changes/ChangeRequests";
 import { Field, inputClass } from "../../components/Field";
 import { StatusBadge } from "../../components/StatusBadge";
 
@@ -58,6 +59,8 @@ export function LeadEventDetail() {
         <p className="text-sm text-slate-600">By {change.assigned_by_name} · <time dateTime={change.assigned_at}>{new Date(change.assigned_at).toLocaleString("en-SG")}</time></p>
       </li>)}</ol>}
     </section>
+    {/* SCRUM-20 - change requests; Leads are told while the event is unassigned. */}
+    <ChangeRequests eventId={eventId} eventStatus={data.status} />
     {/* SCRUM-60 - internal before/after history of the event's details. */}
     <ChangeHistory eventId={eventId} />
   </div>;
