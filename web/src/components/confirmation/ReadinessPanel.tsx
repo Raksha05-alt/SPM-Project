@@ -36,7 +36,7 @@ export function ReadinessPanel({ eventId, status }: { eventId: number; status: E
   const refused =
     confirm.error instanceof ApiError
       ? ((confirm.error.body as { detail?: string; missing?: string[] } | null) ?? {})
-      : null;
+      : confirm.error ? {} : null;
 
   return (
     <section aria-label="Readiness" className="mt-6 rounded-lg border border-slate-200 bg-white p-6">

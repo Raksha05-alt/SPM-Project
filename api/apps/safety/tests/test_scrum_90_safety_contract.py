@@ -235,7 +235,10 @@ def test_c02g_a_stale_approval_cannot_confirm(approved_check, coordinator):
 
     with pytest.raises(ConfirmationBlocked) as refused:
         transition_event(event, EventStatus.CONFIRMED, coordinator)
-    assert refused.value.missing == [STALE]
+    assert refused.value.missing == [
+        "Equipment: the reservation for Projector no longer covers the requested quantity and event period.",
+        STALE,
+    ]
 
 
 def test_c02h_a_block_added_after_approval_prevents_confirmation(

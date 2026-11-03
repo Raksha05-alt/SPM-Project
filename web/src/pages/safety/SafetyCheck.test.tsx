@@ -123,6 +123,15 @@ describe("SafetyQueue (SCRUM-90)", () => {
     await user.click(screen.getByRole("tab", { name: "All checks" }));
     expect(listSafetyChecks).toHaveBeenLastCalledWith([]);
   });
+  it("allows a failed queue load to be retried", async () => {
+    vi.mocked(listSafetyChecks).mockRejectedValueOnce(new Error("Network unavailable")).mockResolvedValue([]);
+    renderAt("/safety");
+    expect(await screen.findByRole("alert")).toHaveTextContent("We could not load the safety checks.");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("No safety checks are waiting for a decision.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
 });
 
 describe("SafetyCheckReview (SCRUM-90)", () => {
@@ -194,4 +203,41 @@ describe("SafetyCheckReview (SCRUM-90)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("arrangements have changed");
     expect(screen.queryByRole("button", { name: "Record decision" })).not.toBeInTheDocument();
   });
+  it("does not offer decisions when a check cannot be loaded", async () => {
+    vi.mocked(getSafetyCheck).mockRejectedValue(new Error("Network unavailable"));
+    renderAt("/safety/checks/5");
+    expect(await screen.findByRole("alert")).toHaveTextContent("We could not load this safety check.");
+    expect(screen.queryByRole("button", { name: "Record decision" })).not.toBeInTheDocument();
+  });
+
+  it("requires a selected decision and reports a server refusal", async () => {
+    vi.mocked(getSafetyCheck).mockResolvedValue(check());
+    vi.mocked(decideSafetyCheck).mockRejectedValue(new Error("The arrangements changed. Reload this check."));
+    renderAt("/safety/checks/5");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Record decision" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose approve, request changes or reject.");
+    expect(decideSafetyCheck).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("radio", { name: /^Approve/ }));
+    await user.click(screen.getByRole("button", { name: "Record decision" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The arrangements changed. Reload this check.");
+    expect(screen.queryByRole("region", { name: "Recorded decision" })).not.toBeInTheDocument();
+  });
+
+  it("preserves superseded facts and the officer's decision for an empty equipment plan", async () => {
+    vi.mocked(getSafetyCheck).mockResolvedValue(check({
+      status: "SUPERSEDED", status_display: "Superseded by a later change", current_facts: null,
+      decided_at: "2026-10-29T03:00:00Z", decided_by_name: "Sam Safety", comment: "Keep the exits clear.",
+      superseded_at: "2026-10-30T03:00:00Z", superseded_reason: "Venue booking withdrawn.",
+      facts: { ...FACTS, equipment: [], concerns: [], technical_approval: { ...FACTS.technical_approval!, no_equipment_required: true } },
+    }));
+    renderAt("/safety/checks/5");
+    expect(await screen.findByText("Technical Support confirmed that no equipment is required.")).toBeInTheDocument();
+    expect(screen.getByText(/Showing the arrangements as they were/)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Recorded decision" })).toHaveTextContent("Decided by Sam Safety");
+    expect(screen.getByText("Keep the exits clear.")).toBeInTheDocument();
+    expect(screen.getByText(/Venue booking withdrawn./)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record decision" })).not.toBeInTheDocument();
+  });
+
 });

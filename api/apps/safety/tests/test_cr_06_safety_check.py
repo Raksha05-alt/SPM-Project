@@ -7,7 +7,6 @@ Case IDs match docs/test-cases/S3-SCRUM-90-safety.csv.
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
 
 import pytest
 from django.db import close_old_connections
@@ -560,8 +559,10 @@ def test_ac6c_an_unreported_change_is_caught_when_a_new_check_is_requested(
     api, approved_check, coordinator
 ):
     event = approved_check.event
-    event.preferred_end += timedelta(hours=2)
-    event.save(update_fields=["preferred_end"])
+    # An attendance change leaves the booked periods intact but changes what
+    # the officer reviewed. A date change also requires new resource periods.
+    event.expected_attendance += 1
+    event.save(update_fields=["expected_attendance"])
     api.force_authenticate(coordinator)
 
     assert api.get(request_url(event)).data["can_request"] is True

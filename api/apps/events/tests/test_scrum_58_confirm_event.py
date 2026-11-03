@@ -33,11 +33,21 @@ from apps.safety.tests.conftest import (  # noqa: F401 - fixtures used by name
     approve_equipment,
     approve_venue,
     make_venue,
-    planning_event,
-    ready_event,
-    safety_officer,
-    tech,
-    venue,
+)
+from apps.safety.tests.conftest import (
+    planning_event as planning_event,
+)
+from apps.safety.tests.conftest import (
+    ready_event as ready_event,
+)
+from apps.safety.tests.conftest import (
+    safety_officer as safety_officer,
+)
+from apps.safety.tests.conftest import (
+    tech as tech,
+)
+from apps.safety.tests.conftest import (
+    venue as venue,
 )
 from apps.venues.bookings import reject_booking, request_booking
 from apps.venues.models import VenueBlock

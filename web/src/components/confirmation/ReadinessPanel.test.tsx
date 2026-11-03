@@ -112,6 +112,25 @@ describe("ReadinessPanel (SCRUM-58)", () => {
     expect(screen.queryByRole("button", { name: "Confirm event" })).not.toBeInTheDocument();
   });
 
+  it("reports a failed readiness load instead of offering confirmation", async () => {
+    vi.mocked(getReadiness).mockRejectedValue(new Error("Network unavailable"));
+    wrap(<ReadinessPanel eventId={5} status="PLANNING" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("We could not check the arrangements.");
+    expect(screen.queryByRole("button", { name: "Confirm event" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["network failure", new Error("Network unavailable")],
+    ["empty error response", new ApiError(503, null, "Service unavailable")],
+  ])("reports a confirmation %s without claiming success", async (_label, error) => {
+    vi.mocked(getReadiness).mockResolvedValue(READY);
+    vi.mocked(confirmEvent).mockRejectedValue(error);
+    wrap(<ReadinessPanel eventId={5} status="PLANNING" />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Confirm event" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The event could not be confirmed.");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("is hidden before planning starts", () => {
     wrap(<ReadinessPanel eventId={5} status="SUBMITTED" />);
 
@@ -148,4 +167,23 @@ describe("ConfirmedArrangementsPanel (SCRUM-58 AC5)", () => {
     expect(screen.getByText(/Operational safety check approved/)).toBeInTheDocument();
     expect(screen.getByText(/Confirmed by Cora Coordinator/)).toBeInTheDocument();
   });
+  it("reports a failed organiser arrangements load", async () => {
+    vi.mocked(getConfirmedArrangements).mockRejectedValue(new Error("Network unavailable"));
+    wrap(<ConfirmedArrangementsPanel eventId={5} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("We could not load the confirmed arrangements.");
+  });
+
+  it("shows an explicitly empty equipment plan and a venue without a layout", async () => {
+    vi.mocked(getConfirmedArrangements).mockResolvedValue({
+      event: 5, status: "CONFIRMED", confirmed_by_name: null, confirmed_at: null,
+      venues: [{ venue: "Harbour Hall", location: "Level 2", starts_at: "2027-08-17T02:00:00Z",
+        ends_at: "2027-08-17T04:00:00Z", attendance: 60, layout: "" }],
+      equipment: [], safety_approved_at: null,
+    });
+    wrap(<ConfirmedArrangementsPanel eventId={5} />);
+    expect(await screen.findByText("No equipment required.")).toBeInTheDocument();
+    expect(screen.getByText(/60 people/)).toBeInTheDocument();
+    expect(screen.queryByText(/Operational safety check approved/)).not.toBeInTheDocument();
+  });
+
 });

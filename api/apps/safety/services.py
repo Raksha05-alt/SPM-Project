@@ -137,11 +137,34 @@ def arrangement_gaps(event: EventRequest) -> list[str]:
     if _current_technical_approval(plan) is None:
         gaps.append("Technical: the equipment plan has not been approved by Technical Support.")
     for item in _open_equipment_requests(plan):
-        if item.status != EquipmentRequestStatus.RESERVED or _active_reservation(item) is None:
+        reservation = _active_reservation(item)
+        if item.status != EquipmentRequestStatus.RESERVED or reservation is None:
             gaps.append(
                 f"Equipment: {item.quantity} x {item.equipment_type.name} "
                 "is requested but not reserved."
             )
+        elif (
+            reservation.quantity != item.quantity
+            or reservation.starts_at != event.preferred_start
+            or reservation.ends_at != event.preferred_end
+        ):
+            gaps.append(
+                f"Equipment: the reservation for {item.equipment_type.name} no longer covers "
+                "the requested quantity and event period."
+            )
+        elif not item.equipment_type.in_service:
+            gaps.append(f"Equipment: {item.equipment_type.name} is no longer offered for events.")
+        else:
+            from apps.equipment.services import available_quantity
+
+            available = available_quantity(
+                item.equipment_type, event.preferred_start, event.preferred_end, exclude_event=event
+            )
+            if available < item.quantity:
+                gaps.append(
+                    f"Equipment: {item.quantity} x {item.equipment_type.name} is required, "
+                    f"but only {available} remain usable for this period."
+                )
     return gaps
 
 

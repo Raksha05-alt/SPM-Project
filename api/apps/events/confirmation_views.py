@@ -134,9 +134,7 @@ class EquipmentUnavailableView(APIView):
         )
         reason = request.data.get("reason", "") if isinstance(request.data, dict) else ""
         try:
-            record_equipment_unavailable(
-                equipment_request=item, actor=request.user, reason=str(reason)
-            )
+            record_equipment_unavailable(equipment_request=item, actor=request.user, reason=reason)
         except EquipmentActionDenied as exc:
             _refuse(request, item.plan.event, str(exc), str(exc))
         except EquipmentActionError as exc:

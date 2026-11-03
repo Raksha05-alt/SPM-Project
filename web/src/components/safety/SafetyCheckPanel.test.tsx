@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client";
 import { getEventSafety, requestSafetyCheck } from "../../api/safety";
-import type { EventSafetyState, SafetyCheck } from "../../types";
+import type { EventSafetyState, SafetyCheck, EventStatus } from "../../types";
 import { SafetyCheckPanel } from "./SafetyCheckPanel";
 
 vi.mock("../../api/safety", () => ({ getEventSafety: vi.fn(), requestSafetyCheck: vi.fn() }));
@@ -41,11 +41,11 @@ function state(overrides: Partial<EventSafetyState> = {}): EventSafetyState {
   };
 }
 
-function renderPanel() {
+function renderPanel(status: EventStatus = "PLANNING") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <SafetyCheckPanel eventId={9} status="PLANNING" />
+      <SafetyCheckPanel eventId={9} status={status} />
     </QueryClientProvider>,
   );
 }
@@ -136,4 +136,41 @@ describe("SafetyCheckPanel (SCRUM-90)", () => {
     expect(screen.queryByText(/Superseded by a later change by/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Request/ })).not.toBeInTheDocument();
   });
+  it("reports a failed load", async () => {
+    vi.mocked(getEventSafety).mockRejectedValue(new Error("Connection lost"));
+    renderPanel();
+    expect(await screen.findByRole("alert")).toHaveTextContent("We could not load the safety check.");
+  });
+
+  it("keeps the earlier decision and reason after an arrangement change", async () => {
+    vi.mocked(getEventSafety).mockResolvedValue(state({
+      checks: [
+        { ...REJECTED, id: 6, status: "PENDING", status_display: "Awaiting Safety Officer", decided_at: null, comment: "", is_stale: true },
+        { ...REJECTED, superseded_reason: "Equipment request amended." },
+      ], can_request: false,
+    }));
+    renderPanel();
+    expect(await screen.findByText(/The arrangements changed after this check/)).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByText("Earlier checks (1)"));
+    expect(screen.getByText(REJECTED.comment)).toBeVisible();
+    expect(screen.getByText("Equipment request amended.")).toBeVisible();
+    expect(screen.getByText(/Sam Safety/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Request/ })).not.toBeInTheDocument();
+  });
+
+  it("reports a network failure when requesting a check", async () => {
+    vi.mocked(getEventSafety).mockResolvedValue(state());
+    vi.mocked(requestSafetyCheck).mockRejectedValue(new Error("Connection lost. Try again."));
+    renderPanel();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Request safety check" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Connection lost. Try again.");
+  });
+
+  it("does not show safety actions for a submitted event without checks", async () => {
+    vi.mocked(getEventSafety).mockResolvedValue(state({can_request: false}));
+    renderPanel("SUBMITTED");
+    await vi.waitFor(() => expect(getEventSafety).toHaveBeenCalledWith(9));
+    expect(screen.queryByRole("region", { name: "Operational safety check" })).not.toBeInTheDocument();
+  });
+
 });

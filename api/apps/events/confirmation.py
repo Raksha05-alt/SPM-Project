@@ -324,13 +324,13 @@ def record_equipment_unavailable(*, equipment_request, actor, reason: str) -> Eq
     )
 
     require_technical_staff(actor)
-    reason = (reason or "").strip()
-    if not reason:
+    if not isinstance(reason, str) or not reason.strip():
         raise EquipmentActionError(
             "Say why the equipment is unavailable.",
             status=400,
             reason=["A reason is required."],
         )
+    reason = reason.strip()
     event = EventRequest.objects.select_for_update().get(pk=equipment_request.plan.event_id)
     if event.status not in (EventStatus.APPROVED, EventStatus.PLANNING):
         raise EquipmentActionError("This event is not being planned.")

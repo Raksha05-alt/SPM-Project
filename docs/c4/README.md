@@ -21,3 +21,5 @@ those earlier exports. Incorporate this supplement when preparing Sprint 3 diagr
 The architecture steward updates these at the end of every sprint. The
 Definition of Done requires an update whenever a new container or component
 appears, so that the component diagram never describes a system nobody built.
+
+The [Safety and confirmation supplement](safety-confirmation.md) describes the Sprint 3 Safety Officer actor, readiness components and resource-invalidation sequence. The exported baseline diagrams remain historical.
