@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ import {
   resumeReview,
   updateEvent,
 } from "../api/events";
+import { getChangeHistory } from "../api/changeHistory";
 import { ApiError } from "../api/client";
 import type { EventRequest } from "../types";
 import { CoordinatorEventDetail } from "./CoordinatorEventDetail";
@@ -32,6 +33,10 @@ vi.mock("../api/venueBookings", () => ({
   requestVenue: vi.fn(),
 }));
 vi.mock("../api/venues", () => ({ listVenues: vi.fn(async () => []) }));
+// SCRUM-60 - the change history panel.
+vi.mock("../api/changeHistory", () => ({
+  getChangeHistory: vi.fn(async () => ({ event: 9, changes: [] })),
+}));
 vi.mock("../api/equipment", () => ({
   listEventEquipment: vi.fn(async () => []),
   listEquipmentTypes: vi.fn(async () => []),
@@ -255,6 +260,25 @@ describe("CoordinatorEventDetail", () => {
     expect(updateEvent).toHaveBeenCalledWith(9, { name: "Partner Summit 2027" });
     expect(await screen.findByRole("status")).toHaveTextContent("Changes saved.");
     expect(screen.getByText(/Last edited by Cora Coordinator/)).toBeInTheDocument();
+  });
+
+  it("SCRUM-60: saving an edit refreshes the change history", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event({ status: "PLANNING", is_editable: true }));
+    vi.mocked(updateEvent).mockResolvedValue(
+      event({ status: "PLANNING", is_editable: true, name: "Partner Summit 2027" }),
+    );
+    renderPage();
+    expect(await screen.findByRole("region", { name: "Change history" })).toBeInTheDocument();
+    await waitFor(() => expect(getChangeHistory).toHaveBeenCalledTimes(1));
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+    const name = screen.getByLabelText("Event name");
+    await userEvent.clear(name);
+    await userEvent.type(name, "Partner Summit 2027");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(getChangeHistory).toHaveBeenCalledTimes(2));
+    expect(getChangeHistory).toHaveBeenLastCalledWith(9);
   });
 
   it("SCRUM-61 AC2/AC3: no Edit details button when the coordinator may not edit", async () => {

@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { updateEvent } from "../api/events";
 import type { EventDraft } from "../api/events";
@@ -77,13 +77,18 @@ export function CoordinatorEventEditor({
   onSaved: (updated: EventRequest) => void;
   onCancel: () => void;
 }) {
+  const client = useQueryClient();
   const [draft, setDraft] = useState<Draft>(() => draftOf(event));
   const { layouts } = useLayouts();
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
   const save = useMutation({
     mutationFn: () => updateEvent(event.id, changedFields(event, draft)),
-    onSuccess: onSaved,
+    onSuccess: (updated) => {
+      // SCRUM-60 - the save may have added change-history entries.
+      void client.invalidateQueries({ queryKey: ["change-history", event.id] });
+      onSaved(updated);
+    },
   });
   const errors = fieldErrors(save.error);
 
