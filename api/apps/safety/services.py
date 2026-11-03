@@ -126,8 +126,15 @@ def arrangement_gaps(event: EventRequest) -> list[str]:
         venue = booking.venue
         if not venue.in_service:
             gaps.append(f"Venue: {venue.name} is out of service.")
+        from apps.venues.occupancy import clashes, effective_interval
+
+        if clashes(
+            venue, booking.starts_at, booking.ends_at, exclude_booking_id=booking.pk
+        ).exists():
+            gaps.append(f"Venue: {venue.name} has a setup/turnaround booking conflict.")
+        occupied_start, occupied_end = effective_interval(venue, booking.starts_at, booking.ends_at)
         blocks = VenueBlock.objects.filter(
-            venue=venue, starts_at__lt=booking.ends_at, ends_at__gt=booking.starts_at
+            venue=venue, starts_at__lt=occupied_end, ends_at__gt=occupied_start
         ).order_by("starts_at", "pk")
         for block in blocks:
             gaps.append(
@@ -198,7 +205,16 @@ def arrangement_version(event: EventRequest) -> str:
         "end": event.preferred_end,
         "attendance": event.expected_attendance,
         "venues": [
-            [b.pk, b.venue_id, b.starts_at, b.ends_at, b.attendance, b.layout]
+            [
+                b.pk,
+                b.venue_id,
+                b.starts_at,
+                b.ends_at,
+                b.attendance,
+                b.layout,
+                b.venue.setup_minutes,
+                b.venue.turnaround_minutes,
+            ]
             for b in _approved_bookings(event)
         ],
         "technical_approval": [approval.pk, approval.plan_revision] if approval else None,

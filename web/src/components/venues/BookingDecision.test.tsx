@@ -139,3 +139,16 @@ describe("BookingDecision (SCRUM-72)", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
+
+
+it("SCRUM-85 warns about buffer hours while allowing staff approval", async () => {
+  vi.mocked(approveBooking).mockClear();
+  vi.mocked(approveBooking).mockResolvedValue({ detail: "ok", booking: PENDING });
+  renderDecision({ ...PENDING, buffer_review: {
+    occupied_starts_at: "2027-03-01T01:30:00Z", occupied_ends_at: "2027-03-01T04:45:00Z",
+    warnings: ["Setup or turnaround extends outside operating hours. Venue Staff may still approve."],
+  } });
+  expect(screen.getByRole("alert")).toHaveTextContent("outside operating hours");
+  await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+  expect(approveBooking).toHaveBeenCalledWith(7);
+});

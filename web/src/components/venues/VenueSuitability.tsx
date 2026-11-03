@@ -128,6 +128,9 @@ export function VenueSuitability({ eventId }: { eventId: number }) {
                       )}
                     </span>
                   </div>
+                  {v.warnings?.map((warning) => (
+                    <p key={warning} className="text-sm text-amber-800">{warning}</p>
+                  ))}
                   {v.reasons.length > 0 && (
                     <ul className="mt-2 list-disc pl-5 text-sm text-rose-800">
                       {v.reasons.map((r) => (

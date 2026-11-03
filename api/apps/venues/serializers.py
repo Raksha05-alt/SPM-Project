@@ -81,6 +81,8 @@ class VenueSerializer(serializers.ModelSerializer):
             "accessibility_notes",
             "emergency_access",
             "known_restrictions",
+            "setup_minutes",
+            "turnaround_minutes",
             "opens_at",
             "closes_at",
             "operating_days",

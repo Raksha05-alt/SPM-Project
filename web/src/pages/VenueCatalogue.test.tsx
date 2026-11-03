@@ -126,9 +126,15 @@ describe("VenueCatalogue (SCRUM-65)", () => {
     await user.type(screen.getByLabelText("Accessibility information"), "Lift to level 30.");
     await user.type(screen.getByLabelText("Emergency access"), "Exit via east stairs.");
     await user.type(screen.getByLabelText("Known restrictions"), "No smoke machines.");
+    await user.clear(screen.getByLabelText("Setup time (minutes)"));
+    await user.type(screen.getByLabelText("Setup time (minutes)"), "30");
+    await user.clear(screen.getByLabelText("Turnaround time (minutes)"));
+    await user.type(screen.getByLabelText("Turnaround time (minutes)"), "45");
     await user.click(screen.getByRole("button", { name: "Save venue" }));
 
     expect(createVenue).toHaveBeenCalledWith({
+      setup_minutes: 30,
+      turnaround_minutes: 45,
       name: "Skyline Room",
       location: "Level 30",
       capacity: 60,

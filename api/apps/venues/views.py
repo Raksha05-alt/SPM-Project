@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import SAFE_METHODS, IsAuthenticated
@@ -7,13 +8,15 @@ from rest_framework.viewsets import ModelViewSet
 
 from apps.core.audit import record
 from apps.core.permissions import HasAnyRole
+from apps.events.models import EventRequest
+from apps.safety.services import arrangements_changed
 from apps.venues.layouts import (
     LayoutChoiceError,
     bookings_affected_by_removal,
     cached_label_map,
     claim_layouts,
 )
-from apps.venues.models import LayoutType, Venue
+from apps.venues.models import LayoutType, Venue, VenueBooking
 from apps.venues.permissions import VENUE_EDITORS, VENUE_READERS
 from apps.venues.serializers import VenueSerializer
 
@@ -87,10 +90,32 @@ class VenueViewSet(ModelViewSet):
         record(user, "POST /api/venues/", allowed=True, obj=venue)
 
     def update(self, request, *args, **kwargs):
+        # Retry outside the transaction if a concurrent request adds an event.
+        for _attempt in range(5):
+            try:
+                return self._update_locked(request, *args, **kwargs)
+            except _BookingMembershipChanged:
+                continue
+        raise ValidationError({"detail": "Bookings changed concurrently. Please retry."})
+
+    def _update_locked(self, request, *args, **kwargs):
         partial = kwargs.get("partial", False)
         action_name = f"{request.method} /api/venues/{kwargs['pk']}/"
         with transaction.atomic():
-            venue = Venue.objects.select_for_update().get(pk=self.get_object().pk)
+            venue_id = self.get_object().pk
+            event_ids = set(
+                VenueBooking.objects.filter(venue_id=venue_id).values_list("event_id", flat=True)
+            )
+            events = list(
+                EventRequest.objects.select_for_update().filter(pk__in=event_ids).order_by("pk")
+            )
+            venue = Venue.objects.select_for_update().get(pk=venue_id)
+            current_ids = set(
+                VenueBooking.objects.filter(venue_id=venue_id).values_list("event_id", flat=True)
+            )
+            if not current_ids.issubset(event_ids):
+                raise _BookingMembershipChanged
+            old_buffers = (venue.setup_minutes, venue.turnaround_minutes)
             serializer = self.get_serializer(venue, data=request.data, partial=partial)
             serializer.is_valid(raise_exception=True)
             _claim_venue_layouts(serializer.validated_data, keep=venue.layouts)
@@ -109,6 +134,19 @@ class VenueViewSet(ModelViewSet):
                 )
             # AC2 - who changed it; updated_at records when.
             venue = serializer.save(updated_by=request.user)
+            if old_buffers != (venue.setup_minutes, venue.turnaround_minutes):
+                future_ids = set(
+                    venue.bookings.occupying()
+                    .filter(ends_at__gt=timezone.now())
+                    .values_list("event_id", flat=True)
+                )
+                for event in events:
+                    if event.pk in future_ids:
+                        arrangements_changed(
+                            event,
+                            "Venue setup/turnaround changed; review arrangements.",
+                            request.user,
+                        )
             detail = ""
             if affected:
                 detail = "Layout removed; approved bookings kept: " + ", ".join(
@@ -116,3 +154,7 @@ class VenueViewSet(ModelViewSet):
                 )
             record(request.user, action_name, allowed=True, obj=venue, detail=detail)
         return Response(self.get_serializer(venue).data)
+
+
+class _BookingMembershipChanged(Exception):
+    pass
