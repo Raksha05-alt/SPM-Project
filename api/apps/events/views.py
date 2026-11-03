@@ -98,8 +98,8 @@ class EventRequestViewSet(ModelViewSet):
             "rejected_by",
         ).prefetch_related("clarifications__requested_by")
         if user.role == Role.EVENT_ORGANISER:
-            # US-02.3 / US-03.1 AC5 - a client sees only their own organisation.
-            return base.filter(organisation_id=user.organisation_id)
+            # US-02.3 / US-03.1 AC5 / SCRUM-45 AC2 - a client sees only their own organisation.
+            return self._organiser_group(base.filter(organisation_id=user.organisation_id))
         if user.role == Role.EVENT_COORDINATOR:
             # US-03.1 AC4 - drafts never reach ConnectSphere.
             return base.filter(coordinator=user).exclude(status=EventStatus.DRAFT)
@@ -108,6 +108,23 @@ class EventRequestViewSet(ModelViewSet):
         if user.role == Role.ATTENDEE:
             return base.filter(status__in=ATTENDEE_VISIBLE_STATUSES)
         return base.none()
+
+    def _organiser_group(self, events):
+        """SCRUM-45/48 - ``?group=drafts`` or ``?group=submitted`` on the organiser's list.
+
+        Drafts come back most recently saved first (SCRUM-48 AC1/AC3); requests
+        sent to ConnectSphere, most recently submitted first (SCRUM-45 AC1).
+        """
+        if self.action != "list":
+            return events
+        group = self.request.query_params.get("group", "")
+        if group == "drafts":
+            return events.filter(status=EventStatus.DRAFT).order_by("-updated_at", "-pk")
+        if group == "submitted":
+            return events.exclude(status=EventStatus.DRAFT).order_by("-submitted_at", "-pk")
+        if group:
+            raise ValidationError({"group": ["Choose drafts or submitted."]})
+        return events
 
     def get_object(self):
         """Look the object up across all rows so that a cross-organisation attempt
