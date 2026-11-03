@@ -428,7 +428,7 @@ def test_same_target_noop_and_stale_conflict(api, lead, coordinator, submitted_e
 def test_assignment_failure_rolls_back(api, lead, coordinator, submitted_event, failure):
     paths = {
         "history": "apps.events.services.CoordinatorAssignment.objects.create",
-        "notifications": "apps.events.services.Notification.objects.bulk_create",
+        "notifications": "apps.notifications.services.Notification.objects.bulk_create",
         "serialization": "apps.events.views.LeadEventSerializer.to_representation",
     }
     with patch(paths[failure], side_effect=RuntimeError("save failed")):

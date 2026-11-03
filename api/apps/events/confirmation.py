@@ -17,7 +17,7 @@ Lock order (Sprint 3 guide): event row, venue rows in ID order, equipment-type
 rows in ID order, then booking and reservation rows.
 """
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from apps.core.audit import record
@@ -30,9 +30,12 @@ from apps.equipment.models import (
     EquipmentRequestStatus,
     EquipmentReservation,
     ReservationStatus,
+    TechnicalApproval,
+    TechnicalApprovalStatus,
 )
 from apps.events.models import EventRequest
-from apps.notifications.models import Notification, NotificationKind
+from apps.notifications.models import NotificationKind
+from apps.notifications.services import notify, status_occurrence
 from apps.safety.models import SafetyStatus
 from apps.safety.services import (
     ConfirmationBlocked,
@@ -275,10 +278,14 @@ def confirm_event(event: EventRequest, actor) -> EventRequest:
     locked.confirmed_by = actor
     locked.confirmed_at = locked.status_changed_at
     locked.save(update_fields=["confirmed_by", "confirmed_at", "updated_at"])
-    Notification.objects.create(
-        recipient=locked.created_by,
+    # SCRUM-79 AC4 - the Event Organiser and the Venue Staff and Technical
+    # Support who decided this event's arrangements. A later re-confirmation
+    # is a new status occurrence, so it notifies again.
+    notify(
         event=locked,
         kind=NotificationKind.EVENT_CONFIRMED,
+        occurrence=status_occurrence(locked),
+        recipients=[locked.created_by, *involved_staff(locked)],
         message=(
             f'"{locked.name}" is confirmed. {_arrangement_summary(locked)} '
             "See the confirmed arrangements on your request."
@@ -294,18 +301,44 @@ def confirm_event(event: EventRequest, actor) -> EventRequest:
 # --------------------------------------------------------------------------
 
 
-def notify_unavailable(event: EventRequest, message: str) -> None:
+def involved_staff(event: EventRequest) -> list[int]:
+    """Active Venue Staff and Technical Support who decided the current arrangements.
+
+    The approvers of the event's approved venue bookings, and the staff who
+    reserved its active equipment or approved its technical plan.
+    """
+    from apps.accounts.models import Role, User
+
+    venue_ids = VenueBooking.objects.filter(event=event, status=BookingStatus.APPROVED).values_list(
+        "decided_by_id", flat=True
+    )
+    tech_ids = list(
+        EquipmentReservation.objects.active()
+        .filter(request__plan__event=event)
+        .values_list("reserved_by_id", flat=True)
+    ) + list(
+        TechnicalApproval.objects.filter(
+            plan__event=event, status=TechnicalApprovalStatus.APPROVED
+        ).values_list("approved_by_id", flat=True)
+    )
+    staff = User.objects.filter(is_active=True).filter(
+        models.Q(pk__in=list(venue_ids), role=Role.VENUE_STAFF)
+        | models.Q(pk__in=tech_ids, role=Role.TECHNICAL_SUPPORT)
+    )
+    return list(staff.order_by("pk").values_list("pk", flat=True))
+
+
+def notify_unavailable(event: EventRequest, message: str, *, occurrence: str) -> None:
     """Tell the Event Organiser why an essential arrangement cannot be provided.
 
     Call inside the staff action's transaction. The event is not confirmed:
     the missing arrangement stays in ``confirmation_gaps``.
     """
-    if event.created_by_id is None:
-        return
-    Notification.objects.create(
-        recipient_id=event.created_by_id,
+    notify(
         event=event,
         kind=NotificationKind.RESOURCE_UNAVAILABLE,
+        occurrence=occurrence,
+        recipients=[event.created_by_id],
         message=message,
     )
 
@@ -357,5 +390,6 @@ def record_equipment_unavailable(*, equipment_request, actor, reason: str) -> Eq
         event,
         f'{label} cannot be provided for "{event.name}", so the event is not confirmed. '
         f"Reason: {reason}",
+        occurrence=f"equipment-history:{entry.pk}",
     )
     return entry

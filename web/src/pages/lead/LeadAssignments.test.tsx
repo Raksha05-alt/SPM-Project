@@ -4,11 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../../api/leadAssignments";
+import * as history from "../../api/changeHistory";
 import { ApiError } from "../../api/client";
 import { LeadDashboard } from "./LeadDashboard";
 import { LeadEventDetail } from "./LeadEventDetail";
 
 vi.mock("../../api/leadAssignments");
+// SCRUM-60 - the page also shows the change history; these tests cover assignment.
+vi.mock("../../api/changeHistory");
 vi.mock("../../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: 7 } }) }));
 
 const initial = {
@@ -37,6 +40,7 @@ function show(detail = false) {
 describe("SCRUM-89 / SCRUM-53 Lead assignments", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(history.getChangeHistory).mockResolvedValue({ event: 1, changes: [] });
     vi.mocked(api.getLeadEvent).mockResolvedValue(initial);
     vi.mocked(api.listCoordinators).mockResolvedValue([
       { id: 2, name: "Cora", email: "cora@example.com", coordinator_available: false },

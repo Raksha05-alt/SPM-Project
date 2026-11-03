@@ -8,6 +8,7 @@ from apps.events.confirmation_views import (
     EquipmentUnavailableView,
     EventReadinessView,
 )
+from apps.events.history_views import EventChangeHistoryView
 from apps.events.views import EventRequestViewSet, event_statuses
 
 router = DefaultRouter()
@@ -32,6 +33,12 @@ urlpatterns = [
         "equipment/requests/<int:request_id>/unavailable/",
         EquipmentUnavailableView.as_view(),
         name="equipment-unavailable",
+    ),
+    # SCRUM-60 - internal before/after history; reads only.
+    path(
+        "events/<int:event_id>/change-history/",
+        EventChangeHistoryView.as_view(),
+        name="event-change-history",
     ),
     path("event-statuses/", event_statuses, name="event-statuses"),
     path("", include(router.urls)),

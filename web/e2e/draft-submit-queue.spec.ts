@@ -62,9 +62,9 @@ test("an organiser drafts and submits a request, and the coordinator sees it", a
   await signIn(page, ORGANISER);
 
   // Contact and recipient-only notices follow the persisted Lead allocation.
-  await page.getByText(/Notifications \(/).click();
-  await expect(page.getByRole("list", { name: "Assignment notifications" })).toContainText(eventName);
-  await page.getByText(/Notifications \(/).click();
+  await page.locator("summary", { hasText: "Notifications" }).click();
+  await expect(page.getByRole("list", { name: "Notifications" })).toContainText(eventName);
+  await page.locator("summary", { hasText: "Notifications" }).click();
   await page.getByRole("link", { name: eventName }).click();
   await expect(page.getByRole("region", { name: "Coordinator assignment" })).toContainText("coordinator@connectsphere.example");
   await expect(page.getByRole("link", { name: "coordinator@connectsphere.example" })).toHaveAttribute("href", "mailto:coordinator@connectsphere.example");
@@ -74,9 +74,9 @@ test("an organiser drafts and submits a request, and the coordinator sees it", a
 
   await expect(page).toHaveURL(/\/coordinator$/);
   await expect(page.getByRole("cell", { name: eventName })).toBeVisible();
-  await page.getByText(/Notifications \(/).click();
-  await expect(page.getByRole("list", { name: "Assignment notifications" })).toContainText(eventName);
-  await page.getByText(/Notifications \(/).click();
+  await page.locator("summary", { hasText: "Notifications" }).click();
+  await expect(page.getByRole("list", { name: "Notifications" })).toContainText(eventName);
+  await page.locator("summary", { hasText: "Notifications" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await signIn(page, { email: "lead@connectsphere.example", password: "connectsphere-demo" });
   await page.goto(`/lead/events/${eventId}`);

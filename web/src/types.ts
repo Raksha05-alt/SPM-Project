@@ -116,11 +116,19 @@ export interface AssignedEventRow extends QueueRow {
   requires_action: boolean;
 }
 
-export interface AssignmentNotification {
+/** SCRUM-79/82 - one of the signed-in user's own notices. */
+export interface AppNotification {
   id: number;
   event: number;
+  event_name: string;
+  kind: string;
+  kind_label: string;
   message: string;
   created_at: string;
+  read_at: string | null;
+  is_read: boolean;
+  /** Decided by the API from the user's access now; null when it opens nothing. */
+  destination: { path: string; label: string } | null;
 }
 
 export interface AttendeeEvent {

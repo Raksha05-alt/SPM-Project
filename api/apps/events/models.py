@@ -222,3 +222,64 @@ class ClarificationComment(models.Model):
 
     def __str__(self) -> str:
         return f"Note on clarification {self.clarification_id} by {self.author_id}"
+
+
+class ChangeSource(models.TextChoices):
+    """SCRUM-60 - the operation that made a recorded change."""
+
+    EVENT_EDIT = "EVENT_EDIT", "Event details edited"
+    # Recovered from SCRUM-61 audit entries, which named the fields but not their values.
+    LEGACY_AUDIT = "LEGACY_AUDIT", "Earlier edit (values not recorded)"
+
+
+class AppendOnlyError(Exception):
+    """Recorded change history is never edited or deleted."""
+
+
+class AppendOnlyQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise AppendOnlyError("Change history entries cannot be edited.")
+
+    def delete(self):
+        raise AppendOnlyError("Change history entries cannot be deleted.")
+
+
+class EventFieldChange(models.Model):
+    """SCRUM-60 - one field's before and after value, who changed it and when.
+
+    Append-only: saving an existing entry, or deleting or bulk-updating
+    entries, raises AppendOnlyError, and the API offers reads only. Values are
+    stored as JSON (datetimes as ISO 8601). ``values_recorded`` is False for
+    entries recovered from earlier audit records, whose values were never kept:
+    they are shown as "not recorded", never invented.
+    """
+
+    event = models.ForeignKey(EventRequest, on_delete=models.CASCADE, related_name="field_changes")
+    field = models.CharField(max_length=60)
+    before = models.JSONField(null=True, blank=True)
+    after = models.JSONField(null=True, blank=True)
+    values_recorded = models.BooleanField(default=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    source = models.CharField(
+        max_length=20, choices=ChangeSource.choices, default=ChangeSource.EVENT_EDIT
+    )
+    changed_at = models.DateTimeField()
+
+    objects = AppendOnlyQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-changed_at", "-pk"]
+        indexes = [models.Index(fields=["event", "-changed_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.field} changed on event {self.event_id} at {self.changed_at:%Y-%m-%d %H:%M}"
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise AppendOnlyError("Change history entries cannot be edited.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise AppendOnlyError("Change history entries cannot be deleted.")
