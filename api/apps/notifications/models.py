@@ -30,6 +30,8 @@ class NotificationKind(models.TextChoices):
     EVENT_CONFIRMED = "EVENT_CONFIRMED", "Event confirmed"
     # SCRUM-79 AC1 (Week 7 change 5) - a submitted request reaches the Lead queue.
     SUBMITTED = "SUBMITTED", "Request submitted"
+    # SCRUM-20 - an organiser's change request reaches the coordinator (or Leads).
+    CHANGE_REQUESTED = "CHANGE_REQUESTED", "Change requested"
 
 
 class NotificationTarget(models.TextChoices):

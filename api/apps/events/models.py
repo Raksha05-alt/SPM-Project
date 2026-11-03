@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from apps.core.models import TimeStampedModel
 from apps.core.statuses import EventStatus
@@ -283,3 +284,94 @@ class EventFieldChange(models.Model):
 
     def delete(self, *args, **kwargs):
         raise AppendOnlyError("Change history entries cannot be deleted.")
+
+
+class ChangeRequestStatus(models.TextChoices):
+    """SCRUM-20 - where a change request stands. Decisions are made under SCRUM-78."""
+
+    PENDING = "PENDING", "Pending"
+    APPROVED = "APPROVED", "Approved"
+    REJECTED = "REJECTED", "Rejected"
+
+
+class EventChangeRequest(TimeStampedModel):
+    """SCRUM-20 - an organiser's request to change a submitted or confirmed event.
+
+    The shared change contract (Sprint 4 INTAKE). It never edits the event:
+    ``proposed_values`` holds typed new values for named event fields only, and
+    ``target_bookings`` / ``target_equipment_requests`` hold the IDs of this
+    event's own arrangements the change concerns. ``source_values`` and
+    ``source_digest`` record the event as it was when the request was made, so
+    a later assessment (SCRUM-59/78) or apply (SCRUM-80) can tell when it is
+    stale. ``revision`` counts amendments of the request itself.
+    """
+
+    event = models.ForeignKey(
+        EventRequest, on_delete=models.PROTECT, related_name="change_requests"
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    requested_at = models.DateTimeField(default=timezone.now)
+    # AC1 - what the organiser wants changed, and why.
+    description = models.TextField()
+    reason = models.TextField()
+    proposed_values = models.JSONField(default=dict, blank=True)
+    target_bookings = models.JSONField(default=list, blank=True)
+    target_equipment_requests = models.JSONField(default=list, blank=True)
+    source_values = models.JSONField(default=dict)
+    source_digest = models.CharField(max_length=64)
+    source_status = models.CharField(max_length=20, choices=EventStatus.choices)
+    revision = models.PositiveIntegerField(default=1)
+
+    status = models.CharField(
+        max_length=20, choices=ChangeRequestStatus.choices, default=ChangeRequestStatus.PENDING
+    )
+    status_changed_at = models.DateTimeField(default=timezone.now)
+    # AC5 - the decision, recorded by the coordinator under SCRUM-78.
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_reason = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-requested_at", "-pk"]
+        indexes = [models.Index(fields=["event", "status"])]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=ChangeRequestStatus.values),
+                name="change_request_valid_status",
+            ),
+            # AC3 - a request always says what is to change, and why.
+            models.CheckConstraint(
+                condition=~models.Q(description__regex=r"^\s*$"),
+                name="change_request_has_description",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(reason__regex=r"^\s*$"),
+                name="change_request_has_reason",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(status=ChangeRequestStatus.PENDING, decided_at__isnull=True)
+                    | (
+                        ~models.Q(status=ChangeRequestStatus.PENDING)
+                        & models.Q(decided_at__isnull=False)
+                    )
+                ),
+                name="change_request_decision_time",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(status=ChangeRequestStatus.REJECTED)
+                | ~models.Q(decision_reason=""),
+                name="change_request_rejection_has_reason",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Change request {self.pk} for event {self.event_id} [{self.status}]"

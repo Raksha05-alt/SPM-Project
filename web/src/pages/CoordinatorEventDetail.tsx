@@ -11,6 +11,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { ApprovalNote } from "../components/ApprovalNote";
 import { ChangeHistory } from "../components/ChangeHistory";
+import { ChangeRequests } from "../components/changes/ChangeRequests";
 import { CLARIFIABLE_FIELDS, ClarificationHistory } from "../components/Clarifications";
 import { ClarificationNoteForm } from "../components/ClarificationNoteForm";
 import { CoordinatorEventEditor } from "../components/CoordinatorEventEditor";
@@ -430,6 +431,9 @@ export function CoordinatorEventDetail() {
 
       {/* SCRUM-74 - record the equipment the event requires. */}
       {isAssigned && <EquipmentRequests event={event} />}
+
+      {/* SCRUM-20 - the organiser's change requests for this event. */}
+      {isAssigned && <ChangeRequests eventId={event.id} eventStatus={event.status} />}
       {isAssigned && <EventCancellation event={event} />}
 
       {isAssigned && <SafetyCheckPanel eventId={event.id} status={event.status} />}

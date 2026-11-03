@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
+import { ChangeRequests } from "../components/changes/ChangeRequests";
 import { ConfirmedArrangementsPanel } from "../components/confirmation/ConfirmedArrangementsPanel";
 import { createDraft, getEvent, submitEvent, updateDraft } from "../api/events";
 import type { EventDraft } from "../api/events";
@@ -307,6 +308,11 @@ export function EventRequestForm() {
             Send to ConnectSphere
           </button>
         </div>
+      )}
+
+      {/* SCRUM-20 - after submission, changes are requested rather than edited. */}
+      {existing && existing.status !== "DRAFT" && (
+        <ChangeRequests eventId={existing.id} eventStatus={existing.status} canRequest />
       )}
 
       {existing && <ClarificationHistory clarifications={existing.clarifications ?? []} />}

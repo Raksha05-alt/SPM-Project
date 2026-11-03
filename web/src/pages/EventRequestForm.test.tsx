@@ -7,6 +7,7 @@ import { addClarificationNote, getEvent, submitEvent, updateDraft } from "../api
 import type { EventRequest } from "../types";
 import { EventRequestForm } from "./EventRequestForm";
 
+vi.mock("../api/changeRequests", () => ({ listChangeRequests: async () => [], requestChange: async () => ({}) }));
 vi.mock("../api/events", () => ({
   getEvent: vi.fn(),
   createDraft: vi.fn(),

@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from apps.events.cancellation_views import CancelEventView, CancellationPreviewView
+from apps.events.change_views import EventChangeRequestsView
 from apps.events.confirmation_views import (
     ConfirmedArrangementsView,
     ConfirmEventView,
@@ -39,6 +40,12 @@ urlpatterns = [
         "events/<int:event_id>/change-history/",
         EventChangeHistoryView.as_view(),
         name="event-change-history",
+    ),
+    # SCRUM-20 - organisers request a change; staff follow it.
+    path(
+        "events/<int:event_id>/change-requests/",
+        EventChangeRequestsView.as_view(),
+        name="event-change-requests",
     ),
     path("event-statuses/", event_statuses, name="event-statuses"),
     path("", include(router.urls)),

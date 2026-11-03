@@ -12,6 +12,7 @@ import { LeadEventDetail } from "./LeadEventDetail";
 vi.mock("../../api/leadAssignments");
 // SCRUM-60 - the page also shows the change history; these tests cover assignment.
 vi.mock("../../api/changeHistory");
+vi.mock("../../api/changeRequests", () => ({ listChangeRequests: async () => [], requestChange: async () => ({}) }));
 vi.mock("../../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: 7 } }) }));
 
 const initial = {
