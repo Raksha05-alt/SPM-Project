@@ -35,6 +35,9 @@ from dataclasses import dataclass, field
 from django.utils import timezone
 
 from apps.events.models import ChangeSource, EventRequest, VenueReview
+
+# Public SCRUM-70 provider contract; kept separate from suitability state.
+from apps.events.period_conflicts import shifted, venue_conflicts  # noqa: F401, E402
 from apps.notifications.models import NotificationKind, NotificationTarget
 from apps.notifications.services import notify
 from apps.venues.layouts import label_map

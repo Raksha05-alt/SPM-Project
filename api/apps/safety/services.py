@@ -153,6 +153,16 @@ def arrangement_gaps(event: EventRequest) -> list[str]:
     # SCRUM-66 - a booked venue flagged after the event changed must be resolved
     # before Safety reviews the arrangements or the event is confirmed.
     from apps.events.impact import open_reviews
+    from apps.events.models import VenuePeriodReview
+
+    for review in VenuePeriodReview.objects.filter(
+        booking__event=event, booking__status=BookingStatus.APPROVED
+    ).select_related("booking__venue"):
+        if review.reviewed_at is None or review.conflicts:
+            gaps.append(
+                f"Venue: {review.booking.venue.name} needs staff review of the proposed period "
+                f"{review.starts_at.isoformat()} to {review.ends_at.isoformat()}."
+            )
 
     for review in open_reviews(event):
         reasons = " ".join(r["message"] for r in review.reasons)

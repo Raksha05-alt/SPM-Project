@@ -377,6 +377,47 @@ class EventChangeRequest(TimeStampedModel):
         return f"Change request {self.pk} for event {self.event_id} [{self.status}]"
 
 
+class VenuePeriodReview(models.Model):
+    """SCRUM-70: proposed period, separate from the still-occupied booking.
+
+    A clear assessment is not a staff decision. APPLY supplies that decision
+    and replaces arrangements only after all required resource checks pass.
+    """
+
+    booking = models.ForeignKey(
+        "venues.VenueBooking", on_delete=models.PROTECT, related_name="period_reviews"
+    )
+    change_request = models.ForeignKey(EventChangeRequest, on_delete=models.PROTECT)
+    revision = models.PositiveIntegerField()
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    conflicts = models.JSONField(default=list)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_reason = models.TextField(blank=True)
+    raised_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    raised_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["booking", "change_request", "revision"],
+                name="unique_booking_change_period_review",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(ends_at__gt=models.F("starts_at")),
+                name="venue_review_positive_period",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Period review for booking {self.booking_id}, change {self.change_request_id}"
+
+
 class VenueReview(models.Model):
     """SCRUM-66 - an approved venue booking flagged for review after the event changed.
 
