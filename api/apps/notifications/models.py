@@ -35,6 +35,10 @@ class NotificationKind(models.TextChoices):
     # SCRUM-21/81 - an attendee's registration, and an event becoming full.
     REGISTERED = "REGISTERED", "Registration confirmed"
     REGISTRATION_FULL = "REGISTRATION_FULL", "Registration full"
+    # SCRUM-14/19 - withdrawal, joining the waiting list, and a place opening.
+    REG_WITHDRAWN = "REG_WITHDRAWN", "Registration withdrawn"
+    WAITLIST_JOINED = "WAITLIST_JOINED", "Joined the waiting list"
+    PLACE_AVAILABLE = "PLACE_AVAILABLE", "A place is available"
     # SCRUM-66 - an approved venue no longer suits the event after a change.
     VENUE_REVIEW = "VENUE_REVIEW", "Venue booking needs review"
 

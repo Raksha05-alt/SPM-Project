@@ -5,6 +5,8 @@ from apps.registrations.views import (
     MyRegistrationsView,
     RegisterView,
     RegistrationPolicyView,
+    WaitlistView,
+    WithdrawView,
 )
 
 urlpatterns = [
@@ -20,5 +22,12 @@ urlpatterns = [
         "events/<int:event_id>/registrations/",
         EventRegistrationsView.as_view(),
         name="event-registrations",
+    ),
+    # SCRUM-14/19 - withdrawal and the waiting list.
+    path("events/<int:event_id>/waitlist/", WaitlistView.as_view(), name="event-waitlist"),
+    path(
+        "registrations/<int:registration_id>/withdraw/",
+        WithdrawView.as_view(),
+        name="registration-withdraw",
     ),
 ]

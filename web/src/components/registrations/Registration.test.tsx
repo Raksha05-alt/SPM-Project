@@ -18,6 +18,9 @@ import { RegistrationPolicyForm } from "./RegistrationPolicyForm";
 
 vi.mock("../../api/registrations", () => ({
   getRegistrationSummary: vi.fn(),
+  joinWaitlist: vi.fn(),
+  getWithdrawalSummary: vi.fn(),
+  withdrawRegistration: vi.fn(),
   registerForEvent: vi.fn(),
   listMyRegistrations: vi.fn(),
   getRegistrationPolicy: vi.fn(),
@@ -41,6 +44,9 @@ const OPEN: RegistrationSummary = {
   remaining: 12,
   my_status: null,
   my_registration: null,
+  waitlist_offered: false,
+  waitlist_position: null,
+  waiting: 0,
 };
 
 function wrap(children: ReactNode) {
@@ -95,7 +101,11 @@ describe("RegisterPanel (SCRUM-21/81)", () => {
   });
 
   it("SCRUM-21 AC3 - an existing registration is shown instead of the form", async () => {
-    vi.mocked(getRegistrationSummary).mockResolvedValue({ ...OPEN, my_status: "REGISTERED" });
+    vi.mocked(getRegistrationSummary).mockResolvedValue({
+      ...OPEN,
+      my_status: "REGISTERED",
+      my_registration: 9,
+    });
     wrap(<RegisterPanel eventId={3} />);
 
     expect(await screen.findByText("You are registered for this event.")).toBeInTheDocument();
@@ -133,6 +143,7 @@ describe("MyRegistrations (SCRUM-21 AC4)", () => {
         email: "andy@example.com",
         accessibility_requirements: "",
         registered_at: "2026-11-03T01:00:00Z",
+        withdrawn_at: null,
         event_details: {
           id: 3,
           name: "Harbour Gala",
@@ -185,6 +196,8 @@ describe("RegistrationPolicyForm (SCRUM-81)", () => {
       remaining: null,
       full: false,
       open: false,
+      waitlist_enabled: false,
+      waiting: 0,
     });
     vi.mocked(updateRegistrationPolicy).mockRejectedValue(
       new ApiError(
@@ -207,6 +220,7 @@ describe("RegistrationPolicyForm (SCRUM-81)", () => {
       closes_at: null,
       capacity: 1,
       manually_closed: false,
+      waitlist_enabled: false,
     });
     expect(
       await screen.findByText("2 people are already registered; the capacity cannot be lower."),
@@ -217,7 +231,7 @@ describe("RegistrationPolicyForm (SCRUM-81)", () => {
 it("SCRUM-87 AC6: my registrations retain both session names and their independent periods", async () => {
   vi.mocked(listMyRegistrations).mockResolvedValue([{ id: 87, event: 87, event_name: "Parallel conference",
     status: "REGISTERED", status_label: "Registered", full_name: "Andy", email: "andy@example.com",
-    accessibility_requirements: "", registered_at: "2026-11-04T01:00:00Z",
+    accessibility_requirements: "", registered_at: "2026-11-04T01:00:00Z", withdrawn_at: null,
     event_details: { id: 87, name: "Parallel conference", status: "CONFIRMED", status_label: "Confirmed",
       starts_at: "2027-06-08T02:00:00Z", ends_at: "2027-06-08T04:00:00Z", venues: [
         { session_name: "Main programme", venue: "Main Hall", location: "Level 1", starts_at: "2027-06-08T02:00:00Z", ends_at: "2027-06-08T04:00:00Z" },
