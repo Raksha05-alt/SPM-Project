@@ -29,6 +29,7 @@ export function RegistrationPolicyForm({ eventId }: { eventId: number }) {
     closes_at: "",
     capacity: "",
     manually_closed: false,
+    waitlist_enabled: false,
   });
   const [saved, setSaved] = useState(false);
   useEffect(() => {
@@ -39,6 +40,7 @@ export function RegistrationPolicyForm({ eventId }: { eventId: number }) {
         closes_at: toLocalInput(policy.data.closes_at),
         capacity: policy.data.capacity?.toString() ?? "",
         manually_closed: policy.data.manually_closed,
+        waitlist_enabled: policy.data.waitlist_enabled,
       });
     }
   }, [policy.data]);
@@ -50,6 +52,7 @@ export function RegistrationPolicyForm({ eventId }: { eventId: number }) {
         closes_at: fromLocalInput(form.closes_at),
         capacity: form.capacity ? Number(form.capacity) : null,
         manually_closed: form.manually_closed,
+        waitlist_enabled: form.waitlist_enabled,
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(["registration-policy", eventId], data);
@@ -71,6 +74,7 @@ export function RegistrationPolicyForm({ eventId }: { eventId: number }) {
         {policy.data.registered} registered
         {policy.data.capacity !== null && ` of ${policy.data.capacity}`}
         {policy.data.full ? " · Full" : ""} · {policy.data.open ? "Open now" : "Not open now"}
+        {policy.data.waiting > 0 && ` · ${policy.data.waiting} on the waiting list`}
       </p>
       <form
         className="space-y-3"
@@ -125,6 +129,14 @@ export function RegistrationPolicyForm({ eventId }: { eventId: number }) {
             onChange={(e) => setForm({ ...form, manually_closed: e.target.checked })}
           />
           Close registration now
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={form.waitlist_enabled}
+            onChange={(e) => setForm({ ...form, waitlist_enabled: e.target.checked })}
+          />
+          Offer a waiting list when the event is full
         </label>
         <button
           type="submit"

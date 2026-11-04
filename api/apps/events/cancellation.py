@@ -138,6 +138,10 @@ def cancel_event(*, event, actor, expected_version, confirm_cancel=False, reason
         roles.append(Role.SAFETY_OFFICER)
     recipients.update({p.pk: p for p in User.objects.filter(role__in=roles, is_active=True)})
     notify_cancellation(event, recipients, reason)
+    # SCRUM-18 AC5 - registered attendees, in the same transaction, once.
+    from apps.events.impact import notify_attendees_of_cancellation
+
+    notify_attendees_of_cancellation(event, occurrence=status_occurrence(event))
     record(actor, f"POST /api/events/{event.pk}/cancel/", allowed=True, obj=event, detail=reason)
     return {
         "event": event.pk,
