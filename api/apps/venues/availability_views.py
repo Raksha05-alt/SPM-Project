@@ -6,13 +6,15 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import Role
 from apps.core.permissions import HasAnyRole
+from apps.events.models import EventRequest
 from apps.venues.availability import availability, comparison_availability
 from apps.venues.block_serializers import (
     PeriodSerializer,
     VenueBlockHistorySerializer,
     VenueBlockSerializer,
 )
-from apps.venues.models import Venue, VenueBlockHistory
+from apps.venues.bookings import disrupt_bookings
+from apps.venues.models import Venue, VenueBlockHistory, VenueBooking
 from apps.venues.occupancy import occupancy_prefetch
 from apps.venues.serializers import VenueSerializer
 
@@ -73,6 +75,7 @@ def snapshot(block, actor, action):
         venue=block.venue,
         block_id=block.pk,
         reason=block.reason,
+        reason_category=block.reason_category,
         starts_at=block.starts_at,
         ends_at=block.ends_at,
         actor=actor,
@@ -80,7 +83,31 @@ def snapshot(block, actor, action):
     )
 
 
+class _MembershipChanged(Exception):
+    pass
+
+
+def _lock_block_events(venue_id):
+    ids = set(VenueBooking.objects.filter(venue_id=venue_id).values_list("event_id", flat=True))
+    list(EventRequest.objects.select_for_update().filter(pk__in=ids).order_by("pk"))
+    venue = get_object_or_404(Venue.objects.select_for_update(), pk=venue_id)
+    current = set(VenueBooking.objects.filter(venue_id=venue_id).values_list("event_id", flat=True))
+    if not current.issubset(ids):
+        raise _MembershipChanged
+    return venue
+
+
 class BlockView(APIView):
+    def dispatch(self, request, *args, **kwargs):
+        for attempt in range(5):
+            try:
+                return super().dispatch(request, *args, **kwargs)
+            except _MembershipChanged:
+                if attempt == 4:
+                    return Response(
+                        {"detail": "Bookings changed concurrently. Please retry."}, status=409
+                    )
+
     permission_classes = [HasAnyRole, IsAuthenticated]
 
     @property
@@ -89,15 +116,18 @@ class BlockView(APIView):
 
     def get(self, request, pk):
         venue = get_object_or_404(Venue, pk=pk)
-        return Response(VenueBlockSerializer(venue.blocks.all(), many=True).data)
+        return Response(
+            VenueBlockSerializer(venue.blocks.all(), many=True, context={"request": request}).data
+        )
 
     @transaction.atomic
     def post(self, request, pk):
-        venue = get_object_or_404(Venue.objects.select_for_update(), pk=pk)
-        serializer = VenueBlockSerializer(data=request.data)
+        venue = _lock_block_events(pk)
+        serializer = VenueBlockSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         block = serializer.save(venue=venue)
         snapshot(block, request.user, "created")
+        disrupt_bookings(block, request.user)
         return Response(serializer.data, status=201)
 
 
@@ -106,17 +136,20 @@ class BlockDetailView(BlockView):
 
     @transaction.atomic
     def patch(self, request, pk, block_pk):
-        venue = get_object_or_404(Venue.objects.select_for_update(), pk=pk)
+        venue = _lock_block_events(pk)
         block = get_object_or_404(venue.blocks, pk=block_pk)
-        serializer = VenueBlockSerializer(block, data=request.data, partial=True)
+        serializer = VenueBlockSerializer(
+            block, data=request.data, partial=True, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
         block = serializer.save()
         snapshot(block, request.user, "updated")
+        disrupt_bookings(block, request.user)
         return Response(serializer.data)
 
     @transaction.atomic
     def delete(self, request, pk, block_pk):
-        venue = get_object_or_404(Venue.objects.select_for_update(), pk=pk)
+        venue = _lock_block_events(pk)
         block = get_object_or_404(venue.blocks, pk=block_pk)
         snapshot(block, request.user, "removed")
         block.delete()

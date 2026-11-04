@@ -14,9 +14,40 @@ class PeriodSerializer(serializers.Serializer):
 
 
 class VenueBlockSerializer(serializers.ModelSerializer):
+    affected_bookings = serializers.SerializerMethodField()
+
+    def get_affected_bookings(self, obj):
+        from apps.accounts.models import Role
+        from apps.venues.models import BookingStatus
+
+        bookings = (
+            obj.venue.bookings.filter(
+                status=BookingStatus.DISRUPTED, history__reason__startswith=f"Block #{obj.pk}:"
+            )
+            .select_related("event")
+            .distinct()
+        )
+        request = self.context.get("request")
+        if request is None:
+            return []
+        if request.user.role != Role.VENUE_STAFF:
+            bookings = bookings.filter(event__coordinator=request.user)
+        return [
+            {"id": b.pk, "event_name": b.event.name, "status_label": "Disrupted"} for b in bookings
+        ]
+
     class Meta:
         model = VenueBlock
-        fields = ["id", "reason", "starts_at", "ends_at", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "affected_bookings",
+            "reason_category",
+            "reason",
+            "starts_at",
+            "ends_at",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate(self, attrs):
@@ -36,6 +67,7 @@ class VenueBlockHistorySerializer(serializers.ModelSerializer):
             "id",
             "block_id",
             "action",
+            "reason_category",
             "reason",
             "starts_at",
             "ends_at",

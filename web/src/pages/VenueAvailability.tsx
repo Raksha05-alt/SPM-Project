@@ -24,6 +24,7 @@ export function VenueAvailability() {
   const [end, setEnd] = useState("");
   const [period, setPeriod] = useState<{ start: string; end: string } | null>(null);
   const [editing, setEditing] = useState<number>();
+  const [category, setCategory] = useState("OTHER");
   const [reason, setReason] = useState("");
   const [blockStart, setBlockStart] = useState("");
   const [blockEnd, setBlockEnd] = useState("");
@@ -45,9 +46,9 @@ export function VenueAvailability() {
     enabled: !!id && !!period, staleTime: 0,
   });
 
-  function reset() { setEditing(undefined); setReason(""); setBlockStart(""); setBlockEnd(""); }
+  function reset() { setCategory("OTHER"); setEditing(undefined); setReason(""); setBlockStart(""); setBlockEnd(""); }
   function edit(block: VenueBlock) {
-    setEditing(block.id); setReason(block.reason);
+    setEditing(block.id); setReason(block.reason); setCategory(block.reason_category ?? "OTHER");
     setBlockStart(localInput(block.starts_at)); setBlockEnd(localInput(block.ends_at));
     setError(""); setNotice("");
   }
@@ -115,6 +116,7 @@ export function VenueAvailability() {
         {blocks.data?.length === 0 && <p>No blocked periods recorded.</p>}
         {blocks.data?.map(b => <div key={b.id} className="rounded border bg-white p-3">
           <p className="font-medium">{b.reason}</p><p>{display(b.starts_at)} to {display(b.ends_at)}</p>
+          {b.affected_bookings?.map(booking => <p key={booking.id}>Disrupted booking #{booking.id}: {booking.event_name}. Alternative arrangements required.</p>)}
           {staff && <div className="mt-2 flex gap-2">
             <button className={buttonClass} disabled={busy} onClick={() => edit(b)}>Edit</button>
             <button className={buttonClass} disabled={busy} onClick={() => void mutate(() => removeBlock(id, b.id), "Block removed.")}>Remove</button>
@@ -122,9 +124,10 @@ export function VenueAvailability() {
         </div>)}
       </section>
       {staff && <form aria-label="Block venue" className="space-y-3 rounded border bg-white p-4" onSubmit={e => {
-        e.preventDefault(); void mutate(() => saveBlock(id, { reason, starts_at: singapore(blockStart), ends_at: singapore(blockEnd) }, editing), editing ? "Block updated." : "Block saved.");
+        e.preventDefault(); void mutate(() => saveBlock(id, { reason, reason_category: category, starts_at: singapore(blockStart), ends_at: singapore(blockEnd) }, editing), editing ? "Block updated." : "Block saved.");
       }}>
         <h2 className="text-lg font-semibold">{editing ? "Edit block" : "Block venue"}</h2>
+        <label className="block">Reason category<select className={inputClass} value={category} onChange={e => setCategory(e.target.value)}>{["MAINTENANCE", "EQUIPMENT_FAILURE", "RENOVATION", "SAFETY_CONCERN", "OTHER"].map(c => <option key={c} value={c}>{c.replaceAll("_", " ")}</option>)}</select></label>
         <label className="block">Reason<textarea className={inputClass} required value={reason} onChange={e => setReason(e.target.value)} /></label>
         <label className="block">Block start<input className={inputClass} type="datetime-local" required value={blockStart} onChange={e => setBlockStart(e.target.value)} /></label>
         <label className="block">Block end<input className={inputClass} type="datetime-local" required min={blockStart} value={blockEnd} onChange={e => setBlockEnd(e.target.value)} /></label>

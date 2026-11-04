@@ -1,8 +1,8 @@
 import { request } from "./client";
 import type { Venue } from "../types";
 
-export interface BlockInput { reason: string; starts_at: string; ends_at: string }
-export interface VenueBlock extends BlockInput { id: number }
+export interface BlockInput { reason: string; reason_category?: string; starts_at: string; ends_at: string }
+export interface VenueBlock extends BlockInput { id: number; affected_bookings?: { id: number; event_name: string; status_label: string }[] }
 export interface BlockHistory extends VenueBlock {
   block_id: number; action: string; actor_name: string; created_at: string;
 }

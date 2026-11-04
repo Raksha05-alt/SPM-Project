@@ -157,3 +157,13 @@ describe("EventRequestForm awaiting clarification", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+it("SCRUM-86: preserves the original disrupted venue details for the organiser", async () => {
+  vi.mocked(getEvent).mockResolvedValue({ ...awaitingClarification(), venue_disruptions: [{
+    booking: 17, venue: "Original Hall", session: "Main programme", status: "Disrupted",
+    starts_at: "2027-06-08T02:00:00Z", ends_at: "2027-06-08T04:00:00Z",
+  }] });
+  renderPage();
+  expect(await screen.findByRole("region", { name: "Disrupted venue bookings" })).toHaveTextContent("Booking #17: Main programme, Original Hall");
+  expect(screen.getByText(/Replacement arrangements require staff review/)).toBeInTheDocument();
+});

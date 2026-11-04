@@ -78,6 +78,25 @@ class RejectionInputSerializer(serializers.Serializer):
 
 
 class EventRequestSerializer(serializers.ModelSerializer):
+    venue_disruptions = serializers.SerializerMethodField()
+
+    def get_venue_disruptions(self, obj):
+        from apps.venues.models import BookingStatus
+
+        return [
+            {
+                "booking": b.pk,
+                "venue": b.venue.name,
+                "session": b.session.name,
+                "starts_at": b.starts_at,
+                "ends_at": b.ends_at,
+                "status": "Disrupted",
+            }
+            for b in obj.venue_bookings.filter(status=BookingStatus.DISRUPTED).select_related(
+                "venue", "session"
+            )
+        ]
+
     supervising_lead_name = serializers.SerializerMethodField()
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     status_description = serializers.SerializerMethodField()
@@ -99,6 +118,7 @@ class EventRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = EventRequest
         fields = [
+            "venue_disruptions",
             "id",
             "name",
             "purpose",
