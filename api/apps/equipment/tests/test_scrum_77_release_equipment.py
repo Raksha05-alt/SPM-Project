@@ -62,7 +62,10 @@ def cancel_as(api, actor, event, **overrides):
 
 
 def add_booking(api, coordinator, venue_staff, event, hall, approved=True):
-    # Keep the actual equipment and venue periods identical.
+    # Keep the actual equipment and venue periods identical. The main programme
+    # uses the event's attendance (SCRUM-87), so this 60-seat fixture needs 60 attendees.
+    event.expected_attendance = 60
+    event.save(update_fields=["expected_attendance"])
     response = request_as(
         api,
         coordinator,

@@ -132,6 +132,7 @@ export interface AppNotification {
 }
 
 export interface AttendeeEvent {
+  venues?: { session_name: string; venue: string; location: string; starts_at: string; ends_at: string }[];
   id: number;
   name: string;
   description: string;
@@ -228,6 +229,12 @@ export interface EventSuitability {
 export type BookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "WITHDRAWN";
 
 export interface VenueBooking {
+  session?: number;
+  session_name?: string;
+  session_kind?: "MAIN" | "BREAKOUT";
+  session_active?: boolean;
+  effective_attendance?: number;
+  replaces?: number | null;
   withdrawn_by_name?: string | null;
   withdrawn_at?: string | null;
   id: number;
@@ -360,6 +367,8 @@ export type SafetyStatus =
 export type SafetyDecision = "APPROVED" | "REJECTED" | "CHANGES_REQUESTED";
 
 export interface SafetyVenueFacts {
+  session_name?: string;
+  session_kind?: "MAIN" | "BREAKOUT";
   booking: number;
   venue: string;
   location: string;

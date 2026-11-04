@@ -10,7 +10,9 @@ from apps.venues.availability_views import (
     CompareAvailabilityView,
 )
 from apps.venues.booking_views import (
+    EventSessionsView,
     EventVenueBookingsView,
+    RemoveEventSessionView,
     VenueBookingDecisionView,
     VenueBookingDetailView,
     VenueBookingInboxView,
@@ -30,6 +32,11 @@ router.register("venues", VenueViewSet, basename="venue")
 router.register("layouts", LayoutTypeViewSet, basename="layout-type")
 
 urlpatterns = [
+    path("events/<int:event_id>/venue-sessions/", EventSessionsView.as_view()),
+    path(
+        "events/<int:event_id>/venue-sessions/<int:session_id>/remove/",
+        RemoveEventSessionView.as_view(),
+    ),
     path(
         "events/<int:event_id>/venue-bookings/<int:booking_id>/withdraw/",
         WithdrawVenueBookingView.as_view(),

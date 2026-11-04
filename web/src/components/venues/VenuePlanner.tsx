@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError } from "../../api/client";
-import { listEventBookings, requestVenue, withdrawVenue } from "../../api/venueBookings";
+import { listEventBookings, removeVenueSession, requestVenue, withdrawVenue } from "../../api/venueBookings";
 import { listVenues } from "../../api/venues";
 import type { EventRequest } from "../../types";
 import { toLocalInput } from "../CoordinatorEventEditor";
@@ -43,6 +43,9 @@ export function describeRefusal(error: unknown): Refusal {
 
 function initialForm(event: EventRequest) {
   return {
+    session: "MAIN",
+    session_name: "",
+    replaces: false,
     venue: "",
     starts_at: toLocalInput(event.preferred_start),
     ends_at: toLocalInput(event.preferred_end),
@@ -68,6 +71,12 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
     queryFn: () => listEventBookings(event.id),
   });
   const canRequest = OPEN_TO_REQUESTS.includes(event.status);
+  const sessions = [...new Map([...(bookings.data ?? [])].reverse().filter(b => b.session && b.session_active !== false)
+    .map(b => [b.session, b])).values()];
+  const removeSession = useMutation({
+    mutationFn: (id: number) => removeVenueSession(event.id, id),
+    onSuccess: () => { setForm(current => ({ ...current, session: "MAIN" })); void queryClient.invalidateQueries(); },
+  });
   const venues = useQuery({ queryKey: ["venues"], queryFn: listVenues, enabled: canRequest });
   const { layouts } = useLayouts();
   const [form, setForm] = useState(() => initialForm(event));
@@ -75,9 +84,17 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
   const set = (key: keyof typeof form, value: string | boolean) =>
     setForm((current) => ({ ...current, [key]: value }));
 
+  const selectedSession = sessions.find(b => b.session === Number(form.session));
+  const isMain = form.session === "MAIN" || selectedSession?.session_kind === "MAIN";
+  const currentApproved = (bookings.data ?? []).find(b => b.status === "APPROVED" &&
+    (isMain ? (b.session_kind ?? "MAIN") === "MAIN" : b.session === Number(form.session)));
   const send = useMutation({
     mutationFn: () =>
       requestVenue(event.id, {
+        ...(form.session === "NEW"
+          ? { session_name: form.session_name, session_kind: "BREAKOUT" as const }
+          : form.session === "MAIN" ? {} : { session_id: Number(form.session) }),
+        ...(form.replaces && currentApproved ? { replaces_id: currentApproved.id } : {}),
         venue: form.venue ? Number(form.venue) : null,
         starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : null,
         ends_at: form.ends_at ? new Date(form.ends_at).toISOString() : null,
@@ -103,6 +120,13 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
   return (
     <section aria-label="Venue requests" className="mt-6 rounded-lg border border-slate-200 bg-white p-6">
       <h2 className="mb-3 text-sm font-semibold text-navy-700">Venue requests</h2>
+      {removeSession.isError && <p role="alert">{removeSession.error.message}</p>}
+      {canRequest && sessions.filter(s => s.session_kind === "BREAKOUT" && !(bookings.data ?? []).some(
+        b => b.session === s.session && ["PENDING", "APPROVED"].includes(b.status),
+      )).map(s => <button key={s.session} type="button" className="mb-3 mr-3 underline"
+        disabled={removeSession.isPending} onClick={() => {
+          if (window.confirm(`Remove ${s.session_name} from the required programme? Booking history will remain.`)) removeSession.mutate(s.session!);
+        }}>Remove session {s.session_name}</button>)}
       {withdraw.isError && <p role="alert">{withdraw.error.message}</p>}
       {withdraw.isSuccess && <p role="status">Booking withdrawn. Venue Staff have been notified.</p>}
 
@@ -114,6 +138,7 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
         <table className="mb-4 w-full text-left text-sm">
           <thead className="text-xs uppercase tracking-wide text-slate-500">
             <tr>
+              <th className="py-2">Session</th>
               <th className="py-2">Venue</th>
               <th className="py-2">When</th>
               <th className="py-2">Status</th>
@@ -122,6 +147,9 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
           <tbody className="divide-y divide-slate-200">
             {bookings.data!.map((b) => (
               <tr key={b.id}>
+                <td className="py-2">{b.session_name ?? "Main programme"}
+                  {b.session_active === false && <span className="block text-xs">Removed from programme</span>}
+                </td>
                 <td className="py-2 font-medium text-navy-700">{b.venue_name}</td>
                 <td className="py-2">
                   {new Date(b.starts_at).toLocaleString("en-SG")} –{" "}
@@ -188,6 +216,28 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
             </div>
           )}
           <div className="grid gap-x-6 sm:grid-cols-2">
+            <Field label="Session" htmlFor="request-session" error={fieldError("session")}>
+              <select id="request-session" className={inputClass} value={form.session}
+                onChange={e => {
+                  const value = e.target.value;
+                  const previous = sessions.find(b => b.session === Number(value));
+                  setForm(current => ({ ...current, session: value, replaces: false,
+                    attendance: value === "MAIN" ? String(event.expected_attendance ?? "") : previous?.attendance.toString() ?? "",
+                    ...(previous ? { starts_at: toLocalInput(previous.starts_at), ends_at: toLocalInput(previous.ends_at),
+                      layout: previous.layout, facilities: previous.required_facilities.join(", "),
+                      wheelchair: previous.wheelchair_access_required, notes: previous.accessibility_notes } : {}),
+                  }));
+                }}>
+                <option value="MAIN">Main programme</option>
+                {sessions.filter(b => b.session_kind === "BREAKOUT").map(b =>
+                  <option key={b.session} value={b.session}>{b.session_name}</option>)}
+                <option value="NEW">New breakout session</option>
+              </select>
+            </Field>
+            {form.session === "NEW" && <Field label="Session name" htmlFor="request-session-name" error={fieldError("session_name")}>
+              <input id="request-session-name" className={inputClass} maxLength={100}
+                value={form.session_name} onChange={e => set("session_name", e.target.value)} />
+            </Field>}
             <Field label="Venue" htmlFor="request-venue" error={fieldError("venue")}>
               <select
                 id="request-venue"
@@ -206,9 +256,10 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
             <Field label="Attendance" htmlFor="request-attendance" error={fieldError("attendance")}>
               <input
                 id="request-attendance"
+                disabled={isMain}
                 type="number"
                 className={inputClass}
-                value={form.attendance}
+                value={isMain ? event.expected_attendance?.toString() ?? "" : form.attendance}
                 onChange={(e) => set("attendance", e.target.value)}
               />
             </Field>
@@ -259,6 +310,11 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
               />
             </Field>
           </div>
+          {isMain && <p className="mb-3 text-sm text-slate-500">Main programme attendance follows the event's expected attendance.</p>}
+          {currentApproved && <label className="mb-4 flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.replaces} onChange={e => set("replaces", e.target.checked)} />
+            Replace {currentApproved.venue_name} for this session after Venue Staff approve the new request
+          </label>}
           <label className="mb-4 flex items-center gap-2 text-sm">
             <input
               type="checkbox"

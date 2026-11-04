@@ -68,7 +68,7 @@ export function VenueBookingInbox() {
                 <tr key={b.id}>
                   <td className="px-4 py-3 font-medium text-navy-700">{b.venue_name}</td>
                   <td className="px-4 py-3">
-                    {b.event_name}
+                    {b.event_name}<span className="block text-xs">{b.session_name ?? "Main programme"}</span>
                     <span className="block text-xs text-slate-500">{b.organisation_name}</span>
                   </td>
                   <td className="px-4 py-3">

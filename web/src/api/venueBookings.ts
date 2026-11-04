@@ -9,6 +9,10 @@ export const withdrawVenue = (eventId: number, booking: VenueBooking, confirmRel
 
 /** SCRUM-11 - what the coordinator sends when requesting a venue. */
 export interface VenueRequestInput {
+  session_id?: number;
+  session_name?: string;
+  session_kind?: "MAIN" | "BREAKOUT";
+  replaces_id?: number;
   venue: number | null;
   starts_at: string | null;
   ends_at: string | null;
@@ -47,3 +51,6 @@ export const rejectBooking = (bookingId: number, reason: string) =>
     method: "POST",
     body: { reason },
   });
+
+export const removeVenueSession = (eventId: number, sessionId: number) =>
+  request(`/api/events/${eventId}/venue-sessions/${sessionId}/remove/`, { method: "POST", body: {} });

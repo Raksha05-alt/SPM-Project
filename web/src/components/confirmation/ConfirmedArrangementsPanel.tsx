@@ -30,7 +30,7 @@ export function ConfirmedArrangementsPanel({ eventId }: { eventId: number }) {
       <ul className="mb-3 list-inside list-disc">
         {data.venues.map((v) => (
           <li key={`${v.venue}-${v.starts_at}`}>
-            {v.venue}, {v.location}: {when(v.starts_at)} to {when(v.ends_at)}, {v.attendance}{" "}
+            {v.session_name && <strong>{v.session_name}: </strong>}{v.venue}, {v.location}: {when(v.starts_at)} to {when(v.ends_at)}, {v.attendance}{" "}
             people{v.layout ? `, ${v.layout}` : ""}
           </li>
         ))}

@@ -48,6 +48,7 @@ function VenueFacts({ venue }: { venue: SafetyVenueFacts }) {
       className="rounded-lg border border-slate-200 bg-white p-5"
     >
       <h3 className="font-semibold text-navy-700">{venue.venue}</h3>
+      {venue.session_name && <p className="text-sm font-medium">{venue.session_name}</p>}
       <p className="mb-4 text-xs text-slate-500">
         {venue.location || "Location not recorded"} · {formatDateTime(venue.starts_at)} to{" "}
         {formatDateTime(venue.ends_at)}

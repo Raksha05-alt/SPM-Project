@@ -36,7 +36,11 @@ export function MyRegistrations() {
               </p>
               <p className="text-slate-600">
                 {row.event_details.venues.length > 0
-                  ? row.event_details.venues.map((v) => `${v.venue}, ${v.location}`).join("; ")
+                  ? row.event_details.venues.map((v) => <span key={`${v.session_name ?? v.venue}-${v.starts_at}`} className="block">
+                      {v.session_name && <strong>{v.session_name}: </strong>}
+                      <span>{v.venue}, {v.location}</span>
+                      {v.session_name && <span className="block text-xs">{when(v.starts_at)} to {when(v.ends_at)}</span>}
+                    </span>)
                   : "Venue to be confirmed"}
               </p>
             </li>
