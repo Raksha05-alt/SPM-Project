@@ -126,3 +126,16 @@ it("SCRUM-87 AC7: refreshed main attendance follows an event edit while breakout
   await userEvent.selectOptions(screen.getByLabelText("Session", { exact: true }), "11");
   expect(screen.getByLabelText("Attendance")).toHaveValue(30);
 });
+
+it("SCRUM-86: automatically links a replacement to the disrupted session booking", async () => {
+  vi.mocked(listEventBookings).mockResolvedValue([main, { ...breakout, status: "DISRUPTED", status_label: "Disrupted" }]);
+  const user = userEvent.setup(); show();
+  await screen.findByText("Workshop");
+  await user.selectOptions(screen.getByLabelText("Session", { exact: true }), "11");
+  await user.selectOptions(screen.getByLabelText("Venue", { exact: true }), "1");
+  await user.click(screen.getByRole("button", { name: "Send request to Venue Staff" }));
+  await waitFor(() => expect(requestVenue).toHaveBeenCalledWith(9, expect.objectContaining({
+    session_id: 11, replaces_id: 2, attendance: 30,
+  })));
+  expect(screen.getByRole("row", { name: /Breakout A Workshop/ })).toContainHTML("Disrupted");
+});

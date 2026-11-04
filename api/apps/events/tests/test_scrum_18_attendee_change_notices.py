@@ -306,3 +306,77 @@ def test_c8_periods_across_days_and_missing_details_read_clearly(organiser):
     assert describe_for_attendees(event) == (
         "When: date and time to be confirmed (Singapore time). Where: venue to be confirmed."
     )
+
+
+def test_scrum_86_real_disruption_replacement_and_fresh_safety(
+    api, confirmed, venue_staff, coordinator, safety_officer
+):
+    from apps.core.statuses import EventStatus
+    from apps.venues.bookings import approve_booking, request_booking
+    from apps.venues.models import BookingStatus
+    from apps.venues.tests.conftest import make_venue
+
+    event, people = confirmed
+    original = event.venue_bookings.get(status=BookingStatus.APPROVED)
+    api.force_authenticate(venue_staff)
+    response = api.post(
+        f"/api/venues/{original.venue_id}/blocks/",
+        {
+            "reason": "INTERNAL broken exit",
+            "reason_category": "SAFETY_CONCERN",
+            "starts_at": original.starts_at.isoformat(),
+            "ends_at": original.ends_at.isoformat(),
+        },
+        format="json",
+    )
+    assert response.status_code == 201
+    event.refresh_from_db()
+    original.refresh_from_db()
+    assert event.status == EventStatus.PLANNING and original.status == BookingStatus.DISRUPTED
+    recipients = set(
+        attendee_notices(NotificationKind.EVENT_CHANGED, people).values_list(
+            "recipient_id", flat=True
+        )
+    )
+    assert recipients == {people["ana"].pk, people["ben"].pk}
+    assert all(
+        "INTERNAL" not in n.message
+        for n in attendee_notices(NotificationKind.EVENT_CHANGED, people)
+    )
+    api.force_authenticate(coordinator)
+    refused = api.post(f"/api/events/{event.pk}/confirm/", {}, format="json")
+    assert refused.status_code == 409
+    detail = api.get(f"/api/events/{event.pk}/")
+    assert detail.status_code == 200
+    assert detail.data["venue_disruptions"][0]["booking"] == original.pk
+    assert detail.data["venue_disruptions"][0]["venue"] == original.venue.name
+    assert any(f"disrupted booking #{original.pk}" in gap for gap in refused.data["missing"])
+    old = original.venue
+    replacement_venue = make_venue(
+        name="Replacement auditorium",
+        opens_at=old.opens_at,
+        closes_at=old.closes_at,
+        capacity=old.capacity,
+        layouts=old.layouts,
+        facilities=old.facilities,
+        wheelchair_access=old.wheelchair_access,
+    )
+    replacement = request_booking(
+        event=event,
+        venue=replacement_venue,
+        requested_by=coordinator,
+        session_id=original.session_id,
+        replaces_id=original.pk,
+        starts_at=original.starts_at,
+        ends_at=original.ends_at,
+        attendance=original.attendance,
+        layout=original.layout,
+        required_facilities=original.required_facilities,
+        wheelchair_access_required=original.wheelchair_access_required,
+    )
+    approve_booking(replacement, venue_staff)
+    assert api.post(f"/api/events/{event.pk}/confirm/", {}, format="json").status_code == 409
+    decide(request_check(event, coordinator), safety_officer, SafetyStatus.APPROVED)
+    assert api.post(f"/api/events/{event.pk}/confirm/", {}, format="json").status_code == 200
+    original.refresh_from_db()
+    assert original.status == BookingStatus.DISRUPTED

@@ -95,7 +95,7 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
 
   const selectedSession = sessions.find(b => b.session === Number(form.session));
   const isMain = form.session === "MAIN" || selectedSession?.session_kind === "MAIN";
-  const currentApproved = (bookings.data ?? []).find(b => b.status === "APPROVED" &&
+  const currentApproved = (bookings.data ?? []).find(b => ["APPROVED", "DISRUPTED"].includes(b.status) &&
     (isMain ? (b.session_kind ?? "MAIN") === "MAIN" : b.session === Number(form.session)));
   const send = useMutation({
     mutationFn: () =>
@@ -103,7 +103,7 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
         ...(form.session === "NEW"
           ? { session_name: form.session_name, session_kind: "BREAKOUT" as const }
           : form.session === "MAIN" ? {} : { session_id: Number(form.session) }),
-        ...(form.replaces && currentApproved ? { replaces_id: currentApproved.id } : {}),
+        ...((form.replaces || currentApproved?.status === "DISRUPTED") && currentApproved ? { replaces_id: currentApproved.id } : {}),
         venue: form.venue ? Number(form.venue) : null,
         starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : null,
         ends_at: form.ends_at ? new Date(form.ends_at).toISOString() : null,

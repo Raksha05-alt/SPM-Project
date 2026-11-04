@@ -100,6 +100,14 @@ class VenueBlock(TimeStampedModel):
     """A half-open [starts_at, ends_at) period of unavailability."""
 
     venue = models.ForeignKey(Venue, on_delete=models.CASCADE, related_name="blocks")
+    reason_category = models.CharField(
+        max_length=20,
+        choices=[
+            (v, v.replace("_", " ").title())
+            for v in ("MAINTENANCE", "EQUIPMENT_FAILURE", "RENOVATION", "SAFETY_CONCERN", "OTHER")
+        ],
+        default="OTHER",
+    )
     reason = models.TextField()
     starts_at = models.DateTimeField()
     ends_at = models.DateTimeField()
@@ -124,6 +132,14 @@ class VenueBlockHistory(models.Model):
     block_id = models.PositiveBigIntegerField()
     action = models.CharField(
         max_length=10, choices=[(x, x) for x in ("created", "updated", "removed")]
+    )
+    reason_category = models.CharField(
+        max_length=20,
+        choices=[
+            (v, v.replace("_", " ").title())
+            for v in ("MAINTENANCE", "EQUIPMENT_FAILURE", "RENOVATION", "SAFETY_CONCERN", "OTHER")
+        ],
+        default="OTHER",
     )
     reason = models.TextField()
     starts_at = models.DateTimeField()
@@ -160,6 +176,7 @@ class VenueShortlistEntry(TimeStampedModel):
 class BookingStatus(models.TextChoices):
     """A booking has its own lifecycle, independent of the event's status."""
 
+    DISRUPTED = "DISRUPTED", "Disrupted"
     PENDING = "PENDING", "Pending"
     HELD = "HELD", "Held"
     APPROVED = "APPROVED", "Approved"

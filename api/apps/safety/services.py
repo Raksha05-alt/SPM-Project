@@ -127,6 +127,18 @@ def arrangement_gaps(event: EventRequest) -> list[str]:
             b.session_id == session.pk and b.status == BookingStatus.APPROVED for b in bookings
         ):
             gaps.append(f"Venue: session {session.name} needs an approved venue booking.")
+    resolved = set()
+    by_id = {booking.pk: booking for booking in bookings}
+    for replacement in approved:
+        original_id = replacement.replaces_id
+        while original_id in by_id and original_id not in resolved:
+            resolved.add(original_id)
+            original_id = by_id[original_id].replaces_id
+    for booking in bookings:
+        if booking.status == BookingStatus.DISRUPTED and booking.pk not in resolved:
+            gaps.append(
+                f"Venue: disrupted booking #{booking.pk} for {booking.venue.name} needs an approved replacement."
+            )
     now = timezone.now()
     approved_sessions = {booking.session_id for booking in approved}
     latest_by_session = {booking.session_id: booking.pk for booking in bookings}

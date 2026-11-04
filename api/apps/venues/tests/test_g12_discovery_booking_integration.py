@@ -250,7 +250,7 @@ def test_g12_05_cancelled_record_no_longer_occupies_without_erasing_booking_hist
     assert booking.history.filter(to_status="APPROVED").exists()
 
 
-def test_g12_06_withdrawal_keeps_an_independent_date_block(
+def test_g12_06_disruption_keeps_an_independent_date_block(
     api,
     organiser,
     coordinator,
@@ -272,13 +272,19 @@ def test_g12_06_withdrawal_keeps_an_independent_date_block(
         format="json",
     )
     assert block.status_code == 201
-    withdraw(api, coordinator, booking)
+    # SCRUM-86: a staff block now releases occupancy through Disrupted,
+    # retaining the original approval rather than requiring withdrawal.
+    booking.refresh_from_db()
+    assert booking.status == "DISRUPTED"
+    assert booking.history.filter(to_status="APPROVED").exists()
     search, calendar, saved = reads(api, coordinator, candidate, hall)
     assert search["results"] == []
     assert calendar["status"] == "blocked"
     assert saved["entries"][0]["match"]["availability_status"] == "UNAVAILABLE"
     api.force_authenticate(venue_staff)
     assert api.delete(f"/api/venues/{hall.pk}/blocks/{block.data['id']}/").status_code == 204
+    booking.refresh_from_db()
+    assert booking.status == "DISRUPTED"
     assert (
         reads(api, coordinator, candidate, hall)[2]["entries"][0]["match"]["availability_status"]
         == "AVAILABLE"

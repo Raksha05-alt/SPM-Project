@@ -10,6 +10,7 @@ const FILTERS: [string, string][] = [
   ["PENDING", "Waiting for review"],
   ["HELD", "Active holds"],
   ["EXPIRED", "Expired holds"],
+  ["DISRUPTED", "Disrupted bookings"],
   ["", "All requests"],
 ];
 

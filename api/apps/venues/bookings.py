@@ -46,10 +46,16 @@ ALLOWED_BOOKING_TRANSITIONS: dict[str, frozenset[str]] = {
         }
     ),
     BookingStatus.HELD: frozenset(
-        {BookingStatus.APPROVED, BookingStatus.EXPIRED, BookingStatus.WITHDRAWN}
+        {
+            BookingStatus.APPROVED,
+            BookingStatus.EXPIRED,
+            BookingStatus.WITHDRAWN,
+            BookingStatus.DISRUPTED,
+        }
     ),
     BookingStatus.EXPIRED: frozenset(),
-    BookingStatus.APPROVED: frozenset({BookingStatus.WITHDRAWN}),
+    BookingStatus.APPROVED: frozenset({BookingStatus.WITHDRAWN, BookingStatus.DISRUPTED}),
+    BookingStatus.DISRUPTED: frozenset(),
     BookingStatus.REJECTED: frozenset(),
     BookingStatus.WITHDRAWN: frozenset(),
 }
@@ -310,6 +316,13 @@ def transition_booking(
             f"The booking for {locked.venue.name} is now {BookingStatus(target).label.lower()}.",
             actor,
         )
+    if target == BookingStatus.APPROVED and locked.replaces_id and event.confirmed_at:
+        if locked.replaces.status == BookingStatus.DISRUPTED:
+            from apps.events.impact import notify_attendees_of_change
+
+            notify_attendees_of_change(
+                event, changed=["venue"], occurrence=f"venue-replacement:{locked.pk}"
+            )
     booking.refresh_from_db()
     return booking
 
@@ -400,12 +413,29 @@ def request_booking(
     replaces = None
     if replaces_id is not None:
         replaces = VenueBooking.objects.filter(
-            pk=replaces_id, event=locked_event, session=session, status=BookingStatus.APPROVED
+            pk=replaces_id,
+            event=locked_event,
+            session=session,
+            status__in=(BookingStatus.APPROVED, BookingStatus.DISRUPTED),
         ).first()
         if replaces is None:
             raise BookingValidationError(
-                {"replaces": "Choose this session's current approved booking."}
+                {"replaces": "Choose this session's approved or disrupted booking."}
             )
+    unresolved = VenueBooking.objects.filter(
+        session=session, status=BookingStatus.DISRUPTED
+    ).exclude(replacements__status=BookingStatus.APPROVED)
+    has_approved = VenueBooking.objects.filter(
+        session=session, status=BookingStatus.APPROVED
+    ).exists()
+    if (
+        unresolved.exists()
+        and not has_approved
+        and (replaces is None or replaces.status != BookingStatus.DISRUPTED)
+    ):
+        raise BookingValidationError(
+            {"replaces": "Link the replacement to this session's disrupted booking."}
+        )
     attendance = values.get("attendance")
     if session.kind == SessionKind.MAIN and type(attendance) is int and attendance > 0:
         values["attendance"] = locked_event.expected_attendance
@@ -572,7 +602,17 @@ def approve_booking(booking: VenueBooking, actor, *, hold_until=None) -> VenueBo
                 "event": "This session already has an approved venue. Request an explicit replacement."
             }
         )
-    if locked.replaces_id is not None and (current is None or current.pk != locked.replaces_id):
+    disrupted = (
+        locked.replaces_id is not None
+        and VenueBooking.objects.filter(
+            pk=locked.replaces_id, session=locked.session, status=BookingStatus.DISRUPTED
+        ).exists()
+    )
+    if (
+        locked.replaces_id is not None
+        and not disrupted
+        and (current is None or current.pk != locked.replaces_id)
+    ):
         raise BookingValidationError(
             {"event": "The original arrangement changed. Request a fresh replacement."}
         )
@@ -638,3 +678,51 @@ def reject_booking(booking: VenueBooking, actor, reason: str) -> VenueBooking:
         occurrence=booking_occurrence(locked),
     )
     return locked
+
+
+def disrupt_bookings(block, actor):
+    """Caller holds all affected event rows, then the venue row, in one transaction."""
+    from apps.events.impact import notify_attendees_of_change
+    from apps.venues.occupancy import effective_interval
+
+    affected = []
+    now = timezone.now()
+    for booking in block.venue.bookings.select_related("event", "venue", "session").order_by("pk"):
+        if not booking.occupies_at(now) or booking.ends_at <= now:
+            continue
+        if booking.event.status in EVENT_STATUSES_CLOSED_TO_BOOKING:
+            continue
+        start, end = effective_interval(block.venue, booking.starts_at, booking.ends_at)
+        if start >= block.ends_at or end <= block.starts_at:
+            continue
+        was_confirmed = booking.event.status == EventStatus.CONFIRMED
+        reason = f"Block #{block.pk}: {block.get_reason_category_display()}: {block.reason}"
+        transition_booking(booking, BookingStatus.DISRUPTED, actor, reason)
+        occurrence = f"venue-disrupted:{booking.pk}"
+        notify(
+            event=booking.event,
+            kind=NotificationKind.RESOURCE_UNAVAILABLE,
+            occurrence=occurrence,
+            recipients=[booking.event.coordinator_id, booking.event.created_by_id],
+            message=f'Venue {booking.venue.name} for "{booking.event.name}" is unavailable. '
+            f"Booking #{booking.pk} is disrupted; alternative arrangements are required. "
+            "The event has not been cancelled.",
+        )
+        if was_confirmed:
+            notify_attendees_of_change(booking.event, changed=["venue"], occurrence=occurrence)
+        affected.append(booking)
+    return affected
+
+
+def request_replacement(*, disrupted_booking, venue, requested_by, **values):
+    """Request through the normal suitability/availability checks, retaining the original."""
+    if disrupted_booking.status != BookingStatus.DISRUPTED:
+        raise BookingValidationError({"replaces": "Choose a disrupted booking."})
+    return request_booking(
+        event=disrupted_booking.event,
+        venue=venue,
+        requested_by=requested_by,
+        session_id=disrupted_booking.session_id,
+        replaces_id=disrupted_booking.pk,
+        **values,
+    )

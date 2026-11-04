@@ -53,12 +53,12 @@ it("saves, edits, removes and refreshes blocks", async () => {
   fireEvent.change(screen.getByLabelText("Block end"), { target: { value: "2026-11-02T12:00" } });
   fireEvent.click(screen.getByRole("button", { name: "Save block" }));
   await screen.findByText("Block saved.");
-  expect(api.saveBlock).toHaveBeenCalledWith(1, { ...block, id: undefined, reason: "Repairs" }, undefined);
+  expect(api.saveBlock).toHaveBeenCalledWith(1, { ...block, id: undefined, reason: "Repairs", reason_category: "OTHER" }, undefined);
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   expect(screen.getByLabelText("Reason")).toHaveValue("Maintenance");
   fireEvent.click(screen.getByRole("button", { name: "Save block" }));
   await screen.findByText("Block updated.");
-  expect(api.saveBlock).toHaveBeenLastCalledWith(1, { reason: "Maintenance", starts_at: block.starts_at, ends_at: block.ends_at }, 7);
+  expect(api.saveBlock).toHaveBeenLastCalledWith(1, { reason: "Maintenance", reason_category: "OTHER", starts_at: block.starts_at, ends_at: block.ends_at }, 7);
   fireEvent.click(screen.getByRole("button", { name: "Remove" }));
   await screen.findByText("Block removed.");
   expect(api.removeBlock).toHaveBeenCalledWith(1, 7);
@@ -93,4 +93,16 @@ it("identifies the event responsible for a booking conflict", async () => {
   fireEvent.change(screen.getByLabelText("Period end"), { target: { value: "2026-11-02T12:00" } });
   fireEvent.click(screen.getByRole("button", { name: "Check availability" }));
   expect(await screen.findByRole("region", { name: "Availability result" })).toHaveTextContent("Conflicting event #42 (booking #9)");
+});
+
+it("lists disrupted bookings and records the selected reason category", async () => {
+  vi.mocked(api.getBlocks).mockResolvedValue([{ ...block, affected_bookings: [{ id: 19, event_name: "Annual forum", status_label: "Disrupted" }] }]);
+  renderPage(); await selectVenue();
+  expect(screen.getByText(/Disrupted booking #19: Annual forum/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Reason category"), { target: { value: "SAFETY_CONCERN" } });
+  fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Exit damaged" } });
+  fireEvent.change(screen.getByLabelText("Block start"), { target: { value: "2026-11-02T10:00" } });
+  fireEvent.change(screen.getByLabelText("Block end"), { target: { value: "2026-11-02T12:00" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save block" }));
+  await waitFor(() => expect(api.saveBlock).toHaveBeenCalledWith(1, expect.objectContaining({ reason_category: "SAFETY_CONCERN" }), undefined));
 });

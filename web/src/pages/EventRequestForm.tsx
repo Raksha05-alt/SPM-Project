@@ -156,6 +156,11 @@ export function EventRequestForm() {
         </p>
       )}
 
+      {existing?.venue_disruptions?.length ? <section aria-label="Disrupted venue bookings" className="mb-4 rounded border border-amber-300 p-4">
+        <h2 className="font-semibold">Original venue bookings affected by disruption</h2>
+        <p>These original bookings are retained for reference. Replacement arrangements require staff review.</p>
+        {existing.venue_disruptions.map(b => <p key={b.booking}>Booking #{b.booking}: {b.session}, {b.venue} — {new Date(b.starts_at).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })} to {new Date(b.ends_at).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })} (Disrupted)</p>)}
+      </section> : null}
       {/* SCRUM-58 AC5 - the confirmed plan the organiser can rely on. */}
       {existing && ["CONFIRMED", "COMPLETED"].includes(existing.status) && (
         <ConfirmedArrangementsPanel eventId={existing.id} />

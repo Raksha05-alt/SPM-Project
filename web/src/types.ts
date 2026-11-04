@@ -80,6 +80,7 @@ export interface EventRequest {
   /** SCRUM-58 AC4 - who confirmed the event, and when. */
   confirmed_by_name?: string | null;
   confirmed_at?: string | null;
+  venue_disruptions?: { booking: number; venue: string; session: string; starts_at: string; ends_at: string; status: string }[];
   /** SCRUM-52 - the rejection reason and date are shown to the client too. */
   rejection_reason: string;
   rejected_at: string | null;
@@ -226,7 +227,7 @@ export interface EventSuitability {
 }
 
 /** SCRUM-11 - a venue booking request for an event. */
-export type BookingStatus = "PENDING" | "HELD" | "APPROVED" | "REJECTED" | "WITHDRAWN" | "EXPIRED";
+export type BookingStatus = "DISRUPTED" | "PENDING" | "HELD" | "APPROVED" | "REJECTED" | "WITHDRAWN" | "EXPIRED";
 
 export interface VenueBooking {
   session?: number;
