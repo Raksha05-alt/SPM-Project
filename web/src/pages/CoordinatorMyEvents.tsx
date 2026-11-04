@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { approveEvent, fetchMyEvents } from "../api/events";
 import { ApprovalNote } from "../components/ApprovalNote";
@@ -8,10 +9,17 @@ import type { EventStatus } from "../types";
 /** Statuses a coordinator can approve from; the API enforces the same rule. */
 const REVIEWABLE: EventStatus[] = ["SUBMITTED", "UNDER_REVIEW"];
 
+const STATUS_OPTIONS: [EventStatus, string][] = [
+  ["SUBMITTED", "Submitted"], ["UNDER_REVIEW", "Awaiting Clarification"],
+  ["APPROVED", "Approved"], ["PLANNING", "Planning"], ["CONFIRMED", "Confirmed"],
+  ["COMPLETED", "Completed"], ["CANCELLED", "Cancelled"], ["REJECTED", "Rejected"],
+];
+
 export function CoordinatorMyEvents() {
+  const [statuses, setStatuses] = useState<EventStatus[]>([]);
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["my-events"],
-    queryFn: fetchMyEvents,
+    queryKey: ["my-events", statuses],
+    queryFn: () => fetchMyEvents(statuses),
   });
   const queryClient = useQueryClient();
   const approve = useMutation({
@@ -21,9 +29,6 @@ export function CoordinatorMyEvents() {
       void queryClient.invalidateQueries({ queryKey: ["queue"] });
     },
   });
-
-  if (isLoading) return <p className="text-slate-500">Loading your events…</p>;
-  if (isError) return <p role="alert">We could not load your events.</p>;
 
   const rows = data ?? [];
 
@@ -37,6 +42,20 @@ export function CoordinatorMyEvents() {
       </div>
       <p className="mb-6 text-sm text-slate-500">Events needing your action are shown first.</p>
 
+      <fieldset className="mb-5 rounded-md border border-slate-200 bg-white p-4">
+        <legend className="px-1 text-sm font-medium">Filter by status</legend>
+        <div className="flex flex-wrap gap-4 text-sm">
+          {STATUS_OPTIONS.map(([value, label]) => <label key={value} className="flex items-center gap-2">
+            <input type="checkbox" checked={statuses.includes(value)} onChange={e =>
+              setStatuses(current => e.target.checked ? [...current, value] : current.filter(status => status !== value))
+            } />{label}
+          </label>)}
+          {statuses.length > 0 && <button type="button" className="text-navy-700 underline" onClick={() => setStatuses([])}>
+            Clear filters
+          </button>}
+        </div>
+      </fieldset>
+
       {approve.isError && (
         <p role="alert" className="mb-4 rounded-md bg-rose-50 p-3 text-sm text-rose-800">
           {approve.error.message}
@@ -44,9 +63,10 @@ export function CoordinatorMyEvents() {
       )}
 
       {/* SCRUM-54 AC3 - no assigned events is an empty state, not an error. */}
-      {rows.length === 0 ? (
+      {isLoading ? <p className="text-slate-500">Loading your events…</p> : isError ?
+        <p role="alert">We could not load your events.</p> : rows.length === 0 ? (
         <p className="rounded-md border border-dashed border-slate-300 p-8 text-center text-slate-500">
-          You have no assigned events right now.
+          {statuses.length ? "No events match the selected statuses." : "You have no assigned events right now."}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
