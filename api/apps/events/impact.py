@@ -381,3 +381,219 @@ def notify_attendees_of_cancellation(event: EventRequest, *, occurrence: str):
             "and will not take place."
         ),
     )
+
+
+# --------------------------------------------------------------------------
+# SCRUM-59/78 - assess a change request before the coordinator decides it
+# --------------------------------------------------------------------------
+#
+# ``assess_change`` composes the published providers into one read-only
+# assessment: SCRUM-66 suitability (``impact_of``), SCRUM-70 proposed-period
+# conflicts (``venue_conflicts``, buffered and hold-aware), SCRUM-12 equipment
+# stock and SCRUM-21/81 registrations. It writes nothing - it never reserves,
+# releases, approves or marks an arrangement reviewed - so the coordinator can
+# open it as often as they like. Applying an approved change is SCRUM-80.
+
+PERIOD_FIELDS = ("preferred_start", "preferred_end")
+NO_IMPACT = "This change does not affect any existing arrangements."
+
+
+def _typed(proposed: dict) -> dict:
+    """Stored proposed values with datetimes back as aware datetimes."""
+    from django.utils.dateparse import parse_datetime
+
+    values = dict(proposed)
+    for name in PERIOD_FIELDS:
+        if isinstance(values.get(name), str):
+            values[name] = parse_datetime(values[name])
+    return values
+
+
+def _period_change(event: EventRequest, proposed: dict):
+    """The proposed (start, end) when the date or time changes, else None."""
+    if not set(PERIOD_FIELDS) & set(proposed):
+        return None
+    start = proposed.get("preferred_start", event.preferred_start)
+    end = proposed.get("preferred_end", event.preferred_end)
+    if not (start and end and event.preferred_start and event.preferred_end):
+        return None
+    if (start, end) == (event.preferred_start, event.preferred_end):
+        return None
+    return start, end
+
+
+def _venue_impacts(event, change, proposed, period) -> tuple[list[dict], list[str]]:
+    from apps.venues.occupancy import conflict_references
+
+    warnings = []
+    rechecked = {item.booking.pk: item for item in impact_of(event, proposed)}
+    moved_by_booking = {}
+    if period is not None:
+        try:
+            found = venue_conflicts(event, proposed, target_bookings=change.target_bookings or None)
+        except ValueError:
+            # A booking named in the request is no longer approved: assess them all.
+            warnings.append("A venue booking named in the request is no longer approved.")
+            found = venue_conflicts(event, proposed)
+        moved_by_booking = {row["booking"]: row for row in found}
+    targeted = set(change.target_bookings)
+    rows = []
+    live = VenueBooking.objects.filter(event=event).occupying().select_related("venue", "session")
+    for booking in live.order_by("pk"):
+        moved = moved_by_booking.get(booking.pk)
+        if booking.status == BookingStatus.HELD and period is not None:
+            # A live hold occupies its slot too (SCRUM-88); SCRUM-70 covers approved ones.
+            start, end = shifted(booking, event, proposed)
+            moved = {
+                "starts_at": start,
+                "ends_at": end,
+                "conflicts": conflict_references(
+                    booking.venue, start, end, exclude_booking_id=booking.pk
+                ),
+            }
+        recheck = rechecked.get(booking.pk)
+        if moved is None and recheck is None and booking.pk not in targeted:
+            continue
+        reasons = [reason.message for reason in recheck.reasons] if recheck else []
+        clashes = [
+            {
+                "booking": clash["id"],
+                "event": clash["event_id"],
+                "starts_at": clash["starts_at"],
+                "ends_at": clash["ends_at"],
+            }
+            for clash in (moved or {}).get("conflicts", [])
+        ]
+        rows.append(
+            {
+                "booking": booking.pk,
+                "venue": booking.venue.name,
+                "session": booking.session.name,
+                "status": booking.status,
+                "status_label": booking.get_status_display(),
+                "starts_at": booking.starts_at,
+                "ends_at": booking.ends_at,
+                "proposed_starts_at": moved["starts_at"] if moved else None,
+                "proposed_ends_at": moved["ends_at"] if moved else None,
+                "rechecked_for": recheck.rechecked_for if recheck else [],
+                "unsuitable": bool(reasons),
+                "unsuitable_reasons": reasons,
+                "conflicts": clashes,
+                "referenced": booking.pk in targeted,
+            }
+        )
+        if reasons:
+            warnings.append(
+                f"{booking.venue.name} may no longer suit the event: {' '.join(reasons)}"
+            )
+        if clashes:
+            warnings.append(
+                f"{booking.venue.name} is already booked for another event at the proposed time."
+            )
+    return rows, warnings
+
+
+def _equipment_impacts(event, change, proposed, period) -> tuple[list[dict], list[str]]:
+    from apps.equipment.models import EquipmentRequest, EquipmentRequestStatus
+    from apps.equipment.services import available_quantity
+
+    warnings = []
+    notes_changed = "equipment_notes" in proposed
+    targeted = set(change.target_equipment_requests)
+    requests = (
+        EquipmentRequest.objects.filter(plan__event=event)
+        .exclude(status=EquipmentRequestStatus.WITHDRAWN)
+        .select_related("equipment_type")
+        .order_by("pk")
+    )
+    rows = []
+    for item in requests:
+        reasons = []
+        available = shortfall = None
+        if period is not None:
+            # Equipment uses the event's own period, without venue buffers.
+            available = available_quantity(item.equipment_type, *period, exclude_event=event)
+            shortfall = max(0, item.quantity - available)
+            reasons.append("The date or time changes, so its period must be checked again.")
+            if shortfall:
+                warnings.append(
+                    f"Only {available} {item.equipment_type.name} available at the proposed "
+                    f"time; {item.quantity} needed ({shortfall} short)."
+                )
+        if notes_changed:
+            reasons.append("The equipment requirements change.")
+        if item.pk in targeted:
+            reasons.append("The request names this equipment.")
+        if not reasons:
+            continue
+        rows.append(
+            {
+                "request": item.pk,
+                "equipment_type": item.equipment_type.name,
+                "quantity": item.quantity,
+                "status": item.status,
+                "status_label": item.get_status_display(),
+                "available_at_proposed_time": available,
+                "shortfall": shortfall,
+                "reasons": reasons,
+            }
+        )
+    return rows, warnings
+
+
+def _registration_impact(event, proposed, period) -> dict:
+    from apps.registrations.services import capacity_of, waiting_list
+
+    capacity = capacity_of(event)
+    reasons = []
+    if period is not None and capacity.registered:
+        reasons.append(
+            f"{capacity.registered} registered attendee(s) signed up for the current date and time."
+        )
+    attendance = proposed.get(ATTENDANCE)
+    if isinstance(attendance, int) and attendance < capacity.registered:
+        reasons.append(
+            f"The proposed attendance of {attendance} is below the {capacity.registered} "
+            "people already registered."
+        )
+    return {
+        "registered": capacity.registered,
+        "waitlisted": waiting_list(event).count(),
+        "capacity": capacity.capacity,
+        "affected": bool(reasons),
+        "reasons": reasons,
+    }
+
+
+def assess_change(change, *, event: EventRequest | None = None) -> dict:
+    """SCRUM-59 AC1 / SCRUM-78 AC1-AC4 - what a change request would affect. Read-only.
+
+    Lists the venue bookings (approved, or held and not expired), equipment
+    requests and registrations the proposed values may affect; flags a venue
+    the change would make unsuitable, such as attendance above its capacity
+    (AC2), and a clash with another booking at the proposed time (AC3); and
+    says so plainly when nothing is affected (AC4). ``stale`` is True when the
+    event has changed since the request was made.
+    """
+    from apps.events.change_requests import SIGNIFICANT_FIELDS, source_snapshot
+
+    event = event or change.event
+    proposed = _typed(change.proposed_values)
+    period = _period_change(event, proposed)
+    venues, venue_warnings = _venue_impacts(event, change, proposed, period)
+    equipment, equipment_warnings = _equipment_impacts(event, change, proposed, period)
+    registrations = _registration_impact(event, proposed, period)
+    _, digest = source_snapshot(event)
+    no_impact = not (venues or equipment or registrations["affected"])
+    return {
+        "change_request": change.pk,
+        "significant": change.significant,
+        "significant_fields": [name for name in SIGNIFICANT_FIELDS if name in proposed],
+        "stale": digest != change.source_digest,
+        "venue_bookings": venues,
+        "equipment": equipment,
+        "registrations": registrations,
+        "warnings": venue_warnings + equipment_warnings + registrations["reasons"],
+        "no_impact": no_impact,
+        "summary": NO_IMPACT if no_impact else "Review the arrangements below before deciding.",
+    }

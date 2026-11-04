@@ -5,6 +5,7 @@ import { listChangeRequests, requestChange } from "../../api/changeRequests";
 import type { EventStatus } from "../../types";
 import { Field, inputClass } from "../Field";
 import { selectableLayouts, useLayouts } from "../layouts/useLayouts";
+import { ChangeReview } from "./ChangeReview";
 
 /** Statuses that accept a change request; the API enforces the same rule. */
 const OPEN_TO_CHANGE_REQUESTS: EventStatus[] = [
@@ -65,10 +66,12 @@ export function ChangeRequests({
   eventId,
   eventStatus,
   canRequest = false,
+  canDecide = false,
 }: {
   eventId: number;
   eventStatus: EventStatus;
   canRequest?: boolean;
+  canDecide?: boolean;
 }) {
   const queryClient = useQueryClient();
   const changes = useQuery({
@@ -118,8 +121,16 @@ export function ChangeRequests({
             >
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="font-medium text-navy-700 whitespace-pre-line">{change.description}</p>
-                {/* AC5 - its current status. */}
-                <span className="font-medium">{change.status_label}</span>
+                <span className="flex items-baseline gap-2">
+                  {/* SCRUM-59 AC1 - flagged when arrangements may be affected. */}
+                  {change.significant && (
+                    <span className="rounded bg-amber-100 px-2 text-xs font-medium text-amber-900">
+                      Significant
+                    </span>
+                  )}
+                  {/* AC5 - its current status. */}
+                  <span className="font-medium">{change.status_label}</span>
+                </span>
               </div>
               <p className="mt-1 text-slate-600 whitespace-pre-line">Why: {change.reason}</p>
               {change.proposed_changes.length > 0 && (
@@ -142,6 +153,10 @@ export function ChangeRequests({
                   {new Date(change.decided_at).toLocaleString("en-SG")}
                   {change.decision_reason ? `: ${change.decision_reason}` : ""}
                 </p>
+              )}
+              {/* SCRUM-78 - the assigned coordinator assesses and decides. */}
+              {canDecide && change.status === "PENDING" && (
+                <ChangeReview change={change} eventId={eventId} />
               )}
             </li>
           ))}

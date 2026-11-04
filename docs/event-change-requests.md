@@ -45,11 +45,40 @@ event's current state under the shared locks.
 - `POST /api/events/<id>/change-requests/` - organiser only; returns the Pending
   request and a receipt message.
 
+## Assessment and decision (SCRUM-59/78, gate ASSESS)
+
+- **Significance (SCRUM-59 AC1).** `significant` is set when a request is made: it
+  proposes `SIGNIFICANT_FIELDS` (date, time, attendance, layout, accessibility,
+  equipment notes) or names an arrangement. The event's stage does not matter.
+  Migration `events/0016` classifies requests made before the field existed.
+- **`apps.events.impact.assess_change(change)`** - read-only; never reserves,
+  releases, approves or marks anything reviewed. It composes the published
+  providers: SCRUM-66 `impact_of` (suitability, such as attendance above capacity),
+  SCRUM-70 `venue_conflicts` (clashes at the proposed time, buffered and
+  hold-aware), SCRUM-12 `available_quantity` (equipment stock at the proposed time,
+  without venue buffers) and SCRUM-21/81 `capacity_of` / `waiting_list`. It returns
+  `venue_bookings` (approved and live held), `equipment`, `registrations`,
+  `warnings`, `no_impact` with a plain `summary`, and `stale` (the event changed
+  since the request).
+- **`apps.events.change_requests.decide_change(change, actor, decision, reason)`** -
+  the assigned coordinator only, under the event then request locks; `APPROVE` or
+  `REJECT` with a required reason. A stale request, or one on a Cancelled/Completed
+  event, cannot be approved (it can be rejected). Records `status`, `decided_*` and
+  notifies the organiser (`CHANGE_DECIDED`, occurrence `change-decision:<id>`). An
+  approved **significant** change also tells the Venue Staff and Technical Support
+  whose arrangements it affects (occurrence `change-approved:<id>:venue|technical`).
+  **The decision moves nothing**: no booking, reservation, registration or event field.
+
+API: `GET /api/change-requests/<id>/impact/` (assigned coordinator, Leads) and
+`POST /api/change-requests/<id>/decide/` (`{"decision": "APPROVE"|"REJECT", "reason": "..."}`;
+400 for a missing reason, 409 for an already-decided or stale request).
+
 ## For later gates
 
-- **SCRUM-59/78 (Shalika):** assess and decide; set `status`, `decided_*` and
-  notify the organiser. A preview must not write anything.
 - **SCRUM-66 (Jerom), SCRUM-70 (Adilah):** read `proposed_values` and the targets
   to assess suitability and conflicts.
-- **SCRUM-80 (Shalika):** apply under the shared locks after checking
-  `source_digest` is still current, through staff review and a fresh Safety check.
+- **SCRUM-80 (Shalika):** apply an **Approved** request under the shared locks after
+  checking `source_digest` is still current, through staff review
+  (`record_period_reviews`, `record_reviews`) and a fresh Safety check. SCRUM-59
+  AC4 (arrangements marked for review) and AC5 (back to Planning, new Safety check)
+  complete there.

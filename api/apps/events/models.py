@@ -323,6 +323,9 @@ class EventChangeRequest(TimeStampedModel):
     source_digest = models.CharField(max_length=64)
     source_status = models.CharField(max_length=20, choices=EventStatus.choices)
     revision = models.PositiveIntegerField(default=1)
+    # SCRUM-59 AC1 - set when made: the change touches date, time, attendance,
+    # venue requirements or equipment requirements, so arrangements may be affected.
+    significant = models.BooleanField(default=False)
 
     status = models.CharField(
         max_length=20, choices=ChangeRequestStatus.choices, default=ChangeRequestStatus.PENDING

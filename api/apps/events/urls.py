@@ -2,7 +2,11 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from apps.events.cancellation_views import CancelEventView, CancellationPreviewView
-from apps.events.change_views import EventChangeRequestsView
+from apps.events.change_views import (
+    ChangeDecisionView,
+    ChangeImpactView,
+    EventChangeRequestsView,
+)
 from apps.events.confirmation_views import (
     ConfirmedArrangementsView,
     ConfirmEventView,
@@ -47,6 +51,17 @@ urlpatterns = [
         "events/<int:event_id>/change-requests/",
         EventChangeRequestsView.as_view(),
         name="event-change-requests",
+    ),
+    # SCRUM-59/78 - assess a change request, then approve or reject it.
+    path(
+        "change-requests/<int:change_id>/impact/",
+        ChangeImpactView.as_view(),
+        name="change-request-impact",
+    ),
+    path(
+        "change-requests/<int:change_id>/decide/",
+        ChangeDecisionView.as_view(),
+        name="change-request-decide",
     ),
     # SCRUM-66 - approved venues flagged after the event changed, with reasons.
     path(
