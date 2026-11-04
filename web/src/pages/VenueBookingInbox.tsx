@@ -1,8 +1,10 @@
+import { formatSgt } from "../dateTime";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { listBookingInbox } from "../api/venueBookings";
 import { BookingDecision } from "../components/venues/BookingDecision";
+import { VenueReviews } from "../components/venues/VenueReviews";
 
 const FILTERS: [string, string][] = [
   ["PENDING", "Waiting for review"],
@@ -42,6 +44,10 @@ export function VenueBookingInbox() {
         </select>
       </label>
 
+      {status === "" && [...new Set(rows.map((booking) => booking.event))].map((eventId) => (
+        <VenueReviews key={eventId} eventId={eventId} />
+      ))}
+
       {isLoading && <p className="text-slate-500">Loading booking requests…</p>}
       {isError && <p role="alert">We could not load the booking requests.</p>}
       {!isLoading && !isError && rows.length === 0 && (
@@ -72,12 +78,12 @@ export function VenueBookingInbox() {
                     <span className="block text-xs text-slate-500">{b.organisation_name}</span>
                   </td>
                   <td className="px-4 py-3">
-                    {new Date(b.starts_at).toLocaleString("en-SG")} –{" "}
-                    {new Date(b.ends_at).toLocaleTimeString("en-SG")}
+                    {formatSgt(b.starts_at)} –{" "}
+                    {formatSgt(b.ends_at)}
                     {b.buffer_review && (
                       <span className="block text-xs text-slate-500">
-                        Including setup/turnaround: {new Date(b.buffer_review.occupied_starts_at).toLocaleString("en-SG")}
-                        {" to "}{new Date(b.buffer_review.occupied_ends_at).toLocaleString("en-SG")}
+                        Including setup/turnaround: {formatSgt(b.buffer_review.occupied_starts_at)}
+                        {" to "}{formatSgt(b.buffer_review.occupied_ends_at)}
                       </span>
                     )}
                   </td>
@@ -96,7 +102,7 @@ export function VenueBookingInbox() {
                   <td className="px-4 py-3">
                     {b.requested_by_name}
                     <span className="block text-xs text-slate-500">
-                      {new Date(b.requested_at).toLocaleString("en-SG")}
+                      {formatSgt(b.requested_at)}
                     </span>
                   </td>
                   <td className="px-4 py-3">{b.status_label}</td>

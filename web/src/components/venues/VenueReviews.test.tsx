@@ -54,7 +54,20 @@ describe("SCRUM-66 venue review", () => {
     ).toBeInTheDocument();
     expect(within(venue).getByText(/expected attendance changed \(by Cora Coordinator\)/)).toBeInTheDocument();
     expect(venue.querySelector("time")).toHaveAttribute("datetime", "2026-11-04T02:00:00Z");
-    expect(screen.getByText(/cannot be confirmed until each one suits it again/)).toBeInTheDocument();
+    expect(venue.querySelector("time")).toHaveTextContent("04 Nov 2026, 10:00 SGT");
+    expect(screen.getByText(/cannot be confirmed until the required venue reviews are resolved/)).toBeInTheDocument();
+  });
+
+  it("SCRUM-70 shows the proposed period and conflicting event without claiming staff approval", async () => {
+    const message = "Proposed period 02 Mar 2027, 10:00 to 02 Mar 2027, 12:00 SGT conflicts with event 12 (booking 8). The current booking is retained. Venue Staff must review the new period.";
+    vi.mocked(getVenueReviews).mockResolvedValue({
+      event: 9,
+      open: [review({ changed_fields: ["preferred_start", "preferred_end"], reasons: [{ requirement: "PERIOD", message }] })],
+      history: [],
+    });
+    renderReviews();
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByText(/start time and end time changed/)).toBeInTheDocument();
   });
 
   it("names several changed requirements and unknown fields readably", async () => {

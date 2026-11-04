@@ -1,3 +1,4 @@
+import { formatSgt } from "../../dateTime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError } from "../../api/client";
@@ -152,14 +153,14 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
                 </td>
                 <td className="py-2 font-medium text-navy-700">{b.venue_name}</td>
                 <td className="py-2">
-                  {new Date(b.starts_at).toLocaleString("en-SG")} –{" "}
-                  {new Date(b.ends_at).toLocaleTimeString("en-SG")}
+                  {formatSgt(b.starts_at)} –{" "}
+                  {formatSgt(b.ends_at)}
                 </td>
                 <td className="py-2">
                   {/* AC5 - the request's current status. */}
                   <span className="font-medium">{b.status_label}</span>
                   {b.withdrawn_at && <span className="block text-xs">
-                    Withdrawn by {b.withdrawn_by_name ?? "Deleted user"} on {new Date(b.withdrawn_at).toLocaleString("en-SG")}
+                    Withdrawn by {b.withdrawn_by_name ?? "Deleted user"} on {formatSgt(b.withdrawn_at)}
                   </span>}
                   {["PENDING", "APPROVED"].includes(b.status) &&
                     ["APPROVED", "PLANNING", "CONFIRMED", "UNDER_REVIEW"].includes(event.status) && (
