@@ -28,6 +28,7 @@ function change(overrides: Partial<ChangeRequest> = {}): ChangeRequest {
     target_bookings: [],
     target_equipment_requests: [],
     revision: 1,
+    significant: true,
     status: "PENDING",
     status_label: "Pending",
     status_changed_at: "2026-11-03T01:00:00Z",

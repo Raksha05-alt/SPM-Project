@@ -477,6 +477,8 @@ export interface ChangeRequest {
   target_bookings: number[];
   target_equipment_requests: number[];
   revision: number;
+  /** SCRUM-59 AC1 - may affect arrangements (date, time, attendance, venue or equipment). */
+  significant: boolean;
   status: ChangeRequestStatus;
   status_label: string;
   status_changed_at: string;
@@ -485,4 +487,54 @@ export interface ChangeRequest {
   decided_by_name: string | null;
   decided_at: string | null;
   decision_reason: string;
+}
+
+/** SCRUM-78 - one venue booking a change may affect, with its proposed period. */
+export interface AffectedBooking {
+  booking: number;
+  venue: string;
+  session: string;
+  status: string;
+  status_label: string;
+  starts_at: string;
+  ends_at: string;
+  proposed_starts_at: string | null;
+  proposed_ends_at: string | null;
+  rechecked_for: string[];
+  unsuitable: boolean;
+  unsuitable_reasons: string[];
+  conflicts: { booking: number; event: number; starts_at: string; ends_at: string }[];
+  referenced: boolean;
+}
+
+/** SCRUM-78 - one equipment request a change may affect. */
+export interface AffectedEquipment {
+  request: number;
+  equipment_type: string;
+  quantity: number;
+  status: string;
+  status_label: string;
+  available_at_proposed_time: number | null;
+  shortfall: number | null;
+  reasons: string[];
+}
+
+/** SCRUM-59/78 - the read-only assessment of a change request. */
+export interface ChangeAssessment {
+  change_request: number;
+  significant: boolean;
+  significant_fields: string[];
+  stale: boolean;
+  venue_bookings: AffectedBooking[];
+  equipment: AffectedEquipment[];
+  registrations: {
+    registered: number;
+    waitlisted: number;
+    capacity: number | null;
+    affected: boolean;
+    reasons: string[];
+  };
+  warnings: string[];
+  no_impact: boolean;
+  summary: string;
 }

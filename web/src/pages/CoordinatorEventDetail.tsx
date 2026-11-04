@@ -437,7 +437,7 @@ export function CoordinatorEventDetail() {
       {isAssigned && <EquipmentRequests event={event} />}
 
       {/* SCRUM-20 - the organiser's change requests for this event. */}
-      {isAssigned && <ChangeRequests eventId={event.id} eventStatus={event.status} />}
+      {isAssigned && <ChangeRequests eventId={event.id} eventStatus={event.status} canDecide />}
       {isAssigned && <EventCancellation event={event} />}
 
       {isAssigned && <SafetyCheckPanel eventId={event.id} status={event.status} />}

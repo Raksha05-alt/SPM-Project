@@ -3,6 +3,11 @@
 GET  /api/events/<event_id>/change-requests/   the event's change requests (AC5)
 POST /api/events/<event_id>/change-requests/   the organiser requests a change (AC1)
 
+SCRUM-59/78 - assess and decide a change request (Sprint 4 gate ASSESS):
+
+GET  /api/change-requests/<id>/impact/   what the change would affect (read-only)
+POST /api/change-requests/<id>/decide/   the assigned coordinator approves or rejects
+
 Readers: the event's own organisation, its assigned coordinator and Leads.
 Every refusal is audited.
 """
@@ -18,8 +23,18 @@ from apps.accounts.models import Role
 from apps.core.audit import record_denied
 from apps.core.permissions import HasAnyRole
 from apps.core.statuses import EventStatus
-from apps.events.change_requests import ChangeRequestError, NotEventOrganiser, request_change
+from apps.events.change_requests import (
+    ChangeAlreadyDecided,
+    ChangeDecisionError,
+    ChangeRequestError,
+    NotAssignedCoordinator,
+    NotEventOrganiser,
+    StaleChangeRequest,
+    decide_change,
+    request_change,
+)
 from apps.events.history_views import _display
+from apps.events.impact import assess_change
 from apps.events.models import EventChangeRequest, EventRequest
 from apps.venues.layouts import cached_label_map
 
@@ -48,6 +63,7 @@ class ChangeRequestSerializer(serializers.ModelSerializer):
             "target_bookings",
             "target_equipment_requests",
             "revision",
+            "significant",
             "status",
             "status_label",
             "status_changed_at",
@@ -172,4 +188,96 @@ class EventChangeRequestsView(APIView):
                 "change_request": ChangeRequestSerializer(change).data,
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+def _change_for(request, change_id):
+    """The change request, after the event-level access check (and its audit)."""
+    change = get_object_or_404(
+        EventChangeRequest.objects.select_related("event", "requested_by", "decided_by"),
+        pk=change_id,
+    )
+    if not CanSeeChangeRequests().has_object_permission(request, None, change.event):
+        raise PermissionDenied(CanSeeChangeRequests.message)
+    return change
+
+
+class ChangeImpactView(APIView):
+    """SCRUM-59 AC1 / SCRUM-78 AC1-AC4 - the read-only assessment of a change request."""
+
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = frozenset({Role.EVENT_COORDINATOR, Role.EVENT_COORDINATOR_LEAD})
+
+    def get(self, request, change_id):
+        change = _change_for(request, change_id)
+        return Response(assess_change(change))
+
+
+class DecisionInputSerializer(serializers.Serializer):
+    """Parses the decision without coercion; the service names every problem."""
+
+    decision = serializers.JSONField(required=False, allow_null=True)
+    reason = serializers.JSONField(required=False, allow_null=True)
+
+
+class ChangeDecisionView(APIView):
+    """SCRUM-78 AC5 - the assigned coordinator approves or rejects, with a reason."""
+
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = frozenset({Role.EVENT_COORDINATOR})
+
+    def post(self, request, change_id):
+        change = _change_for(request, change_id)
+        payload = DecisionInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            decided, assessment = decide_change(
+                change=change, actor=request.user, **payload.validated_data
+            )
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=f"POST /api/change-requests/{change_id}/decide/",
+                obj=change.event,
+                detail="only the assigned coordinator may decide a change request",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can decide its change requests."
+            ) from None
+        except ChangeDecisionError as exc:
+            return Response(
+                {
+                    "detail": "The decision could not be recorded.",
+                    **{field: [message] for field, message in exc.errors.items()},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ChangeAlreadyDecided as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "change_request": ChangeRequestSerializer(exc.change).data,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        except StaleChangeRequest:
+            change.refresh_from_db()
+            return Response(
+                {
+                    "detail": (
+                        "The event has changed since this was requested, so it cannot be "
+                        "approved as it stands. Review the current impact; you can reject it "
+                        "and ask the organiser to send a new request."
+                    ),
+                    "assessment": assess_change(change),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        verb = "approved" if decided.status == "APPROVED" else "rejected"
+        return Response(
+            {
+                "detail": f"Change request {verb}. The organiser has been notified.",
+                "change_request": ChangeRequestSerializer(decided).data,
+                "assessment": assessment,
+            }
         )

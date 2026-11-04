@@ -1,10 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Sprint 4 journey S4-J3 (approved change) - the INTAKE slice: SCRUM-20, an
+ * Sprint 4 journey S4-J3 (approved change) - the INTAKE and ASSESS slices: SCRUM-20, an
  * organiser requests a change to a submitted event and the assigned
- * coordinator sees it Pending. The coordinator's decision (SCRUM-59/78), staff
- * review, fresh Safety and reconfirmation (SCRUM-80) extend this journey.
+ * coordinator sees it Pending; SCRUM-59/78, the coordinator sees it flagged
+ * significant, reviews its impact and approves it with a reason, and the
+ * organiser sees the decision. Staff review, fresh Safety and reconfirmation
+ * (SCRUM-80) extend this journey.
  *
  * Real API and database, no mocks. Requires the API running with seeded demo data:
  *   python manage.py migrate && python manage.py seed_demo_data
@@ -35,7 +37,7 @@ async function csrf(page: Page) {
   return (await page.context().cookies()).find((c) => c.name === "csrftoken")?.value ?? "";
 }
 
-test("S4-J3 (INTAKE): an organiser requests a change and the coordinator sees it Pending", async ({
+test("S4-J3 (INTAKE + ASSESS): an organiser requests a change and the coordinator decides it", async ({
   page,
 }) => {
   const eventName = `S4-J3 Change ${Date.now()}`;
@@ -109,4 +111,32 @@ test("S4-J3 (INTAKE): an organiser requests a change and the coordinator sees it
   await expect(received).toContainText(`Why: ${WHY}`);
   await expect(received).toContainText("Requested by");
   await expect(review.getByRole("form", { name: "Request a change" })).toHaveCount(0);
+
+  // ASSESS (SCRUM-59/78): the attendance change is flagged significant; the
+  // impact is assessed read-only - this submitted event has no arrangements yet.
+  await expect(received.getByText("Significant")).toBeVisible();
+  await received.getByRole("button", { name: "Review impact" }).click();
+  const assessment = received.getByRole("region", { name: /Review of change request/ });
+  await expect(assessment).toContainText("This change does not affect any existing arrangements.");
+
+  // SCRUM-78 AC5 - a decision needs a reason; then it is recorded.
+  await assessment.getByRole("button", { name: "Approve change" }).click();
+  await expect(assessment).toContainText("Enter the reason for your decision.");
+  await assessment.getByLabel("Reason for your decision").fill("The venue can take 150 guests.");
+  await assessment.getByRole("button", { name: "Approve change" }).click();
+  await expect(received).toContainText("Approved by Cora Coordinator");
+  await expect(received).toContainText("The venue can take 150 guests.");
+  await expect(received.getByRole("button", { name: "Review impact" })).toHaveCount(0);
+  await signOut(page);
+
+  // SCRUM-20 AC5 - the organiser sees the decision; the event itself is unchanged.
+  await signIn(page, ORGANISER);
+  await page.goto(`/organiser/requests/${eventId}`);
+  const decided = page
+    .getByRole("region", { name: "Change requests" })
+    .getByRole("listitem")
+    .filter({ hasText: WHAT });
+  await expect(decided).toContainText("Approved");
+  await expect(decided).toContainText("Approved by Cora Coordinator");
+  await expect(page.getByLabel("Expected attendance", { exact: true })).toHaveValue("120");
 });
