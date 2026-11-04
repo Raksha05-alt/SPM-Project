@@ -1,5 +1,5 @@
 import { request } from "./client";
-import type { AssignedEventRow, AttendeeEvent, EventRequest, QueueRow } from "../types";
+import type { AssignedEventRow, AttendeeEvent, EventRequest, EventStatus, QueueRow } from "../types";
 
 export type EventDraft = Partial<
   Pick<
@@ -56,7 +56,11 @@ export const submitEvent = (id: number) =>
 
 export const fetchQueue = () => request<QueueRow[]>("/api/events/queue/");
 
-export const fetchMyEvents = () => request<AssignedEventRow[]>("/api/events/mine/");
+export const fetchMyEvents = (statuses: EventStatus[] = []) => {
+  const params = new URLSearchParams();
+  statuses.forEach(status => params.append("status", status));
+  return request<AssignedEventRow[]>(`/api/events/mine/${params.size ? `?${params}` : ""}`);
+};
 
 export const approveEvent = (id: number) =>
   request<EventRequest>(`/api/events/${id}/approve/`, { method: "POST" });
