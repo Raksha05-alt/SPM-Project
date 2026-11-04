@@ -87,6 +87,9 @@ export function CoordinatorEventEditor({
     onSuccess: (updated) => {
       // SCRUM-60 - the save may have added change-history entries.
       void client.invalidateQueries({ queryKey: ["change-history", event.id] });
+      // SCRUM-66 - the save may have flagged a booked venue, or cleared a flag.
+      void client.invalidateQueries({ queryKey: ["venue-reviews", event.id] });
+      void client.invalidateQueries({ queryKey: ["readiness", event.id] });
       onSaved(updated);
     },
   });

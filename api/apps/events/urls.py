@@ -10,6 +10,7 @@ from apps.events.confirmation_views import (
     EventReadinessView,
 )
 from apps.events.history_views import EventChangeHistoryView
+from apps.events.impact_views import EventVenueReviewsView
 from apps.events.views import EventRequestViewSet, event_statuses
 
 router = DefaultRouter()
@@ -46,6 +47,12 @@ urlpatterns = [
         "events/<int:event_id>/change-requests/",
         EventChangeRequestsView.as_view(),
         name="event-change-requests",
+    ),
+    # SCRUM-66 - approved venues flagged after the event changed, with reasons.
+    path(
+        "events/<int:event_id>/venue-reviews/",
+        EventVenueReviewsView.as_view(),
+        name="event-venue-reviews",
     ),
     path("event-statuses/", event_statuses, name="event-statuses"),
     path("", include(router.urls)),

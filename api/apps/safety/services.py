@@ -235,6 +235,14 @@ def confirmation_gaps(event: EventRequest) -> list[str]:
     SCRUM-58's confirm action may add its own items to this list.
     """
     gaps = arrangement_gaps(event)
+    # SCRUM-66 - a booked venue flagged after the event changed must be resolved first.
+    from apps.events.impact import open_reviews
+
+    for review in open_reviews(event):
+        reasons = " ".join(r["message"] for r in review.reasons)
+        gaps.append(
+            f"Venue: {review.booking.venue.name} needs review after the event changed. {reasons}"
+        )
     check = current_check(event)
     if check is None:
         gaps.append(f"{SAFETY_CHECK_ITEM}: no approved check.")

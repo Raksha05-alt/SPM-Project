@@ -13,6 +13,7 @@ import {
   updateEvent,
 } from "../api/events";
 import { getChangeHistory } from "../api/changeHistory";
+import { getVenueReviews } from "../api/venueReviews";
 import { ApiError } from "../api/client";
 import type { EventRequest } from "../types";
 import { CoordinatorEventDetail } from "./CoordinatorEventDetail";
@@ -37,6 +38,10 @@ vi.mock("../api/venues", () => ({ listVenues: vi.fn(async () => []) }));
 // SCRUM-60 - the change history panel.
 vi.mock("../api/changeHistory", () => ({
   getChangeHistory: vi.fn(async () => ({ event: 9, changes: [] })),
+}));
+// SCRUM-66 - the venue review panel.
+vi.mock("../api/venueReviews", () => ({
+  getVenueReviews: vi.fn(async () => ({ event: 9, open: [], history: [] })),
 }));
 vi.mock("../api/equipment", () => ({
   listEventEquipment: vi.fn(async () => []),
@@ -280,6 +285,24 @@ describe("CoordinatorEventDetail", () => {
 
     await waitFor(() => expect(getChangeHistory).toHaveBeenCalledTimes(2));
     expect(getChangeHistory).toHaveBeenLastCalledWith(9);
+  });
+
+  it("SCRUM-66: saving an edit refreshes the venue review", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event({ status: "PLANNING", is_editable: true }));
+    vi.mocked(updateEvent).mockResolvedValue(
+      event({ status: "PLANNING", is_editable: true, expected_attendance: 201 }),
+    );
+    renderPage();
+    await waitFor(() => expect(getVenueReviews).toHaveBeenCalledTimes(1));
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+    const attendance = screen.getByLabelText("Expected attendance");
+    await userEvent.clear(attendance);
+    await userEvent.type(attendance, "201");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(getVenueReviews).toHaveBeenCalledTimes(2));
+    expect(getVenueReviews).toHaveBeenLastCalledWith(9);
   });
 
   it("SCRUM-61 AC2/AC3: no Edit details button when the coordinator may not edit", async () => {
