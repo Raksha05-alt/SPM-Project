@@ -4,7 +4,8 @@
   opening and closing times, manual closure and a registration cap that is
   separate from the venue's physical capacity (Week 4 G3 D24/D25/D48/D74).
 * ``Registration`` - one attendee's place. At most one *active* registration per
-  event and attendee; withdrawn rows are kept (SCRUM-14 adds withdrawal).
+  event and attendee, counting a waiting-list place; withdrawn rows are kept.
+* ``WaitlistNotice`` - SCRUM-19: who was told a place opened, for which release, when.
 * ``RegistrationHistory`` and ``RegistrationPolicyChange`` - append-only records
   of every status change and every policy change, with who and when.
 """
@@ -27,6 +28,8 @@ class RegistrationPolicy(TimeStampedModel):
     manually_closed = models.BooleanField(default=False)
     # The organiser's registration cap, not the venue capacity.
     capacity = models.PositiveIntegerField(null=True, blank=True)
+    # SCRUM-19 - attendees may join a waiting list once the event is full.
+    waitlist_enabled = models.BooleanField(default=False)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
     )
@@ -69,10 +72,18 @@ class RegistrationPolicyChange(models.Model):
 
 
 class RegistrationStatus(models.TextChoices):
-    """Sprint 4. SCRUM-19 adds the waiting list through this field."""
+    """SCRUM-21 registered, SCRUM-14 withdrawn, SCRUM-19 on the waiting list.
+
+    Only Registered counts towards capacity.
+    """
 
     REGISTERED = "REGISTERED", "Registered"
+    WAITLISTED = "WAITLISTED", "On the waiting list"
     WITHDRAWN = "WITHDRAWN", "Withdrawn"
+
+
+# A registration or waiting-list place the attendee still holds.
+CURRENT_STATUSES = (RegistrationStatus.REGISTERED, RegistrationStatus.WAITLISTED)
 
 
 class Registration(TimeStampedModel):
@@ -89,16 +100,19 @@ class Registration(TimeStampedModel):
     full_name = models.CharField(max_length=200)
     email = models.EmailField()
     accessibility_requirements = models.TextField(blank=True)
+    # When the attendee registered or joined the waiting list; FIFO order (SCRUM-19).
     registered_at = models.DateTimeField()
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["registered_at", "pk"]
         constraints = [
-            # SCRUM-21 AC3 - one current registration per event and attendee.
+            # SCRUM-21 AC3 / SCRUM-19 - one current registration or waiting-list
+            # place per event and attendee.
             models.UniqueConstraint(
                 fields=["event", "attendee"],
-                condition=Q(status="REGISTERED"),
-                name="one_active_registration_per_attendee",
+                condition=Q(status__in=["REGISTERED", "WAITLISTED"]),
+                name="one_current_registration_per_attendee",
             ),
         ]
 
@@ -121,3 +135,26 @@ class RegistrationHistory(models.Model):
 
     def __str__(self) -> str:
         return f"Registration {self.registration_id}: {self.from_status or '-'} to {self.to_status}"
+
+
+class WaitlistNotice(models.Model):
+    """SCRUM-19 AC5 - a waiting attendee was told a place opened (never edited).
+
+    ``occurrence`` names the release that opened the place (a withdrawal or a
+    policy change), so processing the same release again tells nobody twice.
+    """
+
+    entry = models.ForeignKey(Registration, on_delete=models.CASCADE, related_name="notices")
+    occurrence = models.CharField(max_length=120)
+    notified_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["notified_at", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["entry", "occurrence"], name="one_waitlist_notice_per_release"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Waiting-list notice for registration {self.entry_id} ({self.occurrence})"
