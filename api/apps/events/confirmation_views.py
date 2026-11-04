@@ -99,7 +99,7 @@ class ConfirmedArrangementsView(APIView):
 
     permission_classes = [HasAnyRole, IsAuthenticated]
     allowed_roles = frozenset(
-        {Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR, Role.EVENT_COORDINATOR_LEAD}
+        {Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR, Role.EVENT_COORDINATOR_LEAD, Role.ATTENDEE}
     )
 
     def get(self, request, event_id):

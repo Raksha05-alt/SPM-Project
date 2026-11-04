@@ -62,7 +62,11 @@ def hall(db):
 
 def pending(organiser, coordinator, venue, **overrides):
     event = overrides.pop("event", None) or make_event(
-        organiser, status=EventStatus.PLANNING, coordinator=coordinator, name="Annual Gala"
+        organiser,
+        status=EventStatus.PLANNING,
+        coordinator=coordinator,
+        name="Annual Gala",
+        expected_attendance=60,
     )
     values = {
         "starts_at": START,

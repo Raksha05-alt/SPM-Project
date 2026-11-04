@@ -101,7 +101,7 @@ def _approved_bookings(event: EventRequest):
     # A collection, not a single venue: SCRUM-87 adds parallel sessions later.
     return list(
         event.venue_bookings.filter(status=BookingStatus.APPROVED)
-        .select_related("venue")
+        .select_related("venue", "session")
         .order_by("starts_at", "pk")
     )
 
@@ -113,10 +113,20 @@ def arrangement_gaps(event: EventRequest) -> list[str]:
     actual record, so the coordinator knows what to fix.
     """
     gaps = []
-    bookings = list(event.venue_bookings.select_related("venue").order_by("pk"))
+    bookings = list(event.venue_bookings.select_related("venue", "session").order_by("pk"))
     approved = [b for b in bookings if b.status == BookingStatus.APPROVED]
     if not approved:
         gaps.append("Venue: no venue booking has been approved by Venue Staff.")
+    from apps.venues.models import SessionKind
+
+    sessions = list(event.venue_sessions.filter(is_active=True, is_required=True))
+    if approved and not any(s.kind == SessionKind.MAIN for s in sessions):
+        gaps.append("Venue: the main programme needs an approved venue booking.")
+    for session in sessions:
+        if approved and not any(
+            b.session_id == session.pk and b.status == BookingStatus.APPROVED for b in bookings
+        ):
+            gaps.append(f"Venue: session {session.name} needs an approved venue booking.")
     for booking in bookings:
         if booking.status == BookingStatus.PENDING:
             gaps.append(
@@ -204,9 +214,17 @@ def arrangement_version(event: EventRequest) -> str:
         "start": event.preferred_start,
         "end": event.preferred_end,
         "attendance": event.expected_attendance,
+        "sessions": list(
+            event.venue_sessions.filter(is_active=True)
+            .order_by("pk")
+            .values_list("pk", "name", "kind", "is_required")
+        ),
         "venues": [
             [
                 b.pk,
+                b.session_id,
+                b.session.name,
+                b.session.kind,
                 b.venue_id,
                 b.starts_at,
                 b.ends_at,
@@ -411,10 +429,13 @@ def safety_facts(event: EventRequest) -> dict:
         venues.append(
             {
                 "booking": booking.pk,
+                "session": booking.session_id,
+                "session_name": booking.session.name,
+                "session_kind": booking.session.kind,
                 "venue": venue.name,
                 "location": venue.location,
                 "capacity": venue.capacity,
-                "booked_attendance": booking.attendance,
+                "booked_attendance": booking.effective_attendance,
                 "layout": _layout_label(booking.layout, labels),
                 "starts_at": _iso(booking.starts_at),
                 "ends_at": _iso(booking.ends_at),
@@ -427,9 +448,9 @@ def safety_facts(event: EventRequest) -> dict:
                 "known_restrictions": venue.known_restrictions,
             }
         )
-        if booking.attendance > venue.capacity:
+        if booking.effective_attendance > venue.capacity:
             concerns.append(
-                f"{venue.name}: {booking.attendance} people booked for a capacity of "
+                f"{venue.name}: {booking.effective_attendance} people booked for a capacity of "
                 f"{venue.capacity}."
             )
         if not venue.emergency_access.strip():

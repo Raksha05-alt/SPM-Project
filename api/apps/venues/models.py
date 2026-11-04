@@ -185,6 +185,42 @@ class VenueBookingQuerySet(models.QuerySet):
         return self.filter(starts_at__lt=ends_at, ends_at__gt=starts_at)
 
 
+class SessionKind(models.TextChoices):
+    MAIN = "MAIN", "Main programme"
+    BREAKOUT = "BREAKOUT", "Breakout"
+
+
+class EventSession(TimeStampedModel):
+    """Stable identity across requests, decisions, withdrawal and replacement.
+
+    Period and requirements are stored on each booking revision; MAIN attendance
+    follows the event, while BREAKOUT attendance belongs to that booking.
+    """
+
+    event = models.ForeignKey(
+        "events.EventRequest", on_delete=models.PROTECT, related_name="venue_sessions"
+    )
+    name = models.CharField(max_length=100)
+    kind = models.CharField(max_length=10, choices=SessionKind.choices)
+    is_active = models.BooleanField(default=True)
+    is_required = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["event", "name"], name="event_session_unique_name"),
+            models.UniqueConstraint(
+                fields=["event"],
+                condition=models.Q(kind="MAIN"),
+                name="event_session_one_main",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(kind="MAIN") | models.Q(is_active=True, is_required=True),
+                name="event_session_main_required",
+            ),
+        ]
+
+
 class VenueBooking(TimeStampedModel):
     """SCRUM-11 - a coordinator's request to book one venue for one event period.
 
@@ -194,6 +230,10 @@ class VenueBooking(TimeStampedModel):
 
     event = models.ForeignKey(
         "events.EventRequest", on_delete=models.PROTECT, related_name="venue_bookings"
+    )
+    session = models.ForeignKey(EventSession, on_delete=models.PROTECT, related_name="bookings")
+    replaces = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.PROTECT, related_name="replacements"
     )
     venue = models.ForeignKey(Venue, on_delete=models.PROTECT, related_name="bookings")
     starts_at = models.DateTimeField()
@@ -244,14 +284,31 @@ class VenueBooking(TimeStampedModel):
                 condition=~models.Q(status=BookingStatus.REJECTED) | ~models.Q(decision_reason=""),
                 name="venue_booking_rejection_has_reason",
             ),
-            # Sprint 3 single-venue rule: an event holds at most one approved
-            # venue at a time. SCRUM-87 replaces this to allow parallel sessions.
             models.UniqueConstraint(
-                fields=["event"],
+                fields=["session"],
                 condition=models.Q(status=BookingStatus.APPROVED),
-                name="venue_booking_one_approved_per_event",
+                name="venue_booking_one_approved_per_session",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        # Compatibility for existing internal fixture/import writers. Production
+        # actions resolve a session under the event lock before writing.
+        if not self.session_id:
+            self.session, _ = EventSession.objects.get_or_create(
+                event_id=self.event_id,
+                kind=SessionKind.MAIN,
+                defaults={"name": "Main programme"},
+            )
+        if self.session.event_id != self.event_id:
+            raise ValueError("The booking session must belong to its event.")
+        super().save(*args, **kwargs)
+
+    @property
+    def effective_attendance(self):
+        if self.session.kind == SessionKind.MAIN:
+            return self.event.expected_attendance
+        return self.attendance
 
     def __str__(self) -> str:
         return f"Booking {self.pk}: event {self.event_id} at venue {self.venue_id} [{self.status}]"

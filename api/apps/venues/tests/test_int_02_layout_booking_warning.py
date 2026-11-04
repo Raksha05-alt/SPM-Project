@@ -57,7 +57,13 @@ def staff_api(api, venue_staff):
 
 
 def requested(organiser, coordinator, venue, *, name="Annual Gala", **overrides):
-    event = make_event(organiser, status=EventStatus.PLANNING, coordinator=coordinator, name=name)
+    event = make_event(
+        organiser,
+        status=EventStatus.PLANNING,
+        coordinator=coordinator,
+        name=name,
+        expected_attendance=overrides.get("attendance", 60),
+    )
     values = {"starts_at": START, "ends_at": END, "attendance": 60, "layout": "THEATRE"}
     values.update(overrides)
     return create_booking_record(requested_by=coordinator, event=event, venue=venue, **values)

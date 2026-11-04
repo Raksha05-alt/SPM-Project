@@ -37,7 +37,7 @@ from apps.venues.bookings import (
     withdraw_booking,
 )
 from apps.venues.layouts import cached_label_map
-from apps.venues.models import BookingStatus, Venue, VenueBooking
+from apps.venues.models import BookingStatus, EventSession, SessionKind, Venue, VenueBooking
 from apps.venues.suitability import VenueUnsuitable
 
 
@@ -46,6 +46,10 @@ def _name(user):
 
 
 class VenueBookingSerializer(serializers.ModelSerializer):
+    session_name = serializers.CharField(source="session.name", read_only=True)
+    session_kind = serializers.CharField(source="session.kind", read_only=True)
+    session_active = serializers.BooleanField(source="session.is_active", read_only=True)
+    effective_attendance = serializers.IntegerField(read_only=True)
     buffer_review = serializers.SerializerMethodField()
 
     def get_buffer_review(self, obj):
@@ -67,6 +71,12 @@ class VenueBookingSerializer(serializers.ModelSerializer):
         model = VenueBooking
         fields = [
             "buffer_review",
+            "session",
+            "session_name",
+            "session_kind",
+            "session_active",
+            "effective_attendance",
+            "replaces",
             "id",
             "event",
             "event_name",
@@ -118,6 +128,10 @@ class VenueBookingSerializer(serializers.ModelSerializer):
 class BookingRequestInputSerializer(serializers.Serializer):
     """Parses the request; the booking service names every missing item (AC3)."""
 
+    session_id = serializers.IntegerField(required=False, min_value=1)
+    session_name = serializers.CharField(required=False, max_length=100, default="Main programme")
+    session_kind = serializers.ChoiceField(choices=SessionKind.choices, default=SessionKind.MAIN)
+    replaces_id = serializers.IntegerField(required=False, min_value=1)
     venue = serializers.IntegerField(required=False, allow_null=True)
     starts_at = serializers.DateTimeField(required=False, allow_null=True)
     ends_at = serializers.DateTimeField(required=False, allow_null=True)
@@ -132,7 +146,7 @@ class BookingRequestInputSerializer(serializers.Serializer):
 
 def _bookings():
     return VenueBooking.objects.select_related(
-        "event__organisation", "venue", "requested_by", "decided_by"
+        "event__organisation", "venue", "session", "requested_by", "decided_by"
     )
 
 
@@ -357,3 +371,47 @@ class VenueBookingDecisionView(APIView):
                 "booking": VenueBookingSerializer(_bookings().get(pk=decided.pk)).data,
             }
         )
+
+
+class EventSessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventSession
+        fields = ["id", "event", "name", "kind", "is_active", "is_required"]
+        read_only_fields = fields
+
+
+class EventSessionsView(APIView):
+    permission_classes = [HasAnyRole, IsAuthenticated, CanSeeEventBookings]
+    allowed_roles = frozenset(
+        {Role.EVENT_COORDINATOR, Role.EVENT_COORDINATOR_LEAD, Role.VENUE_STAFF}
+    )
+
+    def get(self, request, event_id):
+        event = get_object_or_404(EventRequest, pk=event_id)
+        self.check_object_permissions(request, event)
+        return Response(EventSessionSerializer(event.venue_sessions.all(), many=True).data)
+
+
+class RemoveEventSessionView(APIView):
+    permission_classes = [HasAnyRole, IsAuthenticated, CanSeeEventBookings]
+    allowed_roles = frozenset({Role.EVENT_COORDINATOR})
+
+    def post(self, request, event_id, session_id):
+        from apps.venues.sessions import remove_session
+
+        event = get_object_or_404(EventRequest, pk=event_id)
+        self.check_object_permissions(request, event)
+        session = get_object_or_404(EventSession, event=event, pk=session_id)
+        try:
+            session = remove_session(session, request.user)
+        except NotAssignedToEvent:
+            record_denied(
+                request.user,
+                action=f"POST {request.path}",
+                obj=event,
+                detail="coordinator assignment changed before session removal",
+            )
+            raise PermissionDenied("Only the assigned coordinator may remove a session.") from None
+        except BookingValidationError as exc:
+            return Response({"detail": "Session removal refused.", **exc.errors}, status=409)
+        return Response(EventSessionSerializer(session).data)

@@ -81,6 +81,9 @@ def _public_event(event) -> dict:
         "ends_at": event.preferred_end,
         "venues": [
             {
+                "session": v["session"],
+                "session_name": v["session_name"],
+                "session_kind": v["session_kind"],
                 "venue": v["venue"],
                 "location": v["location"],
                 "starts_at": v["starts_at"],

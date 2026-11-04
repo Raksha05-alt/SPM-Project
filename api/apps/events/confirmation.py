@@ -143,7 +143,8 @@ def readiness(event: EventRequest) -> dict:
         {
             "area": "Venue",
             "label": ", ".join(b.venue.name for b in approved) or "No approved venue",
-            "ready": bool(approved),
+            "ready": bool(approved)
+            and not any(gap.startswith("Venue:") for gap in arrangement_gaps(event)),
             "detail": "Approved by Venue Staff" if approved else "Awaiting an approved booking.",
         },
         {
@@ -172,32 +173,40 @@ def readiness(event: EventRequest) -> dict:
     }
 
 
+def confirmed_venues(event: EventRequest) -> list[dict]:
+    """Public session/venue projection; never includes staff notes or Safety facts."""
+    from apps.venues.layouts import label_map
+
+    labels = label_map()
+    return [
+        {
+            "session": b.session_id,
+            "session_name": b.session.name,
+            "session_kind": b.session.kind,
+            "venue": b.venue.name,
+            "location": b.venue.location,
+            "starts_at": b.starts_at,
+            "ends_at": b.ends_at,
+            "attendance": b.effective_attendance,
+            "layout": labels.get(b.layout, b.layout) if b.layout else "",
+        }
+        for b in _approved_bookings(event)
+    ]
+
+
 def confirmed_arrangements(event: EventRequest) -> dict:
     """AC5 - the confirmed plan the Event Organiser can rely on.
 
     Venue, timing, layout and reserved equipment only; staff notes and other
     events' details are left out.
     """
-    from apps.venues.layouts import label_map
-
-    labels = label_map()
     check = current_check(event)
     return {
         "event": event.pk,
         "status": event.status,
         "confirmed_by_name": _name(event.confirmed_by),
         "confirmed_at": event.confirmed_at,
-        "venues": [
-            {
-                "venue": b.venue.name,
-                "location": b.venue.location,
-                "starts_at": b.starts_at,
-                "ends_at": b.ends_at,
-                "attendance": b.attendance,
-                "layout": labels.get(b.layout, b.layout) if b.layout else "",
-            }
-            for b in _approved_bookings(event)
-        ],
+        "venues": confirmed_venues(event),
         "equipment": [
             {"equipment": item.equipment_type.name, "quantity": reservation.quantity}
             for item in _open_equipment_requests(_equipment_plan(event))

@@ -261,12 +261,20 @@ class EventRequestSerializer(serializers.ModelSerializer):
 class AttendeeEventSerializer(serializers.ModelSerializer):
     """Public event details that are safe and useful to an Attendee."""
 
+    venues = serializers.SerializerMethodField()
+
+    def get_venues(self, obj):
+        from apps.events.confirmation import confirmed_venues
+
+        return confirmed_venues(obj)
+
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     status_description = serializers.SerializerMethodField()
 
     class Meta:
         model = EventRequest
         fields = [
+            "venues",
             "id",
             "name",
             "description",

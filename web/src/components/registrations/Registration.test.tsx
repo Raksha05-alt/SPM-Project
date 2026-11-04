@@ -213,3 +213,20 @@ describe("RegistrationPolicyForm (SCRUM-81)", () => {
     ).toBeInTheDocument();
   });
 });
+
+it("SCRUM-87 AC6: my registrations retain both session names and their independent periods", async () => {
+  vi.mocked(listMyRegistrations).mockResolvedValue([{ id: 87, event: 87, event_name: "Parallel conference",
+    status: "REGISTERED", status_label: "Registered", full_name: "Andy", email: "andy@example.com",
+    accessibility_requirements: "", registered_at: "2026-11-04T01:00:00Z",
+    event_details: { id: 87, name: "Parallel conference", status: "CONFIRMED", status_label: "Confirmed",
+      starts_at: "2027-06-08T02:00:00Z", ends_at: "2027-06-08T04:00:00Z", venues: [
+        { session_name: "Main programme", venue: "Main Hall", location: "Level 1", starts_at: "2027-06-08T02:00:00Z", ends_at: "2027-06-08T04:00:00Z" },
+        { session_name: "Breakout A", venue: "Workshop", location: "Level 2", starts_at: "2027-06-08T03:00:00Z", ends_at: "2027-06-08T04:00:00Z" },
+      ] },
+  }]);
+  wrap(<MyRegistrations />);
+  expect(await screen.findByText("Main programme:")).toBeVisible();
+  expect(screen.getByText("Breakout A:")).toBeVisible();
+  expect(screen.getByText("Main Hall, Level 1")).toBeVisible();
+  expect(screen.getByText("Workshop, Level 2")).toBeVisible();
+});
