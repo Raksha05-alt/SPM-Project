@@ -246,6 +246,18 @@ def test_ac3b_an_open_review_blocks_confirmation_and_names_the_reason(api, booke
     assert expected in str(response.data)
 
 
+def test_ac3b2_a_safety_check_cannot_be_requested_while_a_venue_needs_review(
+    api, booked, coordinator
+):
+    event, _ = booked
+    edit(api, coordinator, event, expected_attendance=201)
+
+    data = api.get(f"/api/events/{event.pk}/safety-checks/").data
+
+    assert data["can_request"] is False
+    assert any("Harbour Hall needs review" in gap for gap in data["arrangement_gaps"])
+
+
 def test_ac3c_resolved_reviews_stay_on_record(api, booked, coordinator):
     event, booking = booked
     edit(api, coordinator, event, expected_attendance=201)

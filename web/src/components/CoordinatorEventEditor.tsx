@@ -90,6 +90,8 @@ export function CoordinatorEventEditor({
       // SCRUM-66 - the save may have flagged a booked venue, or cleared a flag.
       void client.invalidateQueries({ queryKey: ["venue-reviews", event.id] });
       void client.invalidateQueries({ queryKey: ["readiness", event.id] });
+      // A flag notifies the coordinator; show it without waiting for the poll.
+      void client.invalidateQueries({ queryKey: ["notifications"] });
       onSaved(updated);
     },
   });
