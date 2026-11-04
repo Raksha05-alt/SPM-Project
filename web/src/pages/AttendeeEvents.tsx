@@ -43,6 +43,11 @@ export function AttendeeEvents() {
                       ? ` · Status updated ${new Date(event.status_changed_at).toLocaleString("en-SG")}`
                       : ""}
                   </p>
+                  {(event.venues ?? []).length > 0 && <ul aria-label="Event sessions" className="mt-2 text-sm">
+                    {event.venues!.map(v => <li key={`${v.session_name}-${v.starts_at}`}>
+                      {v.session_name}: {v.venue}, {v.location} · {new Date(v.starts_at).toLocaleString("en-SG")} – {new Date(v.ends_at).toLocaleString("en-SG")}
+                    </li>)}
+                  </ul>}
                   {/* SCRUM-21/81 - register while the event is confirmed and registration is open. */}
                   {event.status === "CONFIRMED" && <RegisterPanel eventId={event.id} />}
                 </div>

@@ -264,7 +264,7 @@ def test_ac2b_missing_or_worrying_recorded_facts_are_shown_explicitly(
     check = request_check(planning_event, coordinator)
 
     assert check.facts["concerns"] == [
-        "Garden Pavilion: 100 people booked for a capacity of 80.",
+        "Garden Pavilion: 120 people booked for a capacity of 80.",
         "Garden Pavilion has no emergency access information recorded.",
         "Garden Pavilion has no known restrictions recorded.",
         "Garden Pavilion has no recorded wheelchair access, "

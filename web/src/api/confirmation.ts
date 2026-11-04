@@ -27,6 +27,9 @@ export interface ConfirmedArrangements {
   confirmed_by_name: string | null;
   confirmed_at: string | null;
   venues: {
+    session?: number;
+    session_name?: string;
+    session_kind?: "MAIN" | "BREAKOUT";
     venue: string;
     location: string;
     starts_at: string;

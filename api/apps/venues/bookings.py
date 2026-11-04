@@ -25,7 +25,14 @@ from apps.core.statuses import EventStatus
 from apps.notifications.models import NotificationKind, NotificationTarget
 from apps.notifications.services import notify
 from apps.venues.layouts import LayoutChoiceError, check_choice, claim_layouts
-from apps.venues.models import BookingStatus, Venue, VenueBooking, VenueBookingHistory
+from apps.venues.models import (
+    BookingStatus,
+    EventSession,
+    SessionKind,
+    Venue,
+    VenueBooking,
+    VenueBookingHistory,
+)
 from apps.venues.serializers import is_facility_list, normalise_facilities
 
 # Sprint 3 booking lifecycle. Sprint 4 adds Held/Expired/Disrupted here.
@@ -77,6 +84,8 @@ def validate_booking_request(
     required_facilities=None,
     wheelchair_access_required=False,
     accessibility_notes="",
+    session=None,
+    replaces=None,
 ) -> dict:
     """Return the cleaned values, or raise BookingValidationError naming every problem.
 
@@ -124,6 +133,10 @@ def validate_booking_request(
     if not isinstance(accessibility_notes, str):
         errors["accessibility_notes"] = "Accessibility notes must be text."
 
+    if session is not None and (
+        event is None or session.event_id != event.pk or not session.is_active
+    ):
+        errors["session"] = "Choose an active session belonging to this event."
     if errors:
         raise BookingValidationError(errors)
 
@@ -137,6 +150,8 @@ def validate_booking_request(
         "required_facilities": normalise_facilities(facilities),
         "wheelchair_access_required": wheelchair_access_required,
         "accessibility_notes": accessibility_notes.strip(),
+        "session": session,
+        "replaces": replaces,
     }
 
 
@@ -153,6 +168,10 @@ def create_booking_record(*, requested_by, **values) -> VenueBooking:
             claim_layouts([cleaned["layout"]])
         except LayoutChoiceError as exc:
             raise BookingValidationError({"layout": exc.message}) from None
+    if cleaned["session"] is None:
+        cleaned["session"], _ = EventSession.objects.get_or_create(
+            event=cleaned["event"], kind=SessionKind.MAIN, defaults={"name": "Main programme"}
+        )
     now = timezone.now()
     booking = VenueBooking.objects.create(
         **cleaned,
@@ -198,6 +217,14 @@ def transition_booking(booking: VenueBooking, target: str, actor, reason: str = 
 
         if event.status in EVENT_STATUSES_CLOSED_TO_BOOKING:
             raise BookingValidationError({"event": "This event cannot receive a venue approval."})
+        if not locked.session.is_active:
+            raise BookingValidationError({"session": "This session is no longer active."})
+        if (
+            VenueBooking.objects.filter(session=locked.session, status=BookingStatus.APPROVED)
+            .exclude(pk=locked.pk)
+            .exists()
+        ):
+            raise BookingValidationError({"event": "This session already has an approved venue."})
         conflicts = conflict_references(venue, locked.starts_at, locked.ends_at)
         if conflicts:
             references = ", ".join(str(item["event_id"]) for item in conflicts)
@@ -262,7 +289,7 @@ def _local(moment) -> str:
     return f"{timezone.localtime(moment):%d %b %Y %H:%M}"
 
 
-def _availability_problems(venue, starts_at, ends_at) -> list[str]:
+def _availability_problems(venue, starts_at, ends_at, *, exclude_booking_id=None) -> list[str]:
     from apps.venues.availability import availability
 
     period = availability(venue, starts_at, ends_at)
@@ -273,14 +300,25 @@ def _availability_problems(venue, starts_at, ends_at) -> list[str]:
     ]
     if not venue.in_service:
         problems.append("The venue is out of service.")
-    if period["conflicts"]:
-        events = ", ".join(str(c["event_id"]) for c in period["conflicts"])
+    conflicts = [c for c in period["conflicts"] if c["id"] != exclude_booking_id]
+    if conflicts:
+        events = ", ".join(str(c["event_id"]) for c in conflicts)
         problems.append(f"The venue is already approved for event(s) {events} in this period.")
     return problems
 
 
 @transaction.atomic
-def request_booking(*, event, venue, requested_by, **values) -> VenueBooking:
+def request_booking(
+    *,
+    event,
+    venue,
+    requested_by,
+    session_id=None,
+    session_name="Main programme",
+    session_kind=SessionKind.MAIN,
+    replaces_id=None,
+    **values,
+) -> VenueBooking:
     """SCRUM-11 - the assigned coordinator requests a venue for their event.
 
     Locks the event, then the venue (the shared lock order), and refuses, with
@@ -308,12 +346,40 @@ def request_booking(*, event, venue, requested_by, **values) -> VenueBooking:
                 )
             }
         )
-    locked_venue = Venue.objects.select_for_update().get(pk=venue.pk) if venue is not None else None
-    cleaned = validate_booking_request(event=locked_event, venue=locked_venue, **values)
+    from apps.venues.sessions import resolve_session
+
+    session = resolve_session(locked_event, session_id, session_name, session_kind)
+    replaces = None
+    if replaces_id is not None:
+        replaces = VenueBooking.objects.filter(
+            pk=replaces_id, event=locked_event, session=session, status=BookingStatus.APPROVED
+        ).first()
+        if replaces is None:
+            raise BookingValidationError(
+                {"replaces": "Choose this session's current approved booking."}
+            )
+    attendance = values.get("attendance")
+    if session.kind == SessionKind.MAIN and type(attendance) is int and attendance > 0:
+        values["attendance"] = locked_event.expected_attendance
+    venue_ids = [venue.pk] if venue is not None else []
+    if replaces is not None:
+        venue_ids.append(replaces.venue_id)
+    venues = {
+        v.pk: v for v in Venue.objects.select_for_update().filter(pk__in=venue_ids).order_by("pk")
+    }
+    locked_venue = venues.get(venue.pk) if venue is not None else None
+    cleaned = validate_booking_request(
+        event=locked_event, venue=locked_venue, session=session, replaces=replaces, **values
+    )
 
     # SCRUM-71 AC4 - raises VenueUnsuitable with every unmet requirement.
     ensure_suitable(locked_venue, Requirements.for_booking(_Requested(**cleaned)))
-    problems = _availability_problems(locked_venue, cleaned["starts_at"], cleaned["ends_at"])
+    problems = _availability_problems(
+        locked_venue,
+        cleaned["starts_at"],
+        cleaned["ends_at"],
+        exclude_booking_id=replaces.pk if replaces else None,
+    )
     if problems:
         raise VenueNotAvailable(problems)
 
@@ -398,8 +464,14 @@ def _lock_for_decision(booking):
 
     identity = VenueBooking.objects.values("event_id", "venue_id").get(pk=booking.pk)
     event = EventRequest.objects.select_for_update().get(pk=identity["event_id"])
-    venue = Venue.objects.select_for_update().get(pk=identity["venue_id"])
-    locked = VenueBooking.objects.select_for_update().get(pk=booking.pk)
+    ids = list(VenueBooking.objects.filter(event=event).values_list("venue_id", flat=True))
+    venues = {v.pk: v for v in Venue.objects.select_for_update().filter(pk__in=ids).order_by("pk")}
+    venue = venues[identity["venue_id"]]
+    locked = (
+        VenueBooking.objects.select_for_update()
+        .select_related("session", "event")
+        .get(pk=booking.pk)
+    )
     return event, venue, locked
 
 
@@ -436,18 +508,37 @@ def approve_booking(booking: VenueBooking, actor) -> VenueBooking:
     event, venue, locked = _lock_for_decision(booking)
     if locked.status != BookingStatus.PENDING:
         raise InvalidBookingTransition(locked.status, BookingStatus.APPROVED)
-    if event.status in EVENT_STATUSES_CLOSED_TO_BOOKING:
-        raise BookingValidationError({"event": "This event cannot receive a venue approval."})
-    if VenueBooking.objects.filter(event=event, status=BookingStatus.APPROVED).exists():
+    if event.status not in EVENT_STATUSES_OPEN_TO_REQUESTS:
+        raise BookingValidationError({"event": "Venue approval requires an event in planning."})
+    if not locked.session.is_active:
+        raise BookingValidationError({"session": "This session is no longer active."})
+    current = VenueBooking.objects.filter(
+        session=locked.session, status=BookingStatus.APPROVED
+    ).first()
+    if current is not None and current.pk != locked.replaces_id:
         raise BookingValidationError(
-            {"event": "This event already has an approved venue. Withdraw it first."}
+            {
+                "event": "This session already has an approved venue. Request an explicit replacement."
+            }
+        )
+    if locked.replaces_id is not None and (current is None or current.pk != locked.replaces_id):
+        raise BookingValidationError(
+            {"event": "The original arrangement changed. Request a fresh replacement."}
         )
     # SCRUM-71 - raises VenueUnsuitable with every unmet requirement.
     ensure_suitable(venue, Requirements.for_booking(locked))
-    problems = _availability_problems(venue, locked.starts_at, locked.ends_at)
+    problems = _availability_problems(
+        venue, locked.starts_at, locked.ends_at, exclude_booking_id=current.pk if current else None
+    )
     if problems:
         raise VenueNotAvailable(problems)
-
+    if current is not None:
+        transition_booking(
+            current,
+            BookingStatus.WITHDRAWN,
+            actor,
+            f"Replaced by booking {locked.pk} for {locked.session.name}.",
+        )
     transition_booking(locked, BookingStatus.APPROVED, actor)
     locked.refresh_from_db()
     _notify_coordinator(

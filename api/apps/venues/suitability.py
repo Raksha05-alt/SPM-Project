@@ -114,7 +114,11 @@ class Requirements:
         cleaned values a request action is about to save.
         """
         return cls(
-            attendance=booking.attendance,
+            attendance=(
+                booking.event.expected_attendance
+                if getattr(booking, "session", None) is not None and booking.session.kind == "MAIN"
+                else booking.attendance
+            ),
             layout=booking.layout,
             required_facilities=tuple(booking.required_facilities or ()),
             wheelchair_access_required=booking.wheelchair_access_required,

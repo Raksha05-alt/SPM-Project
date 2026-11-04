@@ -56,7 +56,9 @@ def test_ac1_ac4_ac5_real_approval_and_withdrawal(api, organiser, coordinator, v
     from apps.core.statuses import EventStatus
     from conftest import make_event
 
-    event = make_event(organiser, status=EventStatus.APPROVED, coordinator=coordinator)
+    event = make_event(
+        organiser, status=EventStatus.APPROVED, coordinator=coordinator, expected_attendance=60
+    )
     assert request_as(api, coordinator, event, hall).status_code == 201
     booking = event.venue_bookings.get()
     assert compare(api).data["venues"][0]["available"]

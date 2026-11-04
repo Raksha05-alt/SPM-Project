@@ -43,7 +43,7 @@ export interface PublicEvent {
   status_label: string;
   starts_at: string | null;
   ends_at: string | null;
-  venues: { venue: string; location: string; starts_at: string; ends_at: string }[];
+  venues: { session_name?: string; session_kind?: "MAIN" | "BREAKOUT"; venue: string; location: string; starts_at: string; ends_at: string }[];
 }
 
 export interface MyRegistration extends Registration {

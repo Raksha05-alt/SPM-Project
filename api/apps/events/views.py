@@ -17,6 +17,7 @@ from apps.core.statuses import (
     InvalidTransition,
     describe,
 )
+from apps.events.filtering import filter_event_statuses
 from apps.events.lead_serializers import (
     AssignmentInputSerializer,
     CoordinatorChoiceSerializer,
@@ -79,6 +80,13 @@ class EventRequestViewSet(ModelViewSet):
     allowed_roles = frozenset(
         {Role.EVENT_ORGANISER, Role.EVENT_COORDINATOR, Role.EVENT_COORDINATOR_LEAD, Role.ATTENDEE}
     )
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        # Object access and mutations keep their existing permission checks.
+        if self.action == "list":
+            return filter_event_statuses(queryset, self.request.query_params)
+        return queryset
 
     def get_serializer_class(self):
         if self.request.user.role == Role.ATTENDEE:
@@ -494,6 +502,7 @@ class EventRequestViewSet(ModelViewSet):
         )
         # AC2 - events needing the coordinator's action first; the sort is
         # stable, so each group keeps oldest-submission-first order.
+        events = filter_event_statuses(events, request.query_params)
         ordered = sorted(events, key=lambda e: not COORDINATOR_NEXT_ACTIONS[e.status][1])
         return Response(AssignedEventSerializer(ordered, many=True).data)
 

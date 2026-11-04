@@ -54,3 +54,19 @@ describe("AttendeeEvents", () => {
     expect(screen.getByText(/Status updated/)).toBeInTheDocument();
   });
 });
+
+it("SCRUM-87 AC6: shows every confirmed session with its own room and period", async () => {
+  vi.mocked(listAttendeeEvents).mockResolvedValue([{ id: 87, name: "Parallel conference", description: "",
+    preferred_start: "2027-06-08T02:00:00Z", preferred_end: "2027-06-08T04:00:00Z",
+    accessibility_needs: "", registration_required: false, status: "CONFIRMED", status_label: "Confirmed",
+    status_description: "All essential arrangements are in place.", status_changed_at: null,
+    venues: [
+      { session_name: "Main programme", venue: "Main Hall", location: "Level 1", starts_at: "2027-06-08T02:00:00Z", ends_at: "2027-06-08T04:00:00Z" },
+      { session_name: "Breakout A", venue: "Workshop", location: "Level 2", starts_at: "2027-06-08T03:00:00Z", ends_at: "2027-06-08T04:00:00Z" },
+    ],
+  }]);
+  renderPage();
+  expect(await screen.findByRole("list", { name: "Event sessions" })).toHaveTextContent("Main programme: Main Hall, Level 1");
+  expect(screen.getByRole("list", { name: "Event sessions" })).toHaveTextContent("Breakout A: Workshop, Level 2");
+  expect(screen.queryByText(/Safety Officer|decision reason/i)).not.toBeInTheDocument();
+});

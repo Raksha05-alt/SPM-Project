@@ -50,7 +50,9 @@ def hall(db):
 
 @pytest.fixture
 def event(organiser, coordinator):
-    return make_event(organiser, status=EventStatus.APPROVED, coordinator=coordinator)
+    return make_event(
+        organiser, status=EventStatus.APPROVED, coordinator=coordinator, expected_attendance=60
+    )
 
 
 def payload(for_venue, **overrides):
@@ -123,7 +125,9 @@ def test_s3_11_01_the_first_request_starts_planning_an_approved_event(
 
 @pytest.mark.django_db
 def test_s3_11_01_a_planning_event_can_request_more_venues(api, organiser, coordinator, hall):
-    event = make_event(organiser, status=EventStatus.PLANNING, coordinator=coordinator)
+    event = make_event(
+        organiser, status=EventStatus.PLANNING, coordinator=coordinator, expected_attendance=60
+    )
     garden = make_venue(
         name="Garden Room",
         capacity=80,
@@ -321,6 +325,9 @@ def test_s3_11_05_ac6_a_previous_coordinator_is_refused_after_reassignment(
 def test_s3_11_06_capacity_equal_to_attendance_remains_eligible(
     api, coordinator, event, hall, attendance, created
 ):
+    # SCRUM-87: the main programme follows the event's attendance.
+    event.expected_attendance = attendance
+    event.save(update_fields=["expected_attendance"])
     response = request_as(api, coordinator, event, hall, attendance=attendance)
 
     assert response.status_code == (201 if created else 400)
@@ -333,6 +340,8 @@ def test_s3_11_06_capacity_equal_to_attendance_remains_eligible(
 def test_s3_11_06_every_unmet_requirement_is_stated_and_nothing_is_saved(
     api, coordinator, event, hall
 ):
+    event.expected_attendance = 70
+    event.save(update_fields=["expected_attendance"])
     response = request_as(
         api,
         coordinator,
@@ -410,7 +419,9 @@ def test_s3_11_07_an_out_of_service_venue_cannot_be_requested(api, coordinator, 
 def test_s3_11_07_an_overlapping_approved_booking_refuses_the_request(
     api, organiser, coordinator, venue_staff, event, hall, other_start, other_end, refused
 ):
-    other_event = make_event(organiser, status=EventStatus.PLANNING, coordinator=coordinator)
+    other_event = make_event(
+        organiser, status=EventStatus.PLANNING, coordinator=coordinator, expected_attendance=60
+    )
     other = create_booking_record(
         requested_by=coordinator,
         event=other_event,
@@ -433,7 +444,9 @@ def test_s3_11_07_an_overlapping_approved_booking_refuses_the_request(
 def test_s3_11_07_another_pending_request_does_not_reserve_the_venue(
     api, organiser, coordinator, event, hall
 ):
-    other_event = make_event(organiser, status=EventStatus.PLANNING, coordinator=coordinator)
+    other_event = make_event(
+        organiser, status=EventStatus.PLANNING, coordinator=coordinator, expected_attendance=60
+    )
     create_booking_record(
         requested_by=coordinator,
         event=other_event,
