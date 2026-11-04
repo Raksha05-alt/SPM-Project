@@ -375,3 +375,52 @@ class EventChangeRequest(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Change request {self.pk} for event {self.event_id} [{self.status}]"
+
+
+class VenueReview(models.Model):
+    """SCRUM-66 - an approved venue booking flagged for review after the event changed.
+
+    Raised when a change to the event's attendance, layout or accessibility
+    needs means the booked venue no longer suits it (AC1/AC2). ``reasons`` are
+    the unmet requirements, as SCRUM-71 words them, and stay on record (AC3).
+    At most one review per booking is open. It is resolved - never deleted -
+    when a later change makes the venue suitable again, when a newer review
+    replaces it, or when the booking stops being approved.
+    """
+
+    event = models.ForeignKey(EventRequest, on_delete=models.CASCADE, related_name="venue_reviews")
+    booking = models.ForeignKey(
+        "venues.VenueBooking", on_delete=models.PROTECT, related_name="suitability_reviews"
+    )
+    reasons = models.JSONField(default=list)
+    changed_fields = models.JSONField(default=list)
+    source = models.CharField(
+        max_length=20, choices=ChangeSource.choices, default=ChangeSource.EVENT_EDIT
+    )
+    raised_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    raised_at = models.DateTimeField(default=timezone.now)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    resolution = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-raised_at", "-pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["booking"],
+                condition=models.Q(resolved_at__isnull=True),
+                name="one_open_venue_review_per_booking",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        state = "open" if self.resolved_at is None else "resolved"
+        return f"Venue review of booking {self.booking_id} ({state})"

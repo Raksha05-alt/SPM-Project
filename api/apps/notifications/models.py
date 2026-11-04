@@ -35,6 +35,8 @@ class NotificationKind(models.TextChoices):
     # SCRUM-21/81 - an attendee's registration, and an event becoming full.
     REGISTERED = "REGISTERED", "Registration confirmed"
     REGISTRATION_FULL = "REGISTRATION_FULL", "Registration full"
+    # SCRUM-66 - an approved venue no longer suits the event after a change.
+    VENUE_REVIEW = "VENUE_REVIEW", "Venue booking needs review"
 
 
 class NotificationTarget(models.TextChoices):

@@ -348,7 +348,9 @@ def record_event_edit(event: EventRequest, before: dict, user) -> list[str]:
     and after values; call inside the save transaction.
 
     A change to the date, time or attendance supersedes any current safety
-    check (SCRUM-90 AC6). A save that changes nothing records nothing.
+    check (SCRUM-90 AC6), and a change to attendance, layout or accessibility
+    needs re-checks the approved venues (SCRUM-66). A save that changes
+    nothing records nothing.
     """
     changed = [field for field in EDITABLE_FIELDS if getattr(event, field) != before[field]]
     if not changed:
@@ -372,6 +374,10 @@ def record_event_edit(event: EventRequest, before: dict, user) -> list[str]:
 
         labels = ", ".join(field.replace("_", " ") for field in safety_changes)
         arrangements_changed(event, f"The event's {labels} changed.", user)
+    # SCRUM-66 - re-check approved venues against changed requirements.
+    from apps.events.impact import recheck_after_edit
+
+    recheck_after_edit(event, changed, user)
     return changed
 
 

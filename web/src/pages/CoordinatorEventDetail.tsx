@@ -25,6 +25,7 @@ import { ReadinessPanel } from "../components/confirmation/ReadinessPanel";
 import { StatusBadge } from "../components/StatusBadge";
 import { VenueSuitability } from "../components/venues/VenueSuitability";
 import { VenuePlanner } from "../components/venues/VenuePlanner";
+import { VenueReviews } from "../components/venues/VenueReviews";
 import type { EventRequest, EventStatus } from "../types";
 
 /** Statuses a coordinator can approve from; the API enforces the same rule. */
@@ -427,6 +428,8 @@ export function CoordinatorEventDetail() {
       {isAssigned && <VenueSuitability eventId={event.id} />}
 
       {/* SCRUM-11 - request a venue and follow each request's status. */}
+      {/* SCRUM-66 AC3 - why a booked venue was flagged after the event changed. */}
+      {isAssigned && <VenueReviews eventId={event.id} />}
       {isAssigned && <VenuePlanner event={event} />}
 
       {/* SCRUM-74 - record the equipment the event requires. */}
