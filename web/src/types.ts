@@ -226,7 +226,7 @@ export interface EventSuitability {
 }
 
 /** SCRUM-11 - a venue booking request for an event. */
-export type BookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "WITHDRAWN";
+export type BookingStatus = "PENDING" | "HELD" | "APPROVED" | "REJECTED" | "WITHDRAWN" | "EXPIRED";
 
 export interface VenueBooking {
   session?: number;
@@ -252,6 +252,7 @@ export interface VenueBooking {
   wheelchair_access_required: boolean;
   accessibility_notes: string;
   status: BookingStatus;
+  hold_until?: string | null;
   status_label: string;
   status_changed_at: string;
   requested_by_name: string | null;

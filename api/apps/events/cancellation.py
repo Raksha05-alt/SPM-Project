@@ -55,9 +55,11 @@ def check_cancellation(event, actor):
 def cancellation_preview(event, actor):
     check_cancellation(event, actor)
     bookings = list(
-        event.venue_bookings.filter(status__in=[BookingStatus.PENDING, BookingStatus.APPROVED])
+        event.venue_bookings.filter(
+            status__in=[BookingStatus.PENDING, BookingStatus.HELD, BookingStatus.APPROVED]
+        )
         .order_by("pk")
-        .values("id", "venue_id", "venue__name", "status", "starts_at", "ends_at")
+        .values("id", "venue_id", "venue__name", "status", "starts_at", "ends_at", "hold_until")
     )
     equipment = list(
         EquipmentReservation.objects.filter(
@@ -101,7 +103,7 @@ def cancel_event(*, event, actor, expected_version, confirm_cancel=False, reason
     reason = release_reason(reason)
     # Keep event -> venues (ID order) -> equipment types -> resource rows.
     venue_ids = event.venue_bookings.filter(
-        status__in=[BookingStatus.PENDING, BookingStatus.APPROVED]
+        status__in=[BookingStatus.PENDING, BookingStatus.HELD, BookingStatus.APPROVED]
     ).values_list("venue_id", flat=True)
     list(Venue.objects.select_for_update().filter(pk__in=venue_ids).order_by("pk"))
     type_ids = EquipmentRequest.objects.filter(plan__event=event).values_list(
@@ -119,7 +121,7 @@ def cancel_event(*, event, actor, expected_version, confirm_cancel=False, reason
     transition_event(event, EventStatus.CANCELLED, actor)
     bookings = list(
         event.venue_bookings.select_for_update()
-        .filter(status__in=[BookingStatus.PENDING, BookingStatus.APPROVED])
+        .filter(status__in=[BookingStatus.PENDING, BookingStatus.HELD, BookingStatus.APPROVED])
         .order_by("pk")
     )
     for booking in bookings:

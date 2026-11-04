@@ -69,7 +69,7 @@ def test_ac1_ac4_ac5_real_approval_and_withdrawal(api, organiser, coordinator, v
     api.force_authenticate(coordinator)
     row = compare(api).data["venues"][0]
     assert row["status"] == "unavailable"
-    assert row["reasons"] == ["Approved bookings overlap this period."]
+    assert row["reasons"] == ["Venue reservations overlap this period."]
     assert "event_id" not in str(row) and "booking_id" not in str(row)
     assert compare(api, END, END + timedelta(hours=1)).data["venues"][0]["available"]
     assert (

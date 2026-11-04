@@ -127,11 +127,25 @@ def arrangement_gaps(event: EventRequest) -> list[str]:
             b.session_id == session.pk and b.status == BookingStatus.APPROVED for b in bookings
         ):
             gaps.append(f"Venue: session {session.name} needs an approved venue booking.")
+    now = timezone.now()
+    approved_sessions = {booking.session_id for booking in approved}
+    latest_by_session = {booking.session_id: booking.pk for booking in bookings}
     for booking in bookings:
         if booking.status == BookingStatus.PENDING:
             gaps.append(
                 f"Venue: the booking request for {booking.venue.name} is still awaiting Venue Staff."
             )
+        effective_status = booking.status_at(now)
+        if effective_status == BookingStatus.HELD:
+            gaps.append(f"Venue: the hold for {booking.venue.name} needs coordinator confirmation.")
+        elif (
+            effective_status == BookingStatus.EXPIRED
+            and booking.session.is_active
+            and booking.session.is_required
+            and booking.session_id not in approved_sessions
+            and latest_by_session[booking.session_id] == booking.pk
+        ):
+            gaps.append(f"Venue: the hold for {booking.venue.name} has expired.")
     for booking in approved:
         venue = booking.venue
         if not venue.in_service:

@@ -3,12 +3,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client";
-import { listEventBookings, requestVenue, withdrawVenue } from "../../api/venueBookings";
+import { confirmVenueHold, listEventBookings, requestVenue, withdrawVenue } from "../../api/venueBookings";
 import { listVenues } from "../../api/venues";
 import type { EventRequest, Venue, VenueBooking } from "../../types";
 import { VenuePlanner } from "./VenuePlanner";
 
 vi.mock("../../api/venueBookings", () => ({
+  confirmVenueHold: vi.fn(),
   listEventBookings: vi.fn(),
   requestVenue: vi.fn(),
   withdrawVenue: vi.fn(),
@@ -221,4 +222,26 @@ describe("SCRUM-67 withdrawal", () => {
     expect(withdrawVenue).toHaveBeenCalledWith(9, expect.objectContaining({ id: 1, status: "APPROVED" }), true);
     confirm.mockRestore();
   });
+});
+
+
+it("SCRUM-88 confirms an active hold and refreshes the booking", async () => {
+  const approved = booking({ status: "APPROVED", status_label: "Approved" });
+  vi.mocked(listEventBookings).mockResolvedValueOnce([
+    booking({ status: "HELD", status_label: "Held", hold_until: "2027-03-01T01:30:00Z" }),
+  ]).mockResolvedValue([approved]);
+  vi.mocked(confirmVenueHold).mockResolvedValue({ detail: "Venue hold confirmed.", booking: approved });
+  renderPlanner();
+
+  await userEvent.click(await screen.findByRole("button", { name: "Confirm hold" }));
+  expect(confirmVenueHold).toHaveBeenCalledWith(1);
+  expect(await screen.findByText("Approved", { exact: true })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Confirm hold" })).not.toBeInTheDocument();
+});
+
+it("SCRUM-88 shows expired holds without a confirmation action", async () => {
+  vi.mocked(listEventBookings).mockResolvedValue([booking({ status: "EXPIRED", status_label: "Expired" })]);
+  renderPlanner();
+  expect(await screen.findByText("Expired", { exact: true })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Confirm hold" })).not.toBeInTheDocument();
 });

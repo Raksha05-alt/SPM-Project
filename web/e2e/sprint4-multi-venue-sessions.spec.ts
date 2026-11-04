@@ -103,3 +103,77 @@ test("S4-SESSIONS: independent room decisions, complete Safety confirmation and 
     await context.close(); await Promise.all(clients.map(c => c.api.dispose()));
   }
 });
+
+test("S4-SCRUM-88: Venue Staff place and revise a hold, then the coordinator confirms it", async ({ page, baseURL }) => {
+  const clients = await Promise.all([
+    "organiser@acme.example",
+    "lead@connectsphere.example",
+    "coordinator@connectsphere.example",
+    "venue@connectsphere.example",
+  ].map((email) => role(baseURL!, email)));
+  const [organiser, lead, coordinator, staff] = clients;
+  const name = `Hold journey ${Date.now()}`;
+  const deadlineInput = (hours: number) =>
+    new Date(Date.now() + (hours + 8) * 3_600_000).toISOString().slice(0, 16);
+
+  const event = await jsonOk(await organiser.post("/api/events/", {
+    name, purpose: "Venue hold acceptance journey",
+    preferred_start: "2030-06-19T02:00:00Z", preferred_end: "2030-06-19T04:00:00Z",
+    expected_attendance: 30,
+  }), 201);
+  try {
+    await jsonOk(await organiser.post(`/api/events/${event.id}/submit/`), 200);
+    const who = await (await coordinator.api.get("/api/auth/me/")).json();
+    await jsonOk(await lead.post(`/api/events/${event.id}/assign-coordinator/`, {
+      coordinator_id: who.id, expected_revision: 0,
+    }), 200);
+    await jsonOk(await coordinator.post(`/api/events/${event.id}/approve/`), 200);
+    const room = await jsonOk(await staff.post("/api/venues/", {
+      name, capacity: 45, location: "Main building", layouts: ["THEATRE"], facilities: [],
+      opens_at: "08:00", closes_at: "22:00", operating_days: [0, 1, 2, 3, 4, 5, 6],
+    }), 201);
+    const { booking } = await jsonOk(await coordinator.post(`/api/events/${event.id}/venue-bookings/`, {
+      venue: room.id, starts_at: "2030-06-19T02:00:00Z", ends_at: "2030-06-19T04:00:00Z",
+      attendance: 30, layout: "THEATRE",
+    }), 201);
+
+    await signIn(page, "venue@connectsphere.example");
+    await page.goto("/venues/requests");
+    const row = page.getByRole("row").filter({ hasText: name });
+    await row.getByRole("button", { name: "Approve as hold" }).click();
+    await row.getByLabel("Hold expiry (Singapore time)").fill(deadlineInput(6));
+    const placed = page.waitForResponse((r) => r.request().method() === "POST" &&
+      r.url().endsWith(`/venue-bookings/${booking.id}/approve/`));
+    await row.getByRole("button", { name: "Place hold" }).click();
+    expect((await placed).status()).toBe(200);
+    await page.getByLabel("Show requests").selectOption("HELD");
+    await expect(row).toContainText("Hold expires");
+
+    await row.getByRole("button", { name: "Change expiry" }).click();
+    const revised = deadlineInput(8);
+    await row.getByLabel("Hold expiry (Singapore time)").fill(revised);
+    const changed = page.waitForResponse((r) => r.request().method() === "POST" &&
+      r.url().endsWith(`/venue-bookings/${booking.id}/hold-expiry/`));
+    await row.getByRole("button", { name: "Save expiry" }).click();
+    expect((await jsonOk(await changed, 200)).booking.hold_until.slice(0, 16)).toBe(revised);
+
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await signIn(page, "coordinator@connectsphere.example");
+    await page.goto(`/coordinator/events/${event.id}`);
+    const planner = page.getByRole("region", { name: "Venue requests" });
+    const heldRow = planner.getByRole("row").filter({ hasText: name });
+    await expect(heldRow).toContainText("Hold expires");
+    await heldRow.getByRole("button", { name: "Confirm hold" }).click();
+    await expect(heldRow).toContainText("Approved");
+    await expect(heldRow.getByRole("button", { name: "Confirm hold" })).toHaveCount(0);
+  } finally {
+    const preview = await coordinator.api.get(`/api/events/${event.id}/cancellation-preview/`);
+    if (preview.ok()) {
+      await coordinator.post(`/api/events/${event.id}/cancel/`, {
+        expected_version: (await preview.json()).version,
+        confirm_cancel: true, reason: "Browser test cleanup",
+      });
+    }
+    await Promise.all(clients.map((client) => client.api.dispose()));
+  }
+});

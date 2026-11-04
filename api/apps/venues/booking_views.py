@@ -14,7 +14,10 @@ Venue booking requests are internal planning information: clients and
 Attendees never reach them (SCRUM-1 AC2). Every refusal is audited.
 """
 
+from django.db.models import Q
+from django.db.models.functions import Now
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission, IsAuthenticated
@@ -36,6 +39,7 @@ from apps.venues.bookings import (
     request_booking,
     withdraw_booking,
 )
+from apps.venues.holds import confirm_hold, update_hold_expiry
 from apps.venues.layouts import cached_label_map
 from apps.venues.models import BookingStatus, EventSession, SessionKind, Venue, VenueBooking
 from apps.venues.suitability import VenueUnsuitable
@@ -61,7 +65,8 @@ class VenueBookingSerializer(serializers.ModelSerializer):
     organisation_name = serializers.CharField(source="event.organisation.name", read_only=True)
     venue_name = serializers.CharField(source="venue.name", read_only=True)
     layout_name = serializers.SerializerMethodField()
-    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    status = serializers.SerializerMethodField()
+    status_label = serializers.SerializerMethodField()
     requested_by_name = serializers.SerializerMethodField()
     decided_by_name = serializers.SerializerMethodField()
     withdrawn_by_name = serializers.SerializerMethodField()
@@ -94,6 +99,7 @@ class VenueBookingSerializer(serializers.ModelSerializer):
             "status",
             "status_label",
             "status_changed_at",
+            "hold_until",
             "requested_by_name",
             "requested_at",
             "decided_by_name",
@@ -103,6 +109,14 @@ class VenueBookingSerializer(serializers.ModelSerializer):
             "withdrawn_at",
         ]
         read_only_fields = fields
+
+    def get_status(self, obj) -> str:
+        if "booking_now" not in self.context:
+            self.context["booking_now"] = timezone.now()
+        return obj.status_at(self.context["booking_now"])
+
+    def get_status_label(self, obj) -> str:
+        return BookingStatus(self.get_status(obj)).label
 
     def get_layout_name(self, obj) -> str:
         return cached_label_map(self.context).get(obj.layout, obj.layout) if obj.layout else ""
@@ -253,7 +267,15 @@ class VenueBookingInboxView(APIView):
                 raise ValidationError(
                     {"status": [f"Choose from {', '.join(BookingStatus.values)}."]}
                 )
-            bookings = bookings.filter(status=wanted)
+            if wanted == BookingStatus.HELD:
+                bookings = bookings.filter(status=BookingStatus.HELD, hold_until__gt=Now())
+            elif wanted == BookingStatus.EXPIRED:
+                bookings = bookings.filter(
+                    Q(status=BookingStatus.EXPIRED)
+                    | Q(status=BookingStatus.HELD, hold_until__lte=Now())
+                )
+            else:
+                bookings = bookings.filter(status=wanted)
         return Response(VenueBookingSerializer(bookings, many=True).data)
 
 
@@ -309,6 +331,7 @@ class VenueBookingDetailView(APIView):
 
 class DecisionInputSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True, default="")
+    hold_until = serializers.DateTimeField(required=False)
 
 
 class VenueBookingDecisionView(APIView):
@@ -320,7 +343,7 @@ class VenueBookingDecisionView(APIView):
 
     permission_classes = [HasAnyRole, IsAuthenticated]
     allowed_roles = frozenset({Role.VENUE_STAFF})
-    decision = ""  # "approve" or "reject", set in urls.py
+    decision = ""  # Set by the route.
 
     def post(self, request, booking_id):
         booking = get_object_or_404(VenueBooking, pk=booking_id)
@@ -328,9 +351,20 @@ class VenueBookingDecisionView(APIView):
         payload.is_valid(raise_exception=True)
         try:
             if self.decision == "approve":
-                decided = approve_booking(booking, request.user)
+                decided = approve_booking(
+                    booking, request.user, hold_until=payload.validated_data.get("hold_until")
+                )
+            elif self.decision == "update_hold":
+                decided = update_hold_expiry(
+                    booking, request.user, payload.validated_data.get("hold_until")
+                )
+            elif self.decision == "confirm_hold":
+                decided = confirm_hold(booking, request.user)
             else:
                 decided = reject_booking(booking, request.user, payload.validated_data["reason"])
+        except NotAssignedToEvent:
+            record_denied(request.user, f"POST {request.path}", obj=booking)
+            raise PermissionDenied("Only the assigned coordinator may confirm this hold.") from None
         except InvalidBookingTransition as exc:
             # AC5 - a decided request cannot be decided again.
             return Response(
@@ -341,7 +375,7 @@ class VenueBookingDecisionView(APIView):
             # AC4 - a rejection without a reason; or the venue clashes or the event is closed.
             code = (
                 status.HTTP_409_CONFLICT
-                if "venue" in exc.errors or "event" in exc.errors
+                if exc.errors.keys() & {"venue", "event", "status"}
                 else status.HTTP_400_BAD_REQUEST
             )
             return Response(
@@ -364,10 +398,18 @@ class VenueBookingDecisionView(APIView):
                 {"detail": "The venue is not available for that period.", "reasons": exc.reasons},
                 status=status.HTTP_409_CONFLICT,
             )
-        verb = "approved" if decided.status == BookingStatus.APPROVED else "rejected"
+        if self.decision == "confirm_hold":
+            detail = "Venue hold confirmed. The booking is approved."
+        elif self.decision == "update_hold":
+            detail = "Venue hold expiry saved."
+        elif decided.status == BookingStatus.HELD:
+            detail = "Venue held. The Event Coordinator has been notified."
+        else:
+            verb = "approved" if decided.status == BookingStatus.APPROVED else "rejected"
+            detail = f"Booking request {verb}. The Event Coordinator has been notified."
         return Response(
             {
-                "detail": f"Booking request {verb}. The Event Coordinator has been notified.",
+                "detail": detail,
                 "booking": VenueBookingSerializer(_bookings().get(pk=decided.pk)).data,
             }
         )

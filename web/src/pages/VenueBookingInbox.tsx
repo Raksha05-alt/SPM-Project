@@ -8,6 +8,8 @@ import { VenueReviews } from "../components/venues/VenueReviews";
 
 const FILTERS: [string, string][] = [
   ["PENDING", "Waiting for review"],
+  ["HELD", "Active holds"],
+  ["EXPIRED", "Expired holds"],
   ["", "All requests"],
 ];
 
@@ -17,6 +19,7 @@ export function VenueBookingInbox() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["venue-booking-inbox", status],
     queryFn: () => listBookingInbox(status || undefined),
+    refetchInterval: status !== "PENDING" ? 15_000 : false,
   });
   const rows = data ?? [];
 

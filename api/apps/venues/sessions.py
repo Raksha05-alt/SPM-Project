@@ -52,7 +52,10 @@ def remove_session(session, actor):
     locked = EventSession.objects.select_for_update().get(pk=session.pk)
     if locked.kind == SessionKind.MAIN:
         raise BookingValidationError({"session": "The main programme is always required."})
-    if locked.bookings.filter(status__in=[BookingStatus.PENDING, BookingStatus.APPROVED]).exists():
+    if (
+        locked.bookings.filter(status=BookingStatus.PENDING).exists()
+        or locked.bookings.occupying().exists()
+    ):
         raise BookingValidationError({"session": "Withdraw this session's active bookings first."})
     if locked.is_active:
         locked.is_active = False

@@ -1,4 +1,4 @@
-"""SCRUM-69: current approved-booking occupancy, using half-open intervals.
+"""Venue occupancy for approved bookings and unexpired holds, using half-open intervals.
 
 Pending requests reserve nothing. Read conflicts afresh rather than persisting a
 flag that can become stale after approval, withdrawal or event cancellation.
@@ -83,7 +83,7 @@ def booking_review(booking):
         ],
         "conflicts": conflicts,
         "warnings": (
-            ["Venue setup/turnaround conflicts with another approved booking."] if conflicts else []
+            ["Venue setup/turnaround conflicts with another reservation."] if conflicts else []
         )
         + ([warning] if warning else []),
     }

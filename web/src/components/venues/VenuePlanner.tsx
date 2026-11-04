@@ -2,9 +2,9 @@ import { formatSgt } from "../../dateTime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError } from "../../api/client";
-import { listEventBookings, removeVenueSession, requestVenue, withdrawVenue } from "../../api/venueBookings";
+import { confirmVenueHold, listEventBookings, removeVenueSession, requestVenue, withdrawVenue } from "../../api/venueBookings";
 import { listVenues } from "../../api/venues";
-import type { EventRequest } from "../../types";
+import type { EventRequest, VenueBooking } from "../../types";
 import { toLocalInput } from "../CoordinatorEventEditor";
 import { Field, inputClass } from "../Field";
 import { selectableLayouts, useLayouts } from "../layouts/useLayouts";
@@ -31,7 +31,7 @@ export function describeRefusal(error: unknown): Refusal {
   if (Array.isArray(body.reasons)) {
     return { kind: "reasons", detail: error.message, reasons: body.reasons as string[] };
   }
-  if (error.status === 400) {
+  if (error.status === 400 || Array.isArray(body.status) || Array.isArray(body.event)) {
     const fields = Object.fromEntries(
       Object.entries(body)
         .filter(([key]) => key !== "detail")
@@ -62,14 +62,22 @@ function initialForm(event: EventRequest) {
 export function VenuePlanner({ event }: { event: EventRequest }) {
   const queryClient = useQueryClient();
   const withdraw = useMutation({
-    mutationFn: (booking: import("../../types").VenueBooking) =>
+    mutationFn: (booking: VenueBooking) =>
       withdrawVenue(event.id, booking, booking.status === "APPROVED"),
     onSuccess: () => { void queryClient.invalidateQueries(); },
     onError: () => { void queryClient.invalidateQueries({ queryKey: ["venue-bookings", event.id] }); },
   });
+  const confirmHold = useMutation({
+    mutationFn: (id: number) => confirmVenueHold(id),
+    onSuccess: () => { void queryClient.invalidateQueries(); },
+    onError: () => { void queryClient.invalidateQueries({ queryKey: ["venue-bookings", event.id] }); },
+  });
+  const holdRefusal = confirmHold.error ? describeRefusal(confirmHold.error) : null;
   const bookings = useQuery({
     queryKey: ["venue-bookings", event.id],
     queryFn: () => listEventBookings(event.id),
+    refetchInterval: (query) => query.state.data?.some((booking) => booking.status === "HELD")
+      ? 15_000 : false,
   });
   const canRequest = OPEN_TO_REQUESTS.includes(event.status);
   const sessions = [...new Map([...(bookings.data ?? [])].reverse().filter(b => b.session && b.session_active !== false)
@@ -123,11 +131,23 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
       <h2 className="mb-3 text-sm font-semibold text-navy-700">Venue requests</h2>
       {removeSession.isError && <p role="alert">{removeSession.error.message}</p>}
       {canRequest && sessions.filter(s => s.session_kind === "BREAKOUT" && !(bookings.data ?? []).some(
-        b => b.session === s.session && ["PENDING", "APPROVED"].includes(b.status),
+        b => b.session === s.session && ["PENDING", "HELD", "APPROVED"].includes(b.status),
       )).map(s => <button key={s.session} type="button" className="mb-3 mr-3 underline"
         disabled={removeSession.isPending} onClick={() => {
           if (window.confirm(`Remove ${s.session_name} from the required programme? Booking history will remain.`)) removeSession.mutate(s.session!);
         }}>Remove session {s.session_name}</button>)}
+      {holdRefusal && (
+        <div role="alert">
+          <p>{holdRefusal.detail}</p>
+          {holdRefusal.kind === "fields" && Object.values(holdRefusal.fields).map((message) => (
+            <p key={message}>{message}</p>
+          ))}
+          {holdRefusal.kind === "reasons" && holdRefusal.reasons.map((message) => (
+            <p key={message}>{message}</p>
+          ))}
+        </div>
+      )}
+      {confirmHold.isSuccess && <p role="status">{confirmHold.data.detail}</p>}
       {withdraw.isError && <p role="alert">{withdraw.error.message}</p>}
       {withdraw.isSuccess && <p role="status">Booking withdrawn. Venue Staff have been notified.</p>}
 
@@ -162,9 +182,17 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
                   {b.withdrawn_at && <span className="block text-xs">
                     Withdrawn by {b.withdrawn_by_name ?? "Deleted user"} on {formatSgt(b.withdrawn_at)}
                   </span>}
-                  {["PENDING", "APPROVED"].includes(b.status) &&
+                  {b.status === "HELD" && b.hold_until && (
+                    <span className="block text-xs">Hold expires {formatSgt(b.hold_until)}</span>
+                  )}
+                  {canRequest && b.status === "HELD" && b.session_active !== false && (
+                    <button type="button" disabled={confirmHold.isPending || withdraw.isPending}
+                      className="mr-3 underline"
+                      onClick={() => confirmHold.mutate(b.id)}>Confirm hold</button>
+                  )}
+                  {["PENDING", "HELD", "APPROVED"].includes(b.status) &&
                     ["APPROVED", "PLANNING", "CONFIRMED", "UNDER_REVIEW"].includes(event.status) && (
-                    <button type="button" disabled={withdraw.isPending} className="ml-3 underline"
+                    <button type="button" disabled={withdraw.isPending || confirmHold.isPending} className="ml-3 underline"
                       aria-label={`Withdraw ${b.venue_name}`}
                       onClick={() => {
                         if (b.status === "APPROVED" && !window.confirm(

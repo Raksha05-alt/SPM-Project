@@ -38,9 +38,21 @@ export const listBookingInbox = (status?: string) =>
     status ? `/api/venue-bookings/?status=${encodeURIComponent(status)}` : "/api/venue-bookings/",
   );
 
-/** SCRUM-72 - Venue Staff approve a Pending booking request. */
-export const approveBooking = (bookingId: number) =>
+/** Venue Staff approve a request directly or set a tentative hold deadline. */
+export const approveBooking = (bookingId: number, holdUntil?: string) =>
   request<{ detail: string; booking: VenueBooking }>(`/api/venue-bookings/${bookingId}/approve/`, {
+    method: "POST",
+    body: holdUntil ? { hold_until: holdUntil } : {},
+  });
+
+export const updateHoldExpiry = (bookingId: number, holdUntil: string) =>
+  request<{ detail: string; booking: VenueBooking }>(`/api/venue-bookings/${bookingId}/hold-expiry/`, {
+    method: "POST",
+    body: { hold_until: holdUntil },
+  });
+
+export const confirmVenueHold = (bookingId: number) =>
+  request<{ detail: string; booking: VenueBooking }>(`/api/venue-bookings/${bookingId}/confirm-hold/`, {
     method: "POST",
     body: {},
   });

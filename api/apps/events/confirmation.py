@@ -226,7 +226,7 @@ def confirmed_arrangements(event: EventRequest) -> dict:
 def _lock_resources(event: EventRequest) -> None:
     """Lock venues, equipment types, then bookings and reservations, in the shared order."""
     bookings = VenueBooking.objects.filter(
-        event=event, status__in=[BookingStatus.PENDING, BookingStatus.APPROVED]
+        event=event, status__in=[BookingStatus.PENDING, BookingStatus.HELD, BookingStatus.APPROVED]
     )
     venue_ids = sorted(set(bookings.values_list("venue_id", flat=True)))
     list(Venue.objects.select_for_update().filter(pk__in=venue_ids).order_by("pk"))
