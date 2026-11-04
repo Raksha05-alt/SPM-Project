@@ -270,3 +270,114 @@ def open_reviews(event: EventRequest):
         .select_related("booking__venue", "raised_by")
         .order_by("booking_id")
     )
+
+
+# --------------------------------------------------------------------------
+# SCRUM-18 - tell registered attendees when a confirmed event changes
+# --------------------------------------------------------------------------
+#
+# Published for DISRUPTION (SCRUM-86) and APPLY (SCRUM-80): after an action has
+# changed a confirmed event's date, time or venue, it calls
+# ``notify_attendees_of_change`` inside its own transaction. Cancellation
+# (SCRUM-77's ``cancel_event``) calls ``notify_attendees_of_cancellation``.
+# Only attendees currently Registered hear: withdrawn attendees and waiting-list
+# entries do not (SCRUM-14/19). Messages carry public details only - never staff
+# notes, decision reasons or Safety facts.
+
+ATTENDEE_CHANGES = ("date", "time", "venue")
+
+
+def registered_attendees(event: EventRequest) -> list[int]:
+    """AC3/AC4 - ids of active attendees whose registration for ``event`` stands."""
+    from apps.registrations.models import Registration, RegistrationStatus
+
+    return list(
+        Registration.objects.filter(
+            event=event,
+            status=RegistrationStatus.REGISTERED,
+            attendee__is_active=True,
+        )
+        .order_by("attendee_id")
+        .values_list("attendee_id", flat=True)
+        .distinct()
+    )
+
+
+def _local(moment) -> str:
+    return timezone.localtime(moment).strftime("%a %d %b %Y, %H:%M")
+
+
+def _period(start, end) -> str:
+    if start is None or end is None:
+        return "date and time to be confirmed"
+    local_end = timezone.localtime(end)
+    same_day = timezone.localtime(start).date() == local_end.date()
+    return (
+        f"{_local(start)} to {local_end:%H:%M}" if same_day else f"{_local(start)} to {_local(end)}"
+    )
+
+
+def describe_for_attendees(event: EventRequest) -> str:
+    """AC2 - the event's current public details, as an attendee may see them.
+
+    Name, date and time (Singapore time) and each approved room with its
+    session, location and period - the same public projection the confirmed
+    arrangements and attendee views use.
+    """
+    from apps.events.confirmation import confirmed_venues
+
+    lines = [f"When: {_period(event.preferred_start, event.preferred_end)} (Singapore time)."]
+    venues = confirmed_venues(event)
+    if not venues:
+        lines.append("Where: venue to be confirmed.")
+    for venue in venues:
+        place = f"{venue['venue']}, {venue['location']}" if venue["location"] else venue["venue"]
+        session = "" if len(venues) == 1 else f"{venue['session_name']}: "
+        lines.append(f"Where: {session}{place} ({_period(venue['starts_at'], venue['ends_at'])}).")
+    return " ".join(lines)
+
+
+def _changed_phrase(changed) -> str:
+    items = [c for c in ATTENDEE_CHANGES if c in changed]
+    if not items or set(changed) - set(ATTENDEE_CHANGES):
+        raise ValueError(f"Say which of {', '.join(ATTENDEE_CHANGES)} changed.")
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def notify_attendees_of_change(event: EventRequest, *, changed, occurrence: str):
+    """AC1-AC4 - after a confirmed event's date, time or venue changed.
+
+    ``changed`` names what changed (``date``, ``time``, ``venue``).
+    ``occurrence`` must come from the persisted change that was applied - for
+    example the change request or booking history row - so a replay never
+    notifies twice. Call inside the applying action's transaction.
+    """
+    phrase = _changed_phrase(changed)
+    return notify(
+        event=event,
+        kind=NotificationKind.EVENT_CHANGED,
+        occurrence=occurrence,
+        recipients=registered_attendees(event),
+        message=(
+            f'The {phrase} of "{event.name}", which you are registered for, changed. '
+            f"Updated details: {describe_for_attendees(event)}"
+        ),
+    )
+
+
+def notify_attendees_of_cancellation(event: EventRequest, *, occurrence: str):
+    """AC5 - the event was cancelled; registered attendees are told once.
+
+    The coordinator's cancellation reason is an internal note and is not shared.
+    """
+    when = _period(event.preferred_start, event.preferred_end)
+    return notify(
+        event=event,
+        kind=NotificationKind.EVENT_CANCELLED,
+        occurrence=occurrence,
+        recipients=registered_attendees(event),
+        message=(
+            f'"{event.name}" ({when}), which you registered for, has been cancelled '
+            "and will not take place."
+        ),
+    )

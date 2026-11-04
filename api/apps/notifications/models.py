@@ -41,6 +41,8 @@ class NotificationKind(models.TextChoices):
     PLACE_AVAILABLE = "PLACE_AVAILABLE", "A place is available"
     # SCRUM-66 - an approved venue no longer suits the event after a change.
     VENUE_REVIEW = "VENUE_REVIEW", "Venue booking needs review"
+    # SCRUM-18 - registered attendees hear that a confirmed event changed.
+    EVENT_CHANGED = "EVENT_CHANGED", "Event details changed"
 
 
 class NotificationTarget(models.TextChoices):
