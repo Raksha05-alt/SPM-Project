@@ -1,3 +1,4 @@
+import { formatSgt } from "../dateTime";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
@@ -32,7 +33,7 @@ import type { EventRequest, EventStatus } from "../types";
 const REVIEWABLE: EventStatus[] = ["SUBMITTED", "UNDER_REVIEW"];
 
 function formatDateTime(value: string | null) {
-  return value ? new Date(value).toLocaleString("en-SG") : "—";
+  return value ? formatSgt(value) : "—";
 }
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
@@ -420,7 +421,7 @@ export function CoordinatorEventDetail() {
       {event.updated_by_name && (
         <p className="mt-6 text-xs text-slate-500">
           Last edited by {event.updated_by_name} ·{" "}
-          {new Date(event.updated_at).toLocaleString("en-SG")}
+          {formatSgt(event.updated_at)}
         </p>
       )}
 

@@ -1,3 +1,4 @@
+import { formatSgt } from "../../dateTime";
 import { useQuery } from "@tanstack/react-query";
 import { getVenueReviews } from "../../api/venueReviews";
 
@@ -5,6 +6,8 @@ const FIELD_LABELS: Record<string, string> = {
   expected_attendance: "expected attendance",
   required_layout: "required layout",
   accessibility_needs: "accessibility needs",
+  preferred_start: "start time",
+  preferred_end: "end time",
 };
 
 /**
@@ -34,8 +37,8 @@ export function VenueReviews({ eventId }: { eventId: number }) {
       <h2 className="mb-1 text-sm font-semibold text-amber-900">Venue needs review</h2>
       <p className="mb-3 text-xs text-amber-900">
         The event changed after these venues were approved. The bookings are kept, but the event
-        cannot be confirmed until each one suits it again: change the event back, or withdraw the
-        booking and request a venue that fits.
+        cannot be confirmed until the required venue reviews are resolved. Staff must check
+        proposed periods before changing the current arrangements.
       </p>
       <ul className="space-y-3">
         {data.open.map((review) => (
@@ -51,7 +54,7 @@ export function VenueReviews({ eventId }: { eventId: number }) {
               {review.changed_fields.map((f) => FIELD_LABELS[f] ?? f).join(" and ")} changed
               {review.raised_by_name ? ` (by ${review.raised_by_name})` : ""} ·{" "}
               <time dateTime={review.raised_at}>
-                {new Date(review.raised_at).toLocaleString("en-SG")}
+                {formatSgt(review.raised_at)}
               </time>
             </p>
           </li>
