@@ -74,10 +74,12 @@ def availability(venue, start, end):
     else:
         blocks = list(venue.blocks.filter(starts_at__lt=occupied_end, ends_at__gt=occupied_start))
     if hasattr(venue, "occupancy_bookings"):
+        instant = timezone.now()
         conflicts = [
             booking_reference(venue, b)
             for b in venue.occupancy_bookings
-            if effective_interval(venue, b.starts_at, b.ends_at)[0] < occupied_end
+            if b.occupies_at(instant)
+            and effective_interval(venue, b.starts_at, b.ends_at)[0] < occupied_end
             and effective_interval(venue, b.starts_at, b.ends_at)[1] > occupied_start
         ]
     else:

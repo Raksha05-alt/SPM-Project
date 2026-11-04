@@ -1,4 +1,4 @@
-"""SCRUM-69: current approved-booking occupancy, using half-open intervals.
+"""Venue occupancy for approved bookings and unexpired holds, using half-open intervals.
 
 Pending requests reserve nothing. Read conflicts afresh rather than persisting a
 flag that can become stale after approval, withdrawal or event cancellation.

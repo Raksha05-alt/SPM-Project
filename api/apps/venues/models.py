@@ -3,6 +3,7 @@
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models.functions import Now
 from django.utils import timezone
 
 from apps.core.models import TimeStampedModel
@@ -157,28 +158,24 @@ class VenueShortlistEntry(TimeStampedModel):
 
 
 class BookingStatus(models.TextChoices):
-    """SCRUM-11 booking contract - the Sprint 3 booking states.
-
-    Sprint 4 adds Held, Expired and Disrupted (SCRUM-85/86/88) through this
-    same field and the transition map in apps.venues.bookings. A booking's status
-    is separate from its event's status: an Approved booking does not mean the
-    event has passed Safety review or been Confirmed.
-    """
+    """A booking has its own lifecycle, independent of the event's status."""
 
     PENDING = "PENDING", "Pending"
+    HELD = "HELD", "Held"
     APPROVED = "APPROVED", "Approved"
+    EXPIRED = "EXPIRED", "Expired"
     REJECTED = "REJECTED", "Rejected"
     WITHDRAWN = "WITHDRAWN", "Withdrawn"
 
 
-# Only an Approved booking reserves the venue. Pending, Rejected and Withdrawn
-# requests do not occupy it (Sprint 3 occupancy contract).
-OCCUPYING_BOOKING_STATUSES = frozenset({BookingStatus.APPROVED})
-
-
 class VenueBookingQuerySet(models.QuerySet):
     def occupying(self):
-        return self.filter(status__in=OCCUPYING_BOOKING_STATUSES)
+        # Check the clock when the query executes. A delayed expiry worker
+        # must not leave an expired hold blocking availability.
+        return self.filter(
+            models.Q(status=BookingStatus.APPROVED)
+            | models.Q(status=BookingStatus.HELD, hold_until__gt=Now())
+        )
 
     def overlapping(self, starts_at, ends_at):
         """Half-open [start, end): a booking ending at 10:00 does not overlap a 10:00 start."""
@@ -251,6 +248,7 @@ class VenueBooking(TimeStampedModel):
         max_length=20, choices=BookingStatus.choices, default=BookingStatus.PENDING
     )
     status_changed_at = models.DateTimeField(default=timezone.now)
+    hold_until = models.DateTimeField(null=True, blank=True)
     requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
     )
@@ -284,6 +282,13 @@ class VenueBooking(TimeStampedModel):
                 condition=~models.Q(status=BookingStatus.REJECTED) | ~models.Q(decision_reason=""),
                 name="venue_booking_rejection_has_reason",
             ),
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status__in=(BookingStatus.HELD, BookingStatus.EXPIRED))
+                    | models.Q(hold_until__isnull=False, hold_until__lt=models.F("starts_at"))
+                ),
+                name="venue_booking_hold_expiry_before_start",
+            ),
             models.UniqueConstraint(
                 fields=["session"],
                 condition=models.Q(status=BookingStatus.APPROVED),
@@ -303,6 +308,14 @@ class VenueBooking(TimeStampedModel):
         if self.session.event_id != self.event_id:
             raise ValueError("The booking session must belong to its event.")
         super().save(*args, **kwargs)
+
+    def occupies_at(self, instant):
+        """Recheck the time boundary when consuming prefetched bookings."""
+        return self.status == BookingStatus.APPROVED or (
+            self.status == BookingStatus.HELD
+            and self.hold_until is not None
+            and instant < self.hold_until
+        )
 
     @property
     def effective_attendance(self):
