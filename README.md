@@ -47,14 +47,25 @@ python manage.py migrate
 python manage.py seed_demo_data
 python manage.py runserver
 
-# 3. Web  (http://localhost:5173)
-cd ../web
+# 3. Hold expiry and reminder worker (new terminal, from repository root)
+cd api
+source .venv/bin/activate
+python manage.py process_venue_holds --watch --interval 60
+
+# 4. Web (new terminal, from repository root, http://localhost:5173)
+cd web
 npm ci
 npm run dev
 ```
 
 Open http://localhost:5173. Vite proxies everything under `/api` to Django, so
 there is no CORS configuration to get wrong in development.
+
+Keep the hold worker running alongside the API. It records overdue expiries
+and sends in-app reminders once per deadline revision. Set
+`VENUE_HOLD_REMINDER_HOURS` in the environment to change the 24-hour reminder
+window. Venue availability frees an expired slot at the deadline. After a
+restart, the worker catches up on outstanding notices and expiry history.
 
 ### Demo accounts
 

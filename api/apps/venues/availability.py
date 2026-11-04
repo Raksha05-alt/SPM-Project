@@ -132,7 +132,7 @@ def comparison_availability(venue, start, end):
     if current["blocks"]:
         reasons.append("Recorded venue blocks overlap this period.")
     if current["conflicts"]:
-        reasons.append("Approved bookings overlap this period.")
+        reasons.append("Venue reservations overlap this period.")
     if venue.in_service and venue.opens_at and venue.closes_at and venue.operating_days:
         day = timezone.localtime(start).date()
         last_day = timezone.localtime(end).date()

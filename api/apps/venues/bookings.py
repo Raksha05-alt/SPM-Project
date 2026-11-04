@@ -35,11 +35,20 @@ from apps.venues.models import (
 )
 from apps.venues.serializers import is_facility_list, normalise_facilities
 
-# Sprint 3 booking lifecycle. Sprint 4 adds Held/Expired/Disrupted here.
+# Persisted booking transitions, including venue holds (SCRUM-88).
 ALLOWED_BOOKING_TRANSITIONS: dict[str, frozenset[str]] = {
     BookingStatus.PENDING: frozenset(
-        {BookingStatus.APPROVED, BookingStatus.REJECTED, BookingStatus.WITHDRAWN}
+        {
+            BookingStatus.APPROVED,
+            BookingStatus.HELD,
+            BookingStatus.REJECTED,
+            BookingStatus.WITHDRAWN,
+        }
     ),
+    BookingStatus.HELD: frozenset(
+        {BookingStatus.APPROVED, BookingStatus.EXPIRED, BookingStatus.WITHDRAWN}
+    ),
+    BookingStatus.EXPIRED: frozenset(),
     BookingStatus.APPROVED: frozenset({BookingStatus.WITHDRAWN}),
     BookingStatus.REJECTED: frozenset(),
     BookingStatus.WITHDRAWN: frozenset(),
@@ -191,7 +200,9 @@ def create_booking_record(*, requested_by, **values) -> VenueBooking:
 
 
 @transaction.atomic
-def transition_booking(booking: VenueBooking, target: str, actor, reason: str = "") -> VenueBooking:
+def transition_booking(
+    booking: VenueBooking, target: str, actor, reason: str = "", *, hold_until=None
+) -> VenueBooking:
     """Move a booking to ``target``, recording who, when and why.
 
     Raises InvalidBookingTransition for a move the lifecycle does not allow, and
@@ -202,42 +213,79 @@ def transition_booking(booking: VenueBooking, target: str, actor, reason: str = 
     # event before the venue and booking, following the shared resource order.
     from apps.events.models import EventRequest
 
-    identity = VenueBooking.objects.values("event_id", "venue_id").get(pk=booking.pk)
-    event = EventRequest.objects.select_for_update().get(pk=identity["event_id"])
-    venue = Venue.objects.select_for_update().get(pk=identity["venue_id"])
-    locked = VenueBooking.objects.select_for_update().get(pk=booking.pk)
+    reserving = target in (BookingStatus.APPROVED, BookingStatus.HELD)
+    if reserving:
+        event, venue, locked = _lock_for_decision(booking)
+    else:
+        identity = VenueBooking.objects.values("event_id", "venue_id").get(pk=booking.pk)
+        event = EventRequest.objects.select_for_update().get(pk=identity["event_id"])
+        venue = Venue.objects.select_for_update().get(pk=identity["venue_id"])
+        locked = VenueBooking.objects.select_for_update().get(pk=booking.pk)
     if target not in ALLOWED_BOOKING_TRANSITIONS.get(locked.status, frozenset()):
         raise InvalidBookingTransition(locked.status, target)
     reason = (reason or "").strip()
     if target == BookingStatus.REJECTED and not reason:
         raise BookingValidationError({"reason": "Enter a reason for the rejection."})
 
-    if target == BookingStatus.APPROVED:
+    now = timezone.now()
+    if reserving:
+        from apps.accounts.models import Role
+        from apps.venues.holds import expire_hold, validate_hold_deadline
         from apps.venues.occupancy import conflict_references
 
+        if target == BookingStatus.HELD:
+            if actor.role != Role.VENUE_STAFF or not actor.is_active:
+                raise BookingValidationError({"event": "Only Venue Staff can place a hold."})
+            validate_hold_deadline(locked, hold_until, now)
+        if locked.status == BookingStatus.HELD:
+            if not locked.occupies_at(now):
+                raise BookingValidationError({"status": "The venue hold has expired."})
+            if (
+                actor.role != Role.EVENT_COORDINATOR
+                or event.coordinator_id != actor.pk
+                or not actor.is_active
+            ):
+                raise NotAssignedToEvent
         if event.status in EVENT_STATUSES_CLOSED_TO_BOOKING:
             raise BookingValidationError({"event": "This event cannot receive a venue approval."})
         if not locked.session.is_active:
             raise BookingValidationError({"session": "This session is no longer active."})
-        if (
-            VenueBooking.objects.filter(session=locked.session, status=BookingStatus.APPROVED)
-            .exclude(pk=locked.pk)
-            .exists()
-        ):
-            raise BookingValidationError({"event": "This session already has an approved venue."})
-        conflicts = conflict_references(venue, locked.starts_at, locked.ends_at)
+        # PostgreSQL cannot express time-dependent uniqueness. Release any stale
+        # hold under the same event and venue locks before claiming this session.
+        siblings = VenueBooking.objects.filter(session=locked.session).exclude(pk=locked.pk)
+        for stale in siblings.filter(status=BookingStatus.HELD, hold_until__lte=now):
+            expire_hold(event, stale)
+        current = siblings.filter(status__in=(BookingStatus.APPROVED, BookingStatus.HELD)).first()
+        if current is not None:
+            if current.status == BookingStatus.APPROVED:
+                raise BookingValidationError(
+                    {"event": "This session already has an approved venue."}
+                )
+            raise BookingValidationError(
+                {"event": "This session already has an active venue hold."}
+            )
+        conflicts = conflict_references(
+            venue, locked.starts_at, locked.ends_at, exclude_booking_id=locked.pk
+        )
         if conflicts:
             references = ", ".join(str(item["event_id"]) for item in conflicts)
             raise BookingValidationError(
                 {"venue": f"The venue conflicts with event(s): {references}."}
             )
 
+    if target == BookingStatus.EXPIRED and locked.occupies_at(now):
+        raise BookingValidationError({"status": "This venue hold has not expired."})
+
     previous = locked.status
-    now = timezone.now()
     locked.status = target
     locked.status_changed_at = now
     fields = ["status", "status_changed_at", "updated_at"]
-    if target in (BookingStatus.APPROVED, BookingStatus.REJECTED):
+    if target == BookingStatus.HELD:
+        locked.hold_until = hold_until
+        fields.append("hold_until")
+    if target in (BookingStatus.HELD, BookingStatus.REJECTED) or (
+        target == BookingStatus.APPROVED and previous != BookingStatus.HELD
+    ):
         locked.decided_by = actor
         locked.decided_at = now
         locked.decision_reason = reason
@@ -252,7 +300,7 @@ def transition_booking(booking: VenueBooking, target: str, actor, reason: str = 
         reason=reason,
         changed_at=now,
     )
-    if BookingStatus.APPROVED in (previous, target):
+    if {previous, target} & {BookingStatus.APPROVED, BookingStatus.HELD}:
         # SCRUM-90 AC6 - a venue is added to or removed from the event's
         # arrangements, so any safety check no longer describes it.
         from apps.safety.services import arrangements_changed
@@ -303,7 +351,7 @@ def _availability_problems(venue, starts_at, ends_at, *, exclude_booking_id=None
     conflicts = [c for c in period["conflicts"] if c["id"] != exclude_booking_id]
     if conflicts:
         events = ", ".join(str(c["event_id"]) for c in conflicts)
-        problems.append(f"The venue is already approved for event(s) {events} in this period.")
+        problems.append(f"The venue is already reserved for event(s) {events} in this period.")
     return problems
 
 
@@ -430,7 +478,10 @@ def withdraw_booking(*, booking, actor, expected_status, confirm_release=False):
         raise NotAssignedToEvent
     if event.status in EVENT_STATUSES_CLOSED_TO_BOOKING:
         raise BookingValidationError({"event": "This event is closed to booking withdrawals."})
-    if locked.status != expected_status:
+    if (
+        locked.status_at(timezone.now()) != expected_status
+        or expected_status == BookingStatus.EXPIRED
+    ):
         raise BookingValidationError(
             {"status": "The booking has changed. Reload before withdrawing."}
         )
@@ -495,7 +546,7 @@ def _notify_coordinator(event, booking, message) -> None:
 
 
 @transaction.atomic
-def approve_booking(booking: VenueBooking, actor) -> VenueBooking:
+def approve_booking(booking: VenueBooking, actor, *, hold_until=None) -> VenueBooking:
     """SCRUM-72 AC2/AC5/AC6 - approve a Pending request and notify the coordinator.
 
     Rechecks, under the event/venue/booking locks, that the request is still
@@ -532,6 +583,10 @@ def approve_booking(booking: VenueBooking, actor) -> VenueBooking:
     )
     if problems:
         raise VenueNotAvailable(problems)
+    if current is not None and hold_until is not None:
+        raise BookingValidationError(
+            {"event": "Approve the replacement directly to preserve the existing venue until then."}
+        )
     if current is not None:
         transition_booking(
             current,
@@ -539,8 +594,15 @@ def approve_booking(booking: VenueBooking, actor) -> VenueBooking:
             actor,
             f"Replaced by booking {locked.pk} for {locked.session.name}.",
         )
+    if hold_until is not None:
+        transition_booking(locked, BookingStatus.HELD, actor, hold_until=hold_until)
+        _notify_coordinator(
+            event,
+            locked,
+            f'Venue Staff held {venue.name} for "{event.name}" until {_local(hold_until)}.',
+        )
+        return locked
     transition_booking(locked, BookingStatus.APPROVED, actor)
-    locked.refresh_from_db()
     _notify_coordinator(
         event,
         locked,

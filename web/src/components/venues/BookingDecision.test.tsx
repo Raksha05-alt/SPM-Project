@@ -1,13 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client";
-import { approveBooking, rejectBooking } from "../../api/venueBookings";
+import { approveBooking, rejectBooking, updateHoldExpiry } from "../../api/venueBookings";
 import type { VenueBooking } from "../../types";
 import { BookingDecision } from "./BookingDecision";
 
-vi.mock("../../api/venueBookings", () => ({ approveBooking: vi.fn(), rejectBooking: vi.fn() }));
+vi.mock("../../api/venueBookings", () => ({ approveBooking: vi.fn(), rejectBooking: vi.fn(), updateHoldExpiry: vi.fn() }));
 
 const PENDING = {
   id: 7,
@@ -151,4 +151,25 @@ it("SCRUM-85 warns about buffer hours while allowing staff approval", async () =
   expect(screen.getByRole("alert")).toHaveTextContent("outside operating hours");
   await userEvent.click(screen.getByRole("button", { name: "Approve" }));
   expect(approveBooking).toHaveBeenCalledWith(7);
+});
+
+
+it.each([
+  { status: "PENDING", open: "Approve as hold", submit: "Place hold", action: approveBooking },
+  { status: "HELD", open: "Change expiry", submit: "Save expiry", action: updateHoldExpiry },
+] as const)("SCRUM-88 sets a Singapore hold deadline when $status", async ({ status, open, submit, action }) => {
+  const held = { ...PENDING, status: "HELD", hold_until: "2027-03-01T01:30:00Z" } as const;
+  vi.mocked(action).mockResolvedValue({ detail: "Hold saved", booking: held });
+  renderDecision({ ...held, status });
+  if (status === "HELD") expect(screen.getByText(/Hold expires .* SGT/)).toBeInTheDocument();
+
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: open }));
+  const save = screen.getByRole("button", { name: submit });
+  expect(save).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Hold expiry (Singapore time)"), {
+    target: { value: "2027-03-01T09:45" },
+  });
+  await user.click(save);
+  expect(action).toHaveBeenCalledWith(7, "2027-03-01T09:45+08:00");
 });

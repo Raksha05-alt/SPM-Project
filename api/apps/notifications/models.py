@@ -37,6 +37,9 @@ class NotificationKind(models.TextChoices):
     REGISTRATION_FULL = "REGISTRATION_FULL", "Registration full"
     # SCRUM-66 - an approved venue no longer suits the event after a change.
     VENUE_REVIEW = "VENUE_REVIEW", "Venue booking needs review"
+    VENUE_HOLD_UPDATED = "VENUE_HOLD_UPDATED", "Venue hold expiry changed"
+    VENUE_HOLD_REMINDER = "VENUE_HOLD_REMINDER", "Venue hold expiring"
+    VENUE_HOLD_EXPIRED = "VENUE_HOLD_EXPIRED", "Venue hold expired"
 
 
 class NotificationTarget(models.TextChoices):

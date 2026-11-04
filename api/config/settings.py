@@ -113,3 +113,6 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# SCRUM-88: the processing command uses this window for coordinator reminders.
+VENUE_HOLD_REMINDER_HOURS = int(os.environ.get("VENUE_HOLD_REMINDER_HOURS", "24"))

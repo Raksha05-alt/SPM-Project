@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
+from apps.accounts.models import Role
 from apps.venues.availability_views import (
     AvailableVenuesView,
     BlockDetailView,
@@ -65,6 +66,18 @@ urlpatterns = [
         "venue-bookings/<int:booking_id>/approve/",
         VenueBookingDecisionView.as_view(decision="approve"),
         name="venue-booking-approve",
+    ),
+    path(
+        "venue-bookings/<int:booking_id>/hold-expiry/",
+        VenueBookingDecisionView.as_view(decision="update_hold"),
+        name="venue-booking-hold-expiry",
+    ),
+    path(
+        "venue-bookings/<int:booking_id>/confirm-hold/",
+        VenueBookingDecisionView.as_view(
+            decision="confirm_hold", allowed_roles=frozenset({Role.EVENT_COORDINATOR})
+        ),
+        name="venue-booking-confirm-hold",
     ),
     path(
         "venue-bookings/<int:booking_id>/reject/",

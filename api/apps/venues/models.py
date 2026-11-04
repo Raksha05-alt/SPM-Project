@@ -291,8 +291,8 @@ class VenueBooking(TimeStampedModel):
             ),
             models.UniqueConstraint(
                 fields=["session"],
-                condition=models.Q(status=BookingStatus.APPROVED),
-                name="venue_booking_one_approved_per_session",
+                condition=models.Q(status__in=(BookingStatus.APPROVED, BookingStatus.HELD)),
+                name="venue_booking_one_reservation_per_session",
             ),
         ]
 
@@ -316,6 +316,11 @@ class VenueBooking(TimeStampedModel):
             and self.hold_until is not None
             and instant < self.hold_until
         )
+
+    def status_at(self, instant):
+        if self.status == BookingStatus.HELD and not self.occupies_at(instant):
+            return BookingStatus.EXPIRED
+        return self.status
 
     @property
     def effective_attendance(self):
