@@ -71,4 +71,10 @@ Section 5 of the guide also requires the real APPLY path (SCRUM-80) to show revi
 | Playwright, all 13 journeys, `--workers=1 --retries=0` | 13 passed |
 | Browser check through real actions | Venue requested and approved through the API. The coordinator raised attendance to 250 in the edit form; the panel showed "Expected attendance of 250 exceeds the venue's maximum capacity of 200", and readiness and the notification showed the same reason. Lowering attendance to 190 removed the panel and resolved the review. |
 
-Still to do: a teammate correctness review, AC5 after SESSIONS, the APPLY integration check, and a manual check with demo data.
+## Integration with SESSIONS on main
+
+On 4 November, the integration branch combined Jerom's published commits with main `69a2ca8`. The committed AC5 test approved a main venue and a 30-seat breakout through the real booking services, then used the event edit endpoint to verify that attendance 201 flags only the 200-seat main venue and preserves the breakout. A second regression confirmed that clearing an event-level accessibility need resolves its review when the booking itself has no such requirement.
+
+Codex ran 166 backend tests across SCRUM-66, SCRUM-87 and Safety on PostgreSQL. The original six trial cases above describe Jerom's unpublished patch. The committed integration cases are recorded in the case inventory.
+
+The SCRUM-80 APPLY integration check and the team's manual verification remain pending.

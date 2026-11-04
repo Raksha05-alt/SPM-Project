@@ -5,9 +5,8 @@ The venue is requested and approved through the real SCRUM-11/72 actions
 SCRUM-61 edit endpoint, PATCH /api/events/<id>/. Harbour Hall: capacity 200,
 layouts Theatre and Banquet, wheelchair access recorded as available.
 
-AC5 (main programme versus breakout rooms) needs SCRUM-87's sessions. Its
-executable cases are added once SESSIONS is merged to main; until then every
-booking is the main programme, which the AC1-AC4 cases exercise.
+AC5 uses SCRUM-87's session bookings to verify that the main programme
+follows event attendance while breakout bookings keep their own attendance.
 """
 
 from unittest import mock
@@ -22,7 +21,7 @@ from apps.notifications.models import Notification, NotificationKind, Notificati
 from apps.safety.tests.conftest import approve_venue, make_venue
 from apps.safety.tests.conftest import planning_event as planning_event  # noqa: F401
 from apps.safety.tests.conftest import venue as venue  # noqa: F401
-from apps.venues.bookings import request_booking, withdraw_booking
+from apps.venues.bookings import approve_booking, request_booking, withdraw_booking
 from apps.venues.models import BookingStatus, Venue
 from apps.venues.suitability import Requirement
 from conftest import _make_user
@@ -444,3 +443,50 @@ def test_l7_every_booking_is_the_main_programme_until_sessions_exist(booked):
 
     assert is_main(booking) is True
     assert booking_attendance(booking, 321) == 321
+
+
+def test_ac5_attendance_change_flags_only_the_main_programme(api, booked, coordinator, venue_staff):
+    event, main = booked
+    breakout_room = make_venue("Breakout room", capacity=30)
+    breakout = approve_booking(
+        request_booking(
+            event=event,
+            venue=breakout_room,
+            requested_by=coordinator,
+            starts_at=event.preferred_start,
+            ends_at=event.preferred_end,
+            attendance=30,
+            layout="THEATRE",
+            session_kind="BREAKOUT",
+            session_name="Breakout A",
+        ),
+        venue_staff,
+    )
+
+    edit(api, coordinator, event, expected_attendance=201)
+
+    assert open_review(main).reasons == [
+        {
+            "requirement": Requirement.CAPACITY,
+            "message": "Expected attendance of 201 exceeds the venue's maximum capacity of 200.",
+        }
+    ]
+    assert not VenueReview.objects.filter(booking=breakout).exists()
+    breakout.refresh_from_db()
+    assert breakout.attendance == 30
+    assert breakout.status == BookingStatus.APPROVED
+    assert list(review_notices().values_list("target_id", flat=True)) == [main.pk]
+
+
+def test_clearing_event_accessibility_needs_resolves_the_review(api, booked, coordinator):
+    event, booking = booked
+    Venue.objects.filter(pk=booking.venue_id).update(wheelchair_access=False)
+    edit(api, coordinator, event, accessibility_needs="Wheelchair access for two guests.")
+    review = open_review(booking)
+
+    edit(api, coordinator, event, accessibility_needs="")
+
+    review.refresh_from_db()
+    assert review.resolved_at is not None
+    assert not VenueReview.objects.filter(booking=booking, resolved_at__isnull=True).exists()
+    assert review_notices().count() == 1

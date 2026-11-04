@@ -153,8 +153,8 @@ def impact_of(
             wheelchair_access_required=(
                 booking.wheelchair_access_required
                 or access_changed
-                # Keep checking needs an open review already flagged.
-                or _open_accessibility(booking)
+                # Carry an existing flag through unrelated edits only.
+                or (ACCESSIBILITY not in changed and _open_accessibility(booking))
             ),
             starts_at=booking.starts_at,
             ends_at=booking.ends_at,
