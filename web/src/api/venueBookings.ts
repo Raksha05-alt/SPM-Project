@@ -58,10 +58,22 @@ export const confirmVenueHold = (bookingId: number) =>
   });
 
 /** SCRUM-72 - Venue Staff reject a Pending booking request; a reason is required. */
-export const rejectBooking = (bookingId: number, reason: string) =>
+export interface VenueSuggestionInput {
+  venue: number;
+  starts_at: string;
+  ends_at: string;
+}
+
+export const acceptVenueSuggestion = (bookingId: number) =>
+  request<{ detail: string; booking: VenueBooking }>(
+    `/api/venue-bookings/${bookingId}/accept-suggestion/`,
+    { method: "POST", body: {} },
+  );
+
+export const rejectBooking = (bookingId: number, reason: string, suggestion?: VenueSuggestionInput) =>
   request<{ detail: string; booking: VenueBooking }>(`/api/venue-bookings/${bookingId}/reject/`, {
     method: "POST",
-    body: { reason },
+    body: suggestion ? { reason, suggestion } : { reason },
   });
 
 export const removeVenueSession = (eventId: number, sessionId: number) =>

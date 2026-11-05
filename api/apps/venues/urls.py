@@ -80,6 +80,13 @@ urlpatterns = [
         name="venue-booking-confirm-hold",
     ),
     path(
+        "venue-bookings/<int:booking_id>/accept-suggestion/",
+        VenueBookingDecisionView.as_view(
+            decision="accept_suggestion", allowed_roles=frozenset({Role.EVENT_COORDINATOR})
+        ),
+        name="venue-booking-accept-suggestion",
+    ),
+    path(
         "venue-bookings/<int:booking_id>/reject/",
         VenueBookingDecisionView.as_view(decision="reject"),
         name="venue-booking-reject",

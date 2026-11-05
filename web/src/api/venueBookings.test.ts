@@ -25,3 +25,16 @@ it("SCRUM-87 client contract: staff decisions target one booking; inbox filters 
   expect(request).toHaveBeenNthCalledWith(3, "/api/venue-bookings/2/approve/", { method: "POST", body: {} });
   expect(request).toHaveBeenNthCalledWith(4, "/api/venue-bookings/3/reject/", { method: "POST", body: { reason: "Room unavailable" } });
 });
+
+it("US-73 carries the typed proposal and accepts against the source rejection", async () => {
+  const { acceptVenueSuggestion } = await import("./venueBookings");
+  const suggestion = { venue: 3, starts_at: "2030-06-18T02:00:00Z", ends_at: "2030-06-18T04:00:00Z" };
+  rejectBooking(7, "Use another room", suggestion);
+  acceptVenueSuggestion(7);
+  expect(request).toHaveBeenNthCalledWith(1, "/api/venue-bookings/7/reject/", {
+    method: "POST", body: { reason: "Use another room", suggestion },
+  });
+  expect(request).toHaveBeenNthCalledWith(2, "/api/venue-bookings/7/accept-suggestion/", {
+    method: "POST", body: {},
+  });
+});

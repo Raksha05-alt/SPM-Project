@@ -539,13 +539,16 @@ def withdraw_booking(*, booking, actor, expected_status, confirm_release=False):
 # SCRUM-72 - Venue Staff record their decision on a Pending booking request.
 
 
-def _lock_for_decision(booking):
+def _lock_for_decision(booking, extra_venue_ids=()):
     """Lock the event, venue and booking rows in the shared order and return them."""
     from apps.events.models import EventRequest
 
     identity = VenueBooking.objects.values("event_id", "venue_id").get(pk=booking.pk)
     event = EventRequest.objects.select_for_update().get(pk=identity["event_id"])
-    ids = list(VenueBooking.objects.filter(event=event).values_list("venue_id", flat=True))
+    ids = [
+        *VenueBooking.objects.filter(event=event).values_list("venue_id", flat=True),
+        *extra_venue_ids,
+    ]
     venues = {v.pk: v for v in Venue.objects.select_for_update().filter(pk__in=ids).order_by("pk")}
     venue = venues[identity["venue_id"]]
     locked = (
@@ -653,23 +656,74 @@ def approve_booking(booking: VenueBooking, actor, *, hold_until=None) -> VenueBo
 
 
 @transaction.atomic
-def reject_booking(booking: VenueBooking, actor, reason: str) -> VenueBooking:
+def reject_booking(booking: VenueBooking, actor, reason: str, *, suggestion=None) -> VenueBooking:
     """SCRUM-72 AC3-AC6 - reject a Pending request with a reason and notify the coordinator.
 
     A blank reason (AC4) or an already-decided request (AC5) raises with nothing saved.
     SCRUM-58 AC3 - the venue is unavailable, so the Event Organiser also receives the reason.
     """
+    from apps.accounts.models import Role
     from apps.events.confirmation import notify_unavailable
+    from apps.venues.suitability import Requirements, ensure_suitable
 
-    event, venue, locked = _lock_for_decision(booking)
+    suggestion = dict(suggestion) if suggestion is not None else None
+    extra_ids = [suggestion["venue"]] if suggestion and "venue" in suggestion else []
+    event, venue, locked = _lock_for_decision(booking, extra_ids)
+    if actor.role != Role.VENUE_STAFF or not actor.is_active:
+        raise BookingValidationError({"event": "Only active Venue Staff may reject a request."})
+    if locked.status != BookingStatus.PENDING:
+        raise InvalidBookingTransition(locked.status, BookingStatus.REJECTED)
+    if not isinstance(reason, str) or not reason.strip():
+        raise BookingValidationError({"reason": "Enter a reason for the rejection."})
+    if suggestion is not None:
+        if not suggestion:
+            raise BookingValidationError({"suggestion": "Choose another venue or time."})
+        suggested = Venue.objects.filter(pk=suggestion.get("venue", venue.pk)).first()
+        if suggested is None:
+            raise BookingValidationError({"suggestion": "That venue does not exist."})
+        if ("starts_at" in suggestion) != ("ends_at" in suggestion):
+            raise BookingValidationError(
+                {"suggestion": "Supply both suggested start and end times."}
+            )
+        start = suggestion.get("starts_at", locked.starts_at)
+        end = suggestion.get("ends_at", locked.ends_at)
+        if (suggested.pk, start, end) == (venue.pk, locked.starts_at, locked.ends_at):
+            raise BookingValidationError({"suggestion": "Choose another venue or time."})
+        cleaned = validate_booking_request(
+            event=event,
+            venue=suggested,
+            session=locked.session,
+            starts_at=start,
+            ends_at=end,
+            **_suggestion_requirements(locked),
+        )
+        ensure_suitable(suggested, Requirements.for_booking(_Requested(**cleaned)))
+        problems = _availability_problems(suggested, start, end)
+        if problems:
+            raise VenueNotAvailable(problems)
+        if start <= timezone.now():
+            raise BookingValidationError({"suggestion": "Choose a suggested time in the future."})
+
     transition_booking(locked, BookingStatus.REJECTED, actor, reason)
+    if suggestion is not None:
+        locked.suggested_venue = suggested
+        locked.suggested_starts_at = start
+        locked.suggested_ends_at = end
+        locked.save(update_fields=["suggested_venue", "suggested_starts_at", "suggested_ends_at"])
     locked.refresh_from_db()
+    alternative = describe_suggestion(locked)
+    suggestion_message = (
+        f" Suggested alternative: {alternative['venue_name']} "
+        f"({_local(locked.suggested_starts_at)} to {_local(locked.suggested_ends_at)})."
+        if alternative
+        else ""
+    )
     _notify_coordinator(
         event,
         locked,
         f'Venue Staff rejected {venue.name} for "{event.name}" '
         f"({_local(locked.starts_at)} to {_local(locked.ends_at)}). "
-        f"Reason: {locked.decision_reason}",
+        f"Reason: {locked.decision_reason}{suggestion_message}",
     )
     notify_unavailable(
         event,
@@ -678,6 +732,77 @@ def reject_booking(booking: VenueBooking, actor, reason: str) -> VenueBooking:
         occurrence=booking_occurrence(locked),
     )
     return locked
+
+
+def _suggestion_requirements(booking):
+    return {
+        "attendance": booking.effective_attendance,
+        "layout": booking.layout,
+        "required_facilities": booking.required_facilities,
+        "wheelchair_access_required": booking.wheelchair_access_required,
+        "accessibility_notes": booking.accessibility_notes,
+    }
+
+
+def describe_suggestion(booking):
+    """The persisted staff proposal and the request created from it, if accepted."""
+    if booking.suggested_venue_id is None:
+        return None
+    return {
+        "venue": booking.suggested_venue_id,
+        "venue_name": booking.suggested_venue.name,
+        "starts_at": booking.suggested_starts_at,
+        "ends_at": booking.suggested_ends_at,
+        "booking": booking.suggestion_booking_id,
+    }
+
+
+@transaction.atomic
+def accept_suggestion(booking, actor):
+    """Accept once under the event lock, using the real booking-request action."""
+    from apps.accounts.models import Role
+    from apps.events.models import EventRequest
+
+    # A concurrent rejection may publish its suggestion while this action waits.
+    # Resolve the suggested venue only after locking the event.
+    event_id = VenueBooking.objects.values_list("event_id", flat=True).get(pk=booking.pk)
+    EventRequest.objects.select_for_update().get(pk=event_id)
+    identity = VenueBooking.objects.values("suggested_venue_id").get(pk=booking.pk)
+    extra_ids = [identity["suggested_venue_id"]] if identity["suggested_venue_id"] else []
+    event, _, locked = _lock_for_decision(booking, extra_ids)
+    if (
+        actor.role != Role.EVENT_COORDINATOR
+        or not actor.is_active
+        or event.coordinator_id != actor.pk
+    ):
+        raise NotAssignedToEvent
+    if event.status not in EVENT_STATUSES_OPEN_TO_REQUESTS or not locked.session.is_active:
+        raise BookingValidationError({"event": "This event or session is closed to new requests."})
+    if locked.status != BookingStatus.REJECTED or locked.suggested_venue_id is None:
+        raise BookingValidationError({"suggestion": "This rejection has no suggested alternative."})
+    if locked.suggestion_booking_id is not None:
+        return locked.suggestion_booking
+    if locked.suggested_starts_at <= timezone.now():
+        raise BookingValidationError(
+            {"suggestion": "This suggested time has passed. Request a new time."}
+        )
+    if VenueBooking.objects.filter(session=locked.session, pk__gt=locked.pk).exists():
+        raise BookingValidationError(
+            {"status": "This session has a newer request. Review it before choosing another venue."}
+        )
+    created = request_booking(
+        event=event,
+        venue=locked.suggested_venue,
+        requested_by=actor,
+        session_id=locked.session_id,
+        replaces_id=locked.replaces_id,
+        starts_at=locked.suggested_starts_at,
+        ends_at=locked.suggested_ends_at,
+        **_suggestion_requirements(locked),
+    )
+    locked.suggestion_booking = created
+    locked.save(update_fields=["suggestion_booking", "updated_at"])
+    return created
 
 
 def disrupt_bookings(block, actor):

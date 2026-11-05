@@ -254,6 +254,13 @@ export interface VenueBooking {
   accessibility_notes: string;
   status: BookingStatus;
   hold_until?: string | null;
+  suggestion?: {
+    venue: number;
+    venue_name: string;
+    starts_at: string;
+    ends_at: string;
+    booking: number | null;
+  } | null;
   status_label: string;
   status_changed_at: string;
   requested_by_name: string | null;

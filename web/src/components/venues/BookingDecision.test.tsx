@@ -173,3 +173,25 @@ it.each([
   await user.click(save);
   expect(action).toHaveBeenCalledWith(7, "2027-03-01T09:45+08:00");
 });
+
+it("US-73 sends an optional alternative with the rejection in Singapore time", async () => {
+  const { listVenues } = await import("../../api/venues");
+  const venueSpy = vi.spyOn(await import("../../api/venues"), "listVenues");
+  venueSpy.mockResolvedValue([{ id: 8, name: "Workshop Room" }] as Awaited<ReturnType<typeof listVenues>>);
+  vi.mocked(rejectBooking).mockResolvedValue({ detail: "ok", booking: PENDING });
+  renderDecision({
+    ...PENDING, venue: 3, venue_name: "Original hall",
+    starts_at: "2030-06-18T02:00:00Z", ends_at: "2030-06-18T04:00:00Z",
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Reject" }));
+  await userEvent.type(screen.getByLabelText("Reason for rejection"), "Use the workshop instead");
+  await userEvent.click(screen.getByLabelText("Suggest another venue or time"));
+  await screen.findByRole("option", { name: "Workshop Room" });
+  expect(screen.getByLabelText("Suggested start (Singapore time)")).toHaveValue("2030-06-18T10:00");
+  await userEvent.selectOptions(screen.getByLabelText("Suggested venue"), "8");
+  await userEvent.click(screen.getByRole("button", { name: "Confirm rejection" }));
+  expect(rejectBooking).toHaveBeenCalledWith(7, "Use the workshop instead", {
+    venue: 8, starts_at: "2030-06-18T10:00+08:00", ends_at: "2030-06-18T12:00+08:00",
+  });
+  venueSpy.mockRestore();
+});

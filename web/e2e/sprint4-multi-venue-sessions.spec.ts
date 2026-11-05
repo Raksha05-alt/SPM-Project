@@ -177,3 +177,81 @@ test("S4-SCRUM-88: Venue Staff place and revise a hold, then the coordinator con
     await Promise.all(clients.map((client) => client.api.dispose()));
   }
 });
+
+test("S4-US-73: staff warning, rejection with alternative and coordinator acceptance", async ({ page, baseURL }) => {
+  test.setTimeout(60_000);
+  const clients = await Promise.all([
+    "organiser@acme.example", "lead@connectsphere.example",
+    "coordinator@connectsphere.example", "venue@connectsphere.example",
+  ].map(email => role(baseURL!, email)));
+  const [organiser, lead, coordinator, staff] = clients;
+  const suffix = String(Date.now());
+  const event = await jsonOk(await organiser.post("/api/events/", {
+    name: `Alternative event ${suffix}`, purpose: "Alternative booking journey",
+    preferred_start: "2030-06-20T02:00:00Z", preferred_end: "2030-06-20T04:00:00Z",
+    expected_attendance: 30,
+  }), 201);
+  try {
+    await jsonOk(await organiser.post(`/api/events/${event.id}/submit/`), 200);
+    const who = await (await coordinator.api.get("/api/auth/me/")).json();
+    await jsonOk(await lead.post(`/api/events/${event.id}/assign-coordinator/`, {
+      coordinator_id: who.id, expected_revision: 0,
+    }), 200);
+    await jsonOk(await coordinator.post(`/api/events/${event.id}/approve/`), 200);
+    const rooms = [];
+    for (const label of ["Original", "Blocked", "Suggested"]) {
+      rooms.push(await jsonOk(await staff.post("/api/venues/", {
+        name: `${label} room ${suffix}`, capacity: 50, location: "Main building",
+        layouts: ["THEATRE"], facilities: ["Projector"], opens_at: "08:00", closes_at: "22:00",
+        operating_days: [0, 1, 2, 3, 4, 5, 6],
+      }), 201));
+    }
+    await jsonOk(await staff.post(`/api/venues/${rooms[1].id}/blocks/`, {
+      starts_at: "2030-06-20T02:00:00Z", ends_at: "2030-06-20T04:00:00Z",
+      reason: "Scheduled maintenance",
+    }), 201);
+    const { booking } = await jsonOk(await coordinator.post(`/api/events/${event.id}/venue-bookings/`, {
+      venue: rooms[0].id, starts_at: "2030-06-20T02:00:00Z", ends_at: "2030-06-20T04:00:00Z",
+      attendance: 30, layout: "THEATRE", required_facilities: ["Projector"],
+    }), 201);
+
+    await signIn(page, "venue@connectsphere.example");
+    await page.goto("/venues/requests");
+    const row = page.getByRole("row").filter({ hasText: rooms[0].name });
+    await row.getByRole("button", { name: "Reject", exact: true }).click();
+    await row.getByLabel("Reason for rejection").fill("Please use the suggested room");
+    await row.getByLabel("Suggest another venue or time").check();
+    await row.getByLabel("Suggested venue", { exact: true }).selectOption(String(rooms[1].id));
+    await row.getByRole("button", { name: "Confirm rejection" }).click();
+    await expect(row.getByRole("alert")).toContainText("Choose another venue or time before sending");
+    expect((await (await coordinator.api.get(`/api/events/${event.id}/venue-bookings/`)).json())[0].status).toBe("PENDING");
+
+    await row.getByLabel("Suggested venue", { exact: true }).selectOption(String(rooms[2].id));
+    await row.getByRole("button", { name: "Confirm rejection" }).click();
+    await expect(row).toHaveCount(0);
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await signIn(page, "coordinator@connectsphere.example");
+    await page.goto(`/coordinator/events/${event.id}`);
+    const planner = page.getByRole("region", { name: "Venue requests" });
+    const original = planner.getByRole("row").filter({ hasText: rooms[0].name });
+    await expect(original).toContainText("Please use the suggested room");
+    await expect(original).toContainText(`Suggested alternative · ${rooms[2].name}`);
+    await original.getByRole("button", { name: "Accept and request alternative" }).click();
+    await expect(original).toContainText("Requested as booking");
+    const created = planner.getByRole("row").filter({ hasText: rooms[2].name }).filter({ hasText: "Pending" });
+    await expect(created).toHaveCount(1);
+
+    const rows = await (await coordinator.api.get(`/api/events/${event.id}/venue-bookings/`)).json();
+    const accepted = rows.find((item: { status: string }) => item.status === "PENDING");
+    expect(accepted.session).toBe(booking.session);
+    expect(accepted.required_facilities).toEqual(["Projector"]);
+    expect(accepted.starts_at).toBe(booking.starts_at);
+    expect(rows.find((item: { id: number }) => item.id === booking.id).suggestion.booking).toBe(accepted.id);
+  } finally {
+    const preview = await coordinator.api.get(`/api/events/${event.id}/cancellation-preview/`);
+    if (preview.ok()) await coordinator.post(`/api/events/${event.id}/cancel/`, {
+      expected_version: (await preview.json()).version, confirm_cancel: true, reason: "Browser test cleanup",
+    });
+    await Promise.all(clients.map(client => client.api.dispose()));
+  }
+});
