@@ -27,6 +27,7 @@ function renderGuarded(state: Partial<AuthState>, roles?: Role[]) {
     loading: false,
     signIn: vi.fn(),
     signOut: vi.fn(),
+    updateUser: vi.fn(),
     ...state,
   };
 

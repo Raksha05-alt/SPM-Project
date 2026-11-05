@@ -17,7 +17,7 @@ vi.mock("../api/availability", () => ({
 const block = { id: 7, reason: "Maintenance", starts_at: "2026-11-02T10:00:00+08:00", ends_at: "2026-11-02T12:00:00+08:00" };
 function renderPage(role: Role = "VENUE_STAFF") {
   return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    <AuthContext.Provider value={{ user: { id: 1, email: "test@example.com", first_name: "Test", last_name: "User", role, role_label: role, organisation: null, organisation_name: null, landing_path: "/" }, loading: false, signIn: vi.fn(), signOut: vi.fn() }}>
+    <AuthContext.Provider value={{ user: { id: 1, email: "test@example.com", first_name: "Test", last_name: "User", role, role_label: role, organisation: null, organisation_name: null, landing_path: "/" }, loading: false, signIn: vi.fn(), signOut: vi.fn(), updateUser: vi.fn() }}>
       <MemoryRouter><RequireRole roles={["COORDINATOR", "VENUE_STAFF"]}><VenueAvailability /></RequireRole></MemoryRouter>
     </AuthContext.Provider>
   </QueryClientProvider>);

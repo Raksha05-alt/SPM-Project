@@ -20,10 +20,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               )}
               <Notifications key={user.id} userId={user.id} />
-              <span className="text-slate-600">
+              <Link to="/account" className="text-slate-600 hover:underline" title="Your account">
                 {user.first_name} {user.last_name} · {user.role_label}
                 {user.organisation_name ? ` · ${user.organisation_name}` : ""}
-              </span>
+              </Link>
               <button
                 type="button"
                 onClick={() => void signOut()}
