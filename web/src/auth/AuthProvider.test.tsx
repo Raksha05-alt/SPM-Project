@@ -42,3 +42,17 @@ it("clears protected event caches when switching users", async () => {
   await waitFor(() => expect(screen.getByText("coordinator@example.com")).toBeInTheDocument());
   expect(client.getQueryData(["event", 9])).toBeUndefined();
 });
+
+function Rename() {
+  const { user, updateUser } = useAuth();
+  if (!user) return null;
+  return <><p>{user.email}</p><button onClick={() => updateUser({ ...user, email: "renamed@example.com" })}>Rename</button></>;
+}
+it("SCRUM-2: shows details the user just saved without another sign-in", async () => {
+  vi.mocked(authApi.fetchMe).mockResolvedValue(lead);
+  render(<QueryClientProvider client={new QueryClient()}><AuthProvider><Rename /></AuthProvider></QueryClientProvider>);
+  await screen.findByText("lead@example.com");
+  await userEvent.click(screen.getByRole("button", { name: "Rename" }));
+  expect(await screen.findByText("renamed@example.com")).toBeInTheDocument();
+  expect(authApi.fetchMe).toHaveBeenCalledTimes(1);
+});

@@ -6,6 +6,8 @@ export interface AuthState {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<User>;
   signOut: () => Promise<void>;
+  /** SCRUM-2 - show details the user just saved without signing in again. */
+  updateUser: (user: User) => void;
 }
 
 export const AuthContext = createContext<AuthState | null>(null);

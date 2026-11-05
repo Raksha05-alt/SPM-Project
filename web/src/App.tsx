@@ -6,6 +6,7 @@ import { Layout } from "./components/Layout";
 import { CoordinatorQueue } from "./pages/CoordinatorQueue";
 import { CoordinatorMyEvents } from "./pages/CoordinatorMyEvents";
 import { CoordinatorEventDetail } from "./pages/CoordinatorEventDetail";
+import { AccountPage } from "./pages/AccountPage";
 import { AttendeeEvents } from "./pages/AttendeeEvents";
 import { EventRequestForm } from "./pages/EventRequestForm";
 import { LoginPage } from "./pages/LoginPage";
@@ -37,6 +38,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<Home />} />
+          {/* SCRUM-2 - every signed-in user maintains their own contact details. */}
+          <Route path="/account" element={<RequireRole><AccountPage /></RequireRole>} />
           <Route path="/lead" element={<RequireRole roles={["COORDINATOR_LEAD"]}><LeadDashboard /></RequireRole>} />
           <Route path="/lead/events/:id" element={<RequireRole roles={["COORDINATOR_LEAD"]}><LeadEventDetail /></RequireRole>} />
 
