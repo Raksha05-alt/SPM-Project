@@ -14,7 +14,7 @@ Every refusal is audited.
 
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers, status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -34,7 +34,15 @@ from apps.events.change_requests import (
     request_change,
 )
 from apps.events.history_views import _display
-from apps.events.impact import assess_change
+from apps.events.impact import (
+    ApplyRefused,
+    NotArrangementStaff,
+    apply_change,
+    assess_change,
+    change_history,
+    keep_original,
+    review_arrangement,
+)
 from apps.events.models import EventChangeRequest, EventRequest
 from apps.venues.layouts import cached_label_map
 
@@ -72,6 +80,9 @@ class ChangeRequestSerializer(serializers.ModelSerializer):
             "decided_by_name",
             "decided_at",
             "decision_reason",
+            "applied_at",
+            "completed_at",
+            "completion_note",
         ]
         read_only_fields = fields
 
@@ -281,3 +292,251 @@ class ChangeDecisionView(APIView):
                 "assessment": assessment,
             }
         )
+
+
+# --------------------------------------------------------------------------
+# SCRUM-80 - apply an approved change through staff review
+#
+# POST /api/change-requests/<id>/apply/          the coordinator starts applying it (AC1/AC6)
+# POST /api/change-requests/<id>/keep-original/  ...or keeps the original after a refusal (AC3)
+# GET  /api/change-requests/<id>/history/        request, decision and outcomes (AC5)
+# GET  /api/arrangement-reviews/?status=PENDING  Venue Staff / Technical Support work (AC1)
+# POST /api/arrangement-reviews/<id>/decide/     staff record their outcome (AC2/AC3)
+# --------------------------------------------------------------------------
+
+STAFF_KIND = {Role.VENUE_STAFF: "VENUE", Role.TECHNICAL_SUPPORT: "EQUIPMENT"}
+
+
+def _refused(exc: ApplyRefused):
+    return Response({"detail": exc.detail, **exc.extra}, status=exc.status)
+
+
+class ApplyChangeView(APIView):
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = frozenset({Role.EVENT_COORDINATOR})
+
+    def post(self, request, change_id):
+        change = _change_for(request, change_id)
+        try:
+            applied, reviews = apply_change(change=change, actor=request.user)
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=f"POST /api/change-requests/{change_id}/apply/",
+                obj=change.event,
+                detail="only the assigned coordinator may apply a change",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can apply its changes."
+            ) from None
+        except StaleChangeRequest:
+            change.refresh_from_db()
+            return Response(
+                {
+                    "detail": (
+                        "The event has changed since this was requested, so it cannot be "
+                        "applied as it stands. Ask the organiser to send a new request."
+                    ),
+                    "assessment": assess_change(change),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        except ApplyRefused as exc:
+            return _refused(exc)
+        detail = (
+            f"{len(reviews)} arrangement(s) sent to staff for review. The current "
+            "arrangements stay in place until every review is recorded."
+            if reviews
+            else "The change affected no existing arrangement and has been applied."
+        )
+        return Response(
+            {
+                "detail": detail,
+                "change_request": ChangeRequestSerializer(applied).data,
+                "history": change_history(applied),
+            }
+        )
+
+
+class KeepOriginalView(APIView):
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = frozenset({Role.EVENT_COORDINATOR})
+
+    def post(self, request, change_id):
+        change = _change_for(request, change_id)
+        payload = DecisionInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            kept = keep_original(
+                change=change, actor=request.user, reason=payload.validated_data.get("reason")
+            )
+        except NotAssignedCoordinator:
+            record_denied(
+                request.user,
+                action=f"POST /api/change-requests/{change_id}/keep-original/",
+                obj=change.event,
+                detail="only the assigned coordinator may close a change",
+            )
+            raise PermissionDenied(
+                "Only the coordinator assigned to this event can close its changes."
+            ) from None
+        except ChangeDecisionError as exc:
+            return Response(
+                {
+                    "detail": "The outcome could not be recorded.",
+                    **{k: [v] for k, v in exc.errors.items()},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ApplyRefused as exc:
+            return _refused(exc)
+        return Response(
+            {
+                "detail": "The original arrangement is kept. The organiser has been notified.",
+                "change_request": ChangeRequestSerializer(kept).data,
+            }
+        )
+
+
+class ChangeHistoryView(APIView):
+    """AC5 - the requested change, the decision, each arrangement outcome and who."""
+
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = frozenset(
+        {
+            Role.EVENT_ORGANISER,
+            Role.EVENT_COORDINATOR,
+            Role.EVENT_COORDINATOR_LEAD,
+            Role.VENUE_STAFF,
+            Role.TECHNICAL_SUPPORT,
+        }
+    )
+
+    def get(self, request, change_id):
+        return Response(change_history(_change_for(request, change_id)))
+
+
+class ArrangementReviewInputSerializer(serializers.Serializer):
+    outcome = serializers.JSONField(required=False, allow_null=True)
+    reason = serializers.JSONField(required=False, allow_null=True)
+
+
+def _review_rows(reviews):
+    rows = []
+    for review in reviews:
+        change = review.change_request
+        rows.append(
+            {
+                "id": review.pk,
+                "change_request": change.pk,
+                "event": change.event_id,
+                "event_name": change.event.name,
+                "change_description": change.description,
+                "change_status": change.status,
+                "kind": review.kind,
+                "name": (
+                    review.booking.venue.name
+                    if review.kind == "VENUE"
+                    else review.equipment_request.equipment_type.name
+                ),
+                "quantity": review.equipment_request.quantity if review.equipment_request else None,
+                "before": review.before,
+                "proposed": review.proposed,
+                "reasons": review.reasons,
+                "outcome": review.outcome,
+                "outcome_label": review.get_outcome_display(),
+                "reviewed_by_name": _name(review.reviewed_by),
+                "reviewed_at": review.reviewed_at,
+                "review_reason": review.review_reason,
+            }
+        )
+    return rows
+
+
+def _reviews():
+    from apps.events.models import ArrangementReview
+
+    return ArrangementReview.objects.select_related(
+        "change_request__event",
+        "booking__venue",
+        "equipment_request__equipment_type",
+        "reviewed_by",
+    )
+
+
+class ArrangementReviewInboxView(APIView):
+    """AC1 - each arrangement an approved change affects, for the staff who review it."""
+
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = frozenset(STAFF_KIND)
+
+    def get(self, request):
+        reviews = _reviews().filter(kind=STAFF_KIND[request.user.role])
+        wanted = request.query_params.get("status", "PENDING")
+        if wanted:
+            from apps.events.models import ArrangementOutcome
+
+            if wanted not in ArrangementOutcome.values:
+                raise ValidationError({"status": ["Unknown review status."]})
+            reviews = reviews.filter(outcome=wanted)
+            if wanted == ArrangementOutcome.PENDING:
+                # Only live work: a change still in review, on an event still going ahead.
+                from apps.core.statuses import EventStatus
+                from apps.events.models import ChangeRequestStatus
+
+                reviews = reviews.filter(
+                    change_request__status=ChangeRequestStatus.IN_REVIEW
+                ).exclude(
+                    change_request__event__status__in=(EventStatus.CANCELLED, EventStatus.COMPLETED)
+                )
+        return Response(_review_rows(reviews.order_by("-created_at", "-pk")))
+
+
+class ArrangementReviewDecisionView(APIView):
+    """AC2/AC3 - staff record whether they can accommodate the change."""
+
+    permission_classes = [HasAnyRole, IsAuthenticated]
+    allowed_roles = frozenset(STAFF_KIND)
+
+    def post(self, request, review_id):
+        review = get_object_or_404(_reviews(), pk=review_id)
+        payload = ArrangementReviewInputSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        try:
+            recorded, change = review_arrangement(
+                review=review, actor=request.user, **payload.validated_data
+            )
+        except NotArrangementStaff:
+            record_denied(
+                request.user,
+                action=f"POST /api/arrangement-reviews/{review_id}/decide/",
+                obj=review.change_request.event,
+                detail="this arrangement is reviewed by other staff",
+            )
+            raise PermissionDenied(
+                "Venue Staff review venue bookings; Technical Support review equipment."
+            ) from None
+        except ChangeDecisionError as exc:
+            return Response(
+                {
+                    "detail": "The outcome could not be recorded.",
+                    **{k: [v] for k, v in exc.errors.items()},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except StaleChangeRequest:
+            return Response(
+                {
+                    "detail": "The event has changed since this change was approved; it cannot be applied."
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        except ApplyRefused as exc:
+            return _refused(exc)
+        recorded = _reviews().get(pk=recorded.pk)
+        detail = (
+            "The change has been applied: every arrangement was accommodated."
+            if change.status == "APPLIED"
+            else "Your outcome has been recorded."
+        )
+        return Response({"detail": detail, "review": _review_rows([recorded])[0]})

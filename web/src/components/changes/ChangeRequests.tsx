@@ -5,6 +5,7 @@ import { listChangeRequests, requestChange } from "../../api/changeRequests";
 import type { EventStatus } from "../../types";
 import { Field, inputClass } from "../Field";
 import { selectableLayouts, useLayouts } from "../layouts/useLayouts";
+import { ChangeProgress } from "./ChangeProgress";
 import { ChangeReview } from "./ChangeReview";
 
 /** Statuses that accept a change request; the API enforces the same rule. */
@@ -157,6 +158,10 @@ export function ChangeRequests({
               {/* SCRUM-78 - the assigned coordinator assesses and decides. */}
               {canDecide && change.status === "PENDING" && (
                 <ChangeReview change={change} eventId={eventId} />
+              )}
+              {/* SCRUM-80 - applying an approved change, and its history (AC5). */}
+              {!["PENDING", "REJECTED"].includes(change.status) && (
+                <ChangeProgress change={change} eventId={eventId} canDecide={canDecide} />
               )}
             </li>
           ))}

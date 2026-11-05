@@ -6,6 +6,7 @@ import type { TechnicalEvent } from "../types";
 import { EquipmentInbox } from "./EquipmentInbox";
 import { MemoryRouter } from "react-router-dom";
 
+vi.mock("../api/changeRequests", () => ({ listArrangementReviews: async () => [], decideArrangement: async () => ({}) }));
 vi.mock("../api/equipment", () => ({ listEquipmentInbox: vi.fn() }));
 
 const GALA: TechnicalEvent = {

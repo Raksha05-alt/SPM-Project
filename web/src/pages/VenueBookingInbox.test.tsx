@@ -7,6 +7,7 @@ import { listBookingInbox } from "../api/venueBookings";
 import type { VenueBooking } from "../types";
 import { VenueBookingInbox } from "./VenueBookingInbox";
 
+vi.mock("../api/changeRequests", () => ({ listArrangementReviews: async () => [], decideArrangement: async () => ({}) }));
 vi.mock("../api/venueBookings", () => ({
   listBookingInbox: vi.fn(),
   approveBooking: vi.fn(),

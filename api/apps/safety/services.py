@@ -179,10 +179,19 @@ def arrangement_gaps(event: EventRequest) -> list[str]:
     # SCRUM-66 - a booked venue flagged after the event changed must be resolved
     # before Safety reviews the arrangements or the event is confirmed.
     from apps.events.impact import open_reviews
-    from apps.events.models import VenuePeriodReview
+    from apps.events.models import (
+        ArrangementOutcome,
+        ChangeRequestStatus,
+        EventChangeRequest,
+        VenuePeriodReview,
+    )
 
+    # SCRUM-80 - a period review stops mattering once its change is applied or
+    # the original arrangement is kept; only open changes still block.
     for review in VenuePeriodReview.objects.filter(
-        booking__event=event, booking__status=BookingStatus.APPROVED
+        booking__event=event,
+        booking__status=BookingStatus.APPROVED,
+        change_request__status__in=(ChangeRequestStatus.APPROVED, ChangeRequestStatus.IN_REVIEW),
     ).select_related("booking__venue"):
         if review.reviewed_at is None or review.conflicts:
             gaps.append(
@@ -195,6 +204,19 @@ def arrangement_gaps(event: EventRequest) -> list[str]:
         gaps.append(
             f"Venue: {review.booking.venue.name} needs review after the event changed. {reasons}"
         )
+
+    # SCRUM-80 - an approved change still under staff review blocks confirmation.
+    for change in EventChangeRequest.objects.filter(
+        event=event, status=ChangeRequestStatus.IN_REVIEW
+    ).order_by("pk"):
+        outcomes = set(change.arrangement_reviews.values_list("outcome", flat=True))
+        if ArrangementOutcome.NOT_ACCOMMODATED in outcomes:
+            gaps.append(
+                f"Change: staff cannot accommodate approved change request #{change.pk}; "
+                "agree the next step with the organiser."
+            )
+        else:
+            gaps.append(f"Change: approved change request #{change.pk} is awaiting staff review.")
 
     plan = _equipment_plan(event)
     if _current_technical_approval(plan) is None:

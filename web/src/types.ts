@@ -457,7 +457,13 @@ export interface EventSafetyState {
   can_request: boolean;
 }
 
-export type ChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type ChangeRequestStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "IN_REVIEW"
+  | "APPLIED"
+  | "ORIGINAL_KEPT";
 
 /** SCRUM-20 - one proposed field, with its value when the request was made. */
 export interface ProposedChange {
@@ -488,6 +494,70 @@ export interface ChangeRequest {
   decided_by_name: string | null;
   decided_at: string | null;
   decision_reason: string;
+  /** SCRUM-80 - when the approved change was applied and when it finished. */
+  applied_at: string | null;
+  completed_at: string | null;
+  completion_note: string;
+}
+
+export type ArrangementOutcome = "PENDING" | "ACCOMMODATED" | "NOT_ACCOMMODATED";
+
+/** SCRUM-80 - one arrangement an approved change affects, as staff review it. */
+export interface ArrangementReviewItem {
+  id: number;
+  change_request: number;
+  event: number;
+  event_name: string;
+  change_description: string;
+  change_status: ChangeRequestStatus;
+  kind: "VENUE" | "EQUIPMENT";
+  name: string;
+  quantity: number | null;
+  before: Record<string, string | number | boolean | null>;
+  proposed: Record<string, string | number | boolean | null>;
+  reasons: string[];
+  outcome: ArrangementOutcome;
+  outcome_label: string;
+  reviewed_by_name: string | null;
+  reviewed_at: string | null;
+  review_reason: string;
+}
+
+/** SCRUM-80 AC5 - a change request's history: request, decision, each outcome and who. */
+export interface ChangeHistory {
+  change_request: number;
+  description: string;
+  reason: string;
+  requested_by: string | null;
+  requested_at: string;
+  status: ChangeRequestStatus;
+  status_label: string;
+  decision: { decided_by: string | null; decided_at: string | null; reason: string };
+  applied_by: string | null;
+  applied_at: string | null;
+  completed_at: string | null;
+  completion_note: string;
+  arrangements: {
+    id: number;
+    kind: "VENUE" | "EQUIPMENT";
+    kind_label: string;
+    name: string;
+    before: Record<string, string | number | boolean | null>;
+    proposed: Record<string, string | number | boolean | null>;
+    reasons: string[];
+    outcome: ArrangementOutcome;
+    outcome_label: string;
+    reviewed_by: string | null;
+    reviewed_at: string | null;
+    review_reason: string;
+  }[];
+  field_changes: {
+    field: string;
+    before: unknown;
+    after: unknown;
+    actor: string | null;
+    changed_at: string;
+  }[];
 }
 
 /** SCRUM-78 - one venue booking a change may affect, with its proposed period. */

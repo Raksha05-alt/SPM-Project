@@ -37,6 +37,9 @@ function change(overrides: Partial<ChangeRequest> = {}): ChangeRequest {
     decided_by_name: null,
     decided_at: null,
     decision_reason: "",
+    applied_at: null,
+    completed_at: null,
+    completion_note: "",
     ...overrides,
   };
 }

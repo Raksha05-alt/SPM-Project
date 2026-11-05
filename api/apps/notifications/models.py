@@ -35,6 +35,9 @@ class NotificationKind(models.TextChoices):
     # SCRUM-78 - the coordinator's decision reaches the organiser; SCRUM-59 AC3 -
     # an approved significant change reaches the affected Venue/Technical staff.
     CHANGE_DECIDED = "CHANGE_DECIDED", "Change request decided"
+    # SCRUM-80 - staff review an approved change; then its outcome is announced.
+    CHANGE_REVIEW = "CHANGE_REVIEW", "Approved change needs staff review"
+    CHANGE_OUTCOME = "CHANGE_OUTCOME", "Approved change outcome"
     # SCRUM-21/81 - an attendee's registration, and an event becoming full.
     REGISTERED = "REGISTERED", "Registration confirmed"
     REGISTRATION_FULL = "REGISTRATION_FULL", "Registration full"

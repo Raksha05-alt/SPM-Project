@@ -231,6 +231,8 @@ class ChangeSource(models.TextChoices):
     EVENT_EDIT = "EVENT_EDIT", "Event details edited"
     # Recovered from SCRUM-61 audit entries, which named the fields but not their values.
     LEGACY_AUDIT = "LEGACY_AUDIT", "Earlier edit (values not recorded)"
+    # SCRUM-80 - an approved change request applied after staff review.
+    CHANGE_REQUEST = "CHANGE_REQUEST", "Approved change request applied"
 
 
 class AppendOnlyError(Exception):
@@ -292,6 +294,11 @@ class ChangeRequestStatus(models.TextChoices):
     PENDING = "PENDING", "Pending"
     APPROVED = "APPROVED", "Approved"
     REJECTED = "REJECTED", "Rejected"
+    # SCRUM-80 - an approved change being applied: staff review each arrangement.
+    IN_REVIEW = "IN_REVIEW", "In staff review"
+    APPLIED = "APPLIED", "Applied"
+    # SCRUM-80 AC3 - staff could not accommodate it; the original arrangement was kept.
+    ORIGINAL_KEPT = "ORIGINAL_KEPT", "Original arrangement kept"
 
 
 class EventChangeRequest(TimeStampedModel):
@@ -341,6 +348,18 @@ class EventChangeRequest(TimeStampedModel):
     )
     decided_at = models.DateTimeField(null=True, blank=True)
     decision_reason = models.TextField(blank=True)
+    # SCRUM-80 - who applied the approved change and when, then how it ended
+    # (applied after staff review, or the original arrangement kept).
+    applied_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    applied_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completion_note = models.TextField(blank=True)
 
     class Meta:
         ordering = ["-requested_at", "-pk"]
@@ -468,3 +487,91 @@ class VenueReview(models.Model):
     def __str__(self) -> str:
         state = "open" if self.resolved_at is None else "resolved"
         return f"Venue review of booking {self.booking_id} ({state})"
+
+
+class ArrangementKind(models.TextChoices):
+    VENUE = "VENUE", "Venue booking"
+    EQUIPMENT = "EQUIPMENT", "Equipment"
+
+
+class ArrangementOutcome(models.TextChoices):
+    """SCRUM-80 AC2/AC3 - staff's outcome for one arrangement an approved change affects."""
+
+    PENDING = "PENDING", "Awaiting staff review"
+    ACCOMMODATED = "ACCOMMODATED", "Can be accommodated"
+    NOT_ACCOMMODATED = "NOT_ACCOMMODATED", "Cannot be accommodated"
+
+
+class ArrangementReview(models.Model):
+    """SCRUM-80 - one venue booking or equipment request an approved change affects.
+
+    Created when the coordinator applies the change (AC1). The arrangement
+    itself is not touched until every review of the change is accommodated;
+    then the event and all its revised arrangements switch together. ``before``
+    and ``proposed`` keep the arrangement's values on either side of the change.
+    """
+
+    change_request = models.ForeignKey(
+        EventChangeRequest, on_delete=models.PROTECT, related_name="arrangement_reviews"
+    )
+    kind = models.CharField(max_length=10, choices=ArrangementKind.choices)
+    booking = models.ForeignKey(
+        "venues.VenueBooking", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
+    equipment_request = models.ForeignKey(
+        "equipment.EquipmentRequest",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    before = models.JSONField(default=dict)
+    proposed = models.JSONField(default=dict)
+    reasons = models.JSONField(default=list, blank=True)
+    outcome = models.CharField(
+        max_length=20, choices=ArrangementOutcome.choices, default=ArrangementOutcome.PENDING
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["kind", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind="VENUE", booking__isnull=False, equipment_request__isnull=True)
+                    | models.Q(
+                        kind="EQUIPMENT", booking__isnull=True, equipment_request__isnull=False
+                    )
+                ),
+                name="arrangement_review_one_target",
+            ),
+            models.UniqueConstraint(
+                fields=["change_request", "booking"],
+                condition=models.Q(booking__isnull=False),
+                name="unique_change_booking_review",
+            ),
+            models.UniqueConstraint(
+                fields=["change_request", "equipment_request"],
+                condition=models.Q(equipment_request__isnull=False),
+                name="unique_change_equipment_review",
+            ),
+            # AC2/AC3 - a recorded outcome always has who, when and why.
+            models.CheckConstraint(
+                condition=models.Q(outcome="PENDING", reviewed_at__isnull=True)
+                | (
+                    ~models.Q(outcome="PENDING")
+                    & models.Q(reviewed_at__isnull=False)
+                    & ~models.Q(review_reason="")
+                ),
+                name="arrangement_review_outcome_recorded",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        target = self.booking_id or self.equipment_request_id
+        return f"{self.get_kind_display()} {target} for change {self.change_request_id} [{self.outcome}]"

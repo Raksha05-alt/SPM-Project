@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { listEquipmentInbox } from "../api/equipment";
+import { ArrangementReviews } from "../components/changes/ArrangementReviews";
 
 function when(start: string | null, end: string | null) {
   if (!start) return "Date not set";
@@ -24,6 +25,8 @@ export function EquipmentInbox() {
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-navy-700">Equipment requests</h1>
       <p className="mb-4"><Link className="text-navy-700 underline" to="/equipment/plans">Review equipment plans</Link></p>
+      {/* SCRUM-80 - approved changes waiting for Technical Support review. */}
+      <ArrangementReviews />
 
       {isLoading && <p className="text-slate-500">Loading equipment requests…</p>}
       {isError && <p role="alert">We could not load the equipment requests.</p>}

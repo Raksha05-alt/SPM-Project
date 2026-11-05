@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { listBookingInbox } from "../api/venueBookings";
 import { BookingDecision } from "../components/venues/BookingDecision";
 import { VenueReviews } from "../components/venues/VenueReviews";
+import { ArrangementReviews } from "../components/changes/ArrangementReviews";
 
 const FILTERS: [string, string][] = [
   ["PENDING", "Waiting for review"],
@@ -32,6 +33,8 @@ export function VenueBookingInbox() {
           Back to venues
         </Link>
       </div>
+      {/* SCRUM-80 - approved changes waiting for Venue Staff review. */}
+      <ArrangementReviews />
       <label className="mb-4 flex items-center gap-2 text-sm">
         Show
         <select
