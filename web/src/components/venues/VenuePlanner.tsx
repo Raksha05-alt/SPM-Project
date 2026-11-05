@@ -6,6 +6,7 @@ import { confirmVenueHold, listEventBookings, removeVenueSession, requestVenue, 
 import { listVenues } from "../../api/venues";
 import type { EventRequest, VenueBooking } from "../../types";
 import { toLocalInput } from "../CoordinatorEventEditor";
+import { SuggestedAlternative } from "./SuggestedAlternative";
 import { Field, inputClass } from "../Field";
 import { selectableLayouts, useLayouts } from "../layouts/useLayouts";
 
@@ -207,6 +208,7 @@ export function VenuePlanner({ event }: { event: EventRequest }) {
                   {b.decision_reason && (
                     <span className="block text-xs text-slate-500">{b.decision_reason}</span>
                   )}
+                  <SuggestedAlternative booking={b} canAccept={canRequest && b.session_active !== false} />
                 </td>
               </tr>
             ))}

@@ -1,7 +1,9 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError } from "../../api/client";
 import { approveBooking, rejectBooking, updateHoldExpiry } from "../../api/venueBookings";
+import { listVenues } from "../../api/venues";
+import { SuggestedAlternative } from "./SuggestedAlternative";
 import { formatSgt } from "../../dateTime";
 import type { VenueBooking } from "../../types";
 
@@ -11,6 +13,9 @@ function refusal(error: unknown): string[] {
   const body = (error.body ?? {}) as {
     detail?: string;
     reason?: string[];
+    suggestion?: string[];
+    starts_at?: string[];
+    ends_at?: string[];
     hold_until?: string[];
     status?: string | string[];
     venue?: string[];
@@ -21,6 +26,9 @@ function refusal(error: unknown): string[] {
   return [
     body.detail ?? "The decision could not be recorded.",
     ...(body.reason ?? []),
+    ...(body.suggestion ?? []),
+    ...(body.starts_at ?? []),
+    ...(body.ends_at ?? []),
     ...(body.hold_until ?? []),
     ...(Array.isArray(body.status) ? body.status : []),
     ...(body.venue ?? []),
@@ -30,11 +38,24 @@ function refusal(error: unknown): string[] {
   ];
 }
 
+function singaporeInput(value: string): string {
+  return value ? new Date(Date.parse(value) + 8 * 3_600_000).toISOString().slice(0, 16) : "";
+}
+
 /** Venue Staff review a request and manage a tentative hold deadline. */
 export function BookingDecision({ booking }: { booking: VenueBooking }) {
   const queryClient = useQueryClient();
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestedVenue, setSuggestedVenue] = useState(String(booking.venue));
+  const [suggestedStart, setSuggestedStart] = useState(() => singaporeInput(booking.starts_at));
+  const [suggestedEnd, setSuggestedEnd] = useState(() => singaporeInput(booking.ends_at));
+  const venues = useQuery({
+    queryKey: ["venues"],
+    queryFn: listVenues,
+    enabled: rejecting && suggesting,
+  });
   const [editingHold, setEditingHold] = useState(false);
   const [deadline, setDeadline] = useState("");
   const pending = booking.status === "PENDING";
@@ -45,6 +66,7 @@ export function BookingDecision({ booking }: { booking: VenueBooking }) {
     void queryClient.invalidateQueries({ queryKey: ["notifications"] });
     void queryClient.invalidateQueries({ queryKey: ["readiness", booking.event] });
     setRejecting(false);
+    setSuggesting(false);
     setReason("");
     void queryClient.invalidateQueries({ queryKey: ["venue-booking-inbox"] });
     void queryClient.invalidateQueries({ queryKey: ["venue-bookings", booking.event] });
@@ -65,7 +87,13 @@ export function BookingDecision({ booking }: { booking: VenueBooking }) {
     onError: refresh,
   });
   const reject = useMutation({
-    mutationFn: () => rejectBooking(booking.id, reason.trim()),
+    mutationFn: () => suggesting
+      ? rejectBooking(booking.id, reason.trim(), {
+          venue: Number(suggestedVenue),
+          starts_at: `${suggestedStart}+08:00`,
+          ends_at: `${suggestedEnd}+08:00`,
+        })
+      : rejectBooking(booking.id, reason.trim()),
     onSuccess: done,
     onError: refresh,
   });
@@ -94,6 +122,7 @@ export function BookingDecision({ booking }: { booking: VenueBooking }) {
           <p key={warning} role="alert" className="text-sm text-amber-800">{warning}</p>
         ))}
         {booking.decision_reason && <span className="block">Reason: {booking.decision_reason}</span>}
+        <SuggestedAlternative booking={booking} canAccept={false} />
       </div>
     );
   }
@@ -199,6 +228,40 @@ export function BookingDecision({ booking }: { booking: VenueBooking }) {
               onChange={(e) => setReason(e.target.value)}
             />
           </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={suggesting}
+              onChange={(e) => { setSuggesting(e.target.checked); reject.reset(); }} />
+            Suggest another venue or time
+          </label>
+          {suggesting && (
+            <fieldset className="space-y-2 text-xs">
+              <legend>Optional alternative</legend>
+              <label className="block">
+                Suggested venue
+                <select aria-label="Suggested venue" value={suggestedVenue} required className="block w-full border border-slate-300"
+                  onChange={(e) => { setSuggestedVenue(e.target.value); reject.reset(); }}>
+                  <option value={booking.venue}>{booking.venue_name}</option>
+                  {(venues.data ?? []).filter((venue) => venue.id !== booking.venue).map((venue) => (
+                    <option key={venue.id} value={venue.id}>{venue.name}</option>
+                  ))}
+                </select>
+              </label>
+              {venues.isError && <p role="alert">Other venues could not be loaded. Retry or suggest a different time.</p>}
+              <label className="block">
+                Suggested start (Singapore time)
+                <input type="datetime-local" required value={suggestedStart}
+                  onChange={(e) => { setSuggestedStart(e.target.value); reject.reset(); }}
+                  className="block border border-slate-300" />
+              </label>
+              <label className="block">
+                Suggested end (Singapore time)
+                <input type="datetime-local" required value={suggestedEnd}
+                  onChange={(e) => { setSuggestedEnd(e.target.value); reject.reset(); }}
+                  className="block border border-slate-300" />
+              </label>
+              <p>This suggestion will accompany the rejection. The coordinator must request it before staff can approve it.</p>
+            </fieldset>
+          )}
           <div className="flex gap-2">
             <button
               type="submit"

@@ -280,6 +280,15 @@ class VenueBooking(TimeStampedModel):
     )
     decided_at = models.DateTimeField(null=True, blank=True)
     decision_reason = models.TextField(blank=True)
+    # SCRUM-73: a suggestion reserves nothing; accepting it creates a separate request.
+    suggested_venue = models.ForeignKey(
+        Venue, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
+    suggested_starts_at = models.DateTimeField(null=True, blank=True)
+    suggested_ends_at = models.DateTimeField(null=True, blank=True)
+    suggestion_booking = models.OneToOneField(
+        "self", null=True, blank=True, on_delete=models.PROTECT, related_name="suggested_from"
+    )
 
     objects = VenueBookingQuerySet.as_manager()
 
@@ -305,6 +314,24 @@ class VenueBooking(TimeStampedModel):
                     | models.Q(hold_until__isnull=False, hold_until__lt=models.F("starts_at"))
                 ),
                 name="venue_booking_hold_expiry_before_start",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        suggested_venue__isnull=True,
+                        suggested_starts_at__isnull=True,
+                        suggested_ends_at__isnull=True,
+                        suggestion_booking__isnull=True,
+                    )
+                    | models.Q(
+                        status=BookingStatus.REJECTED,
+                        suggested_venue__isnull=False,
+                        suggested_starts_at__isnull=False,
+                        suggested_ends_at__isnull=False,
+                        suggested_ends_at__gt=models.F("suggested_starts_at"),
+                    )
+                ),
+                name="venue_booking_complete_suggestion",
             ),
             models.UniqueConstraint(
                 fields=["session"],

@@ -34,7 +34,9 @@ from apps.venues.bookings import (
     InvalidBookingTransition,
     NotAssignedToEvent,
     VenueNotAvailable,
+    accept_suggestion,
     approve_booking,
+    describe_suggestion,
     reject_booking,
     request_booking,
     withdraw_booking,
@@ -55,6 +57,10 @@ class VenueBookingSerializer(serializers.ModelSerializer):
     session_active = serializers.BooleanField(source="session.is_active", read_only=True)
     effective_attendance = serializers.IntegerField(read_only=True)
     buffer_review = serializers.SerializerMethodField()
+    suggestion = serializers.SerializerMethodField()
+
+    def get_suggestion(self, obj):
+        return describe_suggestion(obj)
 
     def get_buffer_review(self, obj):
         from apps.venues.occupancy import booking_review
@@ -75,6 +81,7 @@ class VenueBookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = VenueBooking
         fields = [
+            "suggestion",
             "buffer_review",
             "session",
             "session_name",
@@ -160,7 +167,7 @@ class BookingRequestInputSerializer(serializers.Serializer):
 
 def _bookings():
     return VenueBooking.objects.select_related(
-        "event__organisation", "venue", "session", "requested_by", "decided_by"
+        "event__organisation", "venue", "session", "requested_by", "decided_by", "suggested_venue"
     )
 
 
@@ -329,9 +336,16 @@ class VenueBookingDetailView(APIView):
         return Response(VenueBookingSerializer(booking).data)
 
 
+class SuggestionInputSerializer(serializers.Serializer):
+    venue = serializers.IntegerField(required=False, min_value=1)
+    starts_at = serializers.DateTimeField(required=False)
+    ends_at = serializers.DateTimeField(required=False)
+
+
 class DecisionInputSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True, default="")
     hold_until = serializers.DateTimeField(required=False)
+    suggestion = SuggestionInputSerializer(required=False)
 
 
 class VenueBookingDecisionView(APIView):
@@ -360,11 +374,20 @@ class VenueBookingDecisionView(APIView):
                 )
             elif self.decision == "confirm_hold":
                 decided = confirm_hold(booking, request.user)
+            elif self.decision == "accept_suggestion":
+                decided = accept_suggestion(booking, request.user)
             else:
-                decided = reject_booking(booking, request.user, payload.validated_data["reason"])
+                decided = reject_booking(
+                    booking,
+                    request.user,
+                    payload.validated_data["reason"],
+                    suggestion=payload.validated_data.get("suggestion"),
+                )
         except NotAssignedToEvent:
             record_denied(request.user, f"POST {request.path}", obj=booking)
-            raise PermissionDenied("Only the assigned coordinator may confirm this hold.") from None
+            raise PermissionDenied(
+                "Only the assigned coordinator may perform this action."
+            ) from None
         except InvalidBookingTransition as exc:
             # AC5 - a decided request cannot be decided again.
             return Response(
@@ -394,11 +417,18 @@ class VenueBookingDecisionView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
         except VenueNotAvailable as exc:
+            detail = (
+                "The suggested alternative is unavailable. Choose another venue or time before sending."
+                if self.decision == "reject"
+                else "The venue is not available for that period."
+            )
             return Response(
-                {"detail": "The venue is not available for that period.", "reasons": exc.reasons},
+                {"detail": detail, "reasons": exc.reasons},
                 status=status.HTTP_409_CONFLICT,
             )
-        if self.decision == "confirm_hold":
+        if self.decision == "accept_suggestion":
+            detail = "Alternative requested. Venue Staff have been notified."
+        elif self.decision == "confirm_hold":
             detail = "Venue hold confirmed. The booking is approved."
         elif self.decision == "update_hold":
             detail = "Venue hold expiry saved."
