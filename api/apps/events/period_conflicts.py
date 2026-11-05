@@ -170,7 +170,12 @@ def review_period(review, actor, *, reason):
             raise ValueError("This review already has a staff decision.")
         if (
             current.change_request.revision != current.revision
-            or current.change_request.status != ChangeRequestStatus.APPROVED
+            or current.change_request.status
+            not in (
+                ChangeRequestStatus.APPROVED,
+                # SCRUM-80 - APPLY records staff outcomes while the change is in review.
+                ChangeRequestStatus.IN_REVIEW,
+            )
         ):
             raise ValueError("This period review has been superseded.")
         booking = VenueBooking.objects.get(pk=current.booking_id)

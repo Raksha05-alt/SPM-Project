@@ -73,12 +73,52 @@ API: `GET /api/change-requests/<id>/impact/` (assigned coordinator, Leads) and
 `POST /api/change-requests/<id>/decide/` (`{"decision": "APPROVE"|"REJECT", "reason": "..."}`;
 400 for a missing reason, 409 for an already-decided or stale request).
 
+## Applying an approved change (SCRUM-80, gate APPLY)
+
+Statuses after approval: `IN_REVIEW` (staff are reviewing), then `APPLIED` or
+`ORIGINAL_KEPT`.
+
+1. **`apply_change(change, actor)`** (assigned coordinator; event then request
+   locks). Refuses a request that is not Approved, a Cancelled/Completed event and a
+   stale request (`source_digest`). Records the real SCRUM-70 period reviews
+   (`record_period_reviews`, Confirmed source only) and SCRUM-66 suitability reviews
+   (`record_reviews`, source `CHANGE_REQUEST`), creates one **`ArrangementReview`**
+   per affected venue booking and equipment request (SCRUM-80 AC1, SCRUM-59 AC4),
+   calls `arrangements_changed` (Safety superseded; Confirmed -> Planning; AC6) and
+   notifies Venue Staff / Technical Support (`CHANGE_REVIEW`). **Nothing is moved.**
+   A change that affects no arrangement is applied at once.
+2. **`review_arrangement(review, actor, outcome, reason)`** - Venue Staff for venue
+   items, Technical Support for equipment; `ACCOMMODATED` or `NOT_ACCOMMODATED` with
+   a reason (who/when recorded, AC2). An accommodation is re-checked under the locks
+   (current clashes, suitability, stock) and refused if it no longer fits. Venue
+   outcomes also call SCRUM-70's `review_period`.
+3. **The switch (AC4).** When every review is accommodated, one transaction rechecks
+   the digest and every arrangement, updates the event fields (SCRUM-60 history,
+   source `CHANGE_REQUEST`), each booking's period/attendance (booking history) and
+   each reservation's period (equipment history), sends the equipment plan back for
+   Technical Support approval (`advance_plan`), calls `arrangements_changed` and
+   notifies the organiser, affected staff and registered attendees
+   (`notify_attendees_of_change`, date/time).
+4. **Cannot accommodate (AC3).** The originals stay; the coordinator and organiser are
+   told. After agreeing it, the coordinator calls **`keep_original(change, actor,
+   reason)`** -> `ORIGINAL_KEPT`; nothing is applied. Cancelling uses the existing
+   cancel-event action; a new change request can be raised.
+5. **History (AC5)** - `GET /api/change-requests/<id>/history/`: request, decision,
+   who applied it, each arrangement's before/proposed values, outcome and reviewer,
+   and the field changes recorded.
+
+Readiness: a change `IN_REVIEW` blocks confirmation; SCRUM-70 period reviews only
+block while their change is Approved or In review.
+
+API: `POST /api/change-requests/<id>/apply/`, `POST .../keep-original/`,
+`GET .../history/`, `GET /api/arrangement-reviews/?status=PENDING` (live work only:
+change in review, event not cancelled/completed) and
+`POST /api/arrangement-reviews/<id>/decide/`.
+
 ## For later gates
 
-- **SCRUM-66 (Jerom), SCRUM-70 (Adilah):** read `proposed_values` and the targets
-  to assess suitability and conflicts.
-- **SCRUM-80 (Shalika):** apply an **Approved** request under the shared locks after
-  checking `source_digest` is still current, through staff review
-  (`record_period_reviews`, `record_reviews`) and a fresh Safety check. SCRUM-59
-  AC4 (arrangements marked for review) and AC5 (back to Planning, new Safety check)
-  complete there.
+- **SCRUM-66 (Jerom), SCRUM-70 (Adilah):** APPLY is now the real producer of your
+  reviews (`record_reviews`, `record_period_reviews`, `review_period`) - re-run your
+  closure checks against `test_scrum_80_apply_approved_change.py`.
+- **SCRUM-18 (Jerom):** APPLY calls `notify_attendees_of_change` with occurrence
+  `change-applied:<id>`.

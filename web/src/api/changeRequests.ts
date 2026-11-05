@@ -1,5 +1,11 @@
 import { request } from "./client";
-import type { ChangeAssessment, ChangeRequest } from "../types";
+import type {
+  ArrangementOutcome,
+  ArrangementReviewItem,
+  ChangeAssessment,
+  ChangeHistory,
+  ChangeRequest,
+} from "../types";
 
 /** SCRUM-20 - what the organiser sends; proposed values name event fields only. */
 export interface ChangeRequestInput {
@@ -26,4 +32,37 @@ export const decideChange = (changeId: number, decision: "APPROVE" | "REJECT", r
   request<{ detail: string; change_request: ChangeRequest; assessment: ChangeAssessment }>(
     `/api/change-requests/${changeId}/decide/`,
     { method: "POST", body: { decision, reason } },
+  );
+
+/** SCRUM-80 AC1/AC6 - the assigned coordinator starts applying an approved change. */
+export const applyChange = (changeId: number) =>
+  request<{ detail: string; change_request: ChangeRequest; history: ChangeHistory }>(
+    `/api/change-requests/${changeId}/apply/`,
+    { method: "POST" },
+  );
+
+/** SCRUM-80 AC3 - after staff could not accommodate it, keep the original arrangement. */
+export const keepOriginal = (changeId: number, reason: string) =>
+  request<{ detail: string; change_request: ChangeRequest }>(
+    `/api/change-requests/${changeId}/keep-original/`,
+    { method: "POST", body: { reason } },
+  );
+
+/** SCRUM-80 AC5 - the request, decision, each arrangement outcome and who. */
+export const getChangeHistory = (changeId: number) =>
+  request<ChangeHistory>(`/api/change-requests/${changeId}/history/`);
+
+/** SCRUM-80 AC1 - the reviews waiting for this Venue Staff / Technical Support member. */
+export const listArrangementReviews = (status: ArrangementOutcome | "" = "PENDING") =>
+  request<ArrangementReviewItem[]>(`/api/arrangement-reviews/?status=${status}`);
+
+/** SCRUM-80 AC2/AC3 - staff record whether they can accommodate the change. */
+export const decideArrangement = (
+  reviewId: number,
+  outcome: "ACCOMMODATED" | "NOT_ACCOMMODATED",
+  reason: string,
+) =>
+  request<{ detail: string; review: ArrangementReviewItem }>(
+    `/api/arrangement-reviews/${reviewId}/decide/`,
+    { method: "POST", body: { outcome, reason } },
   );

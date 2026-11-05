@@ -27,3 +27,24 @@ it("posts the SCRUM-78 decision with its reason", () => {
     body: { decision: "REJECT", reason: "No room" },
   });
 });
+
+it("calls the SCRUM-80 apply, keep-original, history and review endpoints", async () => {
+  const { applyChange, keepOriginal, getChangeHistory, listArrangementReviews, decideArrangement } =
+    await import("./changeRequests");
+  applyChange(7);
+  expect(request).toHaveBeenCalledWith("/api/change-requests/7/apply/", { method: "POST" });
+  keepOriginal(7, "Agreed");
+  expect(request).toHaveBeenCalledWith("/api/change-requests/7/keep-original/", {
+    method: "POST",
+    body: { reason: "Agreed" },
+  });
+  getChangeHistory(7);
+  expect(request).toHaveBeenCalledWith("/api/change-requests/7/history/");
+  listArrangementReviews();
+  expect(request).toHaveBeenCalledWith("/api/arrangement-reviews/?status=PENDING");
+  decideArrangement(3, "ACCOMMODATED", "Fine");
+  expect(request).toHaveBeenCalledWith("/api/arrangement-reviews/3/decide/", {
+    method: "POST",
+    body: { outcome: "ACCOMMODATED", reason: "Fine" },
+  });
+});

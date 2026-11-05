@@ -3,9 +3,14 @@ from rest_framework.routers import DefaultRouter
 
 from apps.events.cancellation_views import CancelEventView, CancellationPreviewView
 from apps.events.change_views import (
+    ApplyChangeView,
+    ArrangementReviewDecisionView,
+    ArrangementReviewInboxView,
     ChangeDecisionView,
+    ChangeHistoryView,
     ChangeImpactView,
     EventChangeRequestsView,
+    KeepOriginalView,
 )
 from apps.events.confirmation_views import (
     ConfirmedArrangementsView,
@@ -62,6 +67,28 @@ urlpatterns = [
         "change-requests/<int:change_id>/decide/",
         ChangeDecisionView.as_view(),
         name="change-request-decide",
+    ),
+    # SCRUM-80 - apply an approved change through staff review.
+    path(
+        "change-requests/<int:change_id>/apply/",
+        ApplyChangeView.as_view(),
+        name="change-request-apply",
+    ),
+    path(
+        "change-requests/<int:change_id>/keep-original/",
+        KeepOriginalView.as_view(),
+        name="change-request-keep-original",
+    ),
+    path(
+        "change-requests/<int:change_id>/history/",
+        ChangeHistoryView.as_view(),
+        name="change-request-history",
+    ),
+    path("arrangement-reviews/", ArrangementReviewInboxView.as_view(), name="arrangement-reviews"),
+    path(
+        "arrangement-reviews/<int:review_id>/decide/",
+        ArrangementReviewDecisionView.as_view(),
+        name="arrangement-review-decide",
     ),
     # SCRUM-66 - approved venues flagged after the event changed, with reasons.
     path(
