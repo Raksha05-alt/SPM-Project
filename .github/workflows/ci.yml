@@ -132,6 +132,7 @@ jobs:
         run: |
           python manage.py migrate
           python manage.py seed_demo_data
+          python manage.py process_venue_holds --watch --interval 1 > ../venue-holds.log 2>&1 &
           python manage.py runserver 127.0.0.1:8000 --noreload > ../api-server.log 2>&1 &
           for attempt in {1..30}; do
             if curl --fail --silent http://127.0.0.1:8000/api/auth/csrf/ > /dev/null; then exit 0; fi
@@ -150,3 +151,4 @@ jobs:
           path: |
             web/test-results/
             api-server.log
+            venue-holds.log

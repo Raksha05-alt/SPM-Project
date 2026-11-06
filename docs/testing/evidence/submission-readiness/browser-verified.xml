@@ -1,0 +1,98 @@
+<testsuites id="" name="" tests="32" failures="0" skipped="0" errors="0" time="146.97810800000002">
+<testsuite name="attendee-registration.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="1" failures="0" skipped="0" time="8.176" errors="0">
+<testcase name="E2E-07 full event, FIFO waiting list, cancelled withdrawal and fresh registration" classname="attendee-registration.spec.ts" time="8.176">
+</testcase>
+</testsuite>
+<testsuite name="auth-and-access.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="9" failures="0" skipped="0" time="8.721" errors="0">
+<testcase name="E2E-01 role access and logout: organiser@acme.example" classname="auth-and-access.spec.ts" time="0.982">
+</testcase>
+<testcase name="E2E-01 role access and logout: lead@connectsphere.example" classname="auth-and-access.spec.ts" time="0.947">
+</testcase>
+<testcase name="E2E-01 role access and logout: coordinator@connectsphere.example" classname="auth-and-access.spec.ts" time="0.734">
+</testcase>
+<testcase name="E2E-01 role access and logout: venue@connectsphere.example" classname="auth-and-access.spec.ts" time="0.946">
+</testcase>
+<testcase name="E2E-01 role access and logout: tech@connectsphere.example" classname="auth-and-access.spec.ts" time="0.949">
+</testcase>
+<testcase name="E2E-01 role access and logout: safety@connectsphere.example" classname="auth-and-access.spec.ts" time="0.965">
+</testcase>
+<testcase name="E2E-01 role access and logout: attendee@example.com" classname="auth-and-access.spec.ts" time="0.948">
+</testcase>
+<testcase name="E2E-01 invalid credentials do not open a session" classname="auth-and-access.spec.ts" time="0.331">
+</testcase>
+<testcase name="E2E-01 account edits persist without changing permissions" classname="auth-and-access.spec.ts" time="1.919">
+</testcase>
+</testsuite>
+<testsuite name="draft-submit-queue.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="1" failures="0" skipped="0" time="6.94" errors="0">
+<testcase name="an organiser drafts and submits a request, and the coordinator sees it" classname="draft-submit-queue.spec.ts" time="6.94">
+</testcase>
+</testsuite>
+<testsuite name="notifications.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="1" failures="0" skipped="0" time="2.214" errors="0">
+<testcase name="E2E-11 recipient-only notification read state and reassignment access" classname="notifications.spec.ts" time="2.214">
+</testcase>
+</testsuite>
+<testsuite name="sprint3-equipment.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="1" failures="0" skipped="0" time="18.353" errors="0">
+<testcase name="J3 G16: request, reserve, release, re-reserve and cancel real equipment and venue arrangements" classname="sprint3-equipment.spec.ts" time="18.353">
+</testcase>
+</testsuite>
+<testsuite name="sprint3-request-allocation.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="1" failures="0" skipped="0" time="4.891" errors="0">
+<testcase name="J1: coordinator-led clarification with offline notes, edits and resumed review" classname="sprint3-request-allocation.spec.ts" time="4.891">
+</testcase>
+</testsuite>
+<testsuite name="sprint3-safety-confirmation.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="2" failures="0" skipped="0" time="12.841" errors="0">
+<testcase name="J4: Safety requests changes, actual technical revision is reapproved, and the organiser sees confirmed arrangements" classname="sprint3-safety-confirmation.spec.ts" time="6.393">
+</testcase>
+<testcase name="J5: releasing a confirmed resource returns to Planning and requires a fresh Safety approval before reconfirmation" classname="sprint3-safety-confirmation.spec.ts" time="6.448">
+</testcase>
+</testsuite>
+<testsuite name="sprint3-venue-planning.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="1" failures="0" skipped="0" time="8.33" errors="0">
+<testcase name="J2: request, staff approval and confirmed venue withdrawal preserve the decision" classname="sprint3-venue-planning.spec.ts" time="8.33">
+</testcase>
+</testsuite>
+<testsuite name="sprint4-approved-change.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="2" failures="0" skipped="0" time="16.827" errors="0">
+<testcase name="S4-J3: an approved change goes through staff review and a fresh Safety check before reconfirmation" classname="sprint4-approved-change.spec.ts" time="8.775">
+</testcase>
+<testcase name="S4-J4: when staff cannot accommodate a change, the original arrangement stays" classname="sprint4-approved-change.spec.ts" time="8.052">
+</testcase>
+</testsuite>
+<testsuite name="sprint4-change-request.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="1" failures="0" skipped="0" time="6.265" errors="0">
+<testcase name="S4-J3 (INTAKE + ASSESS): an organiser requests a change and the coordinator decides it" classname="sprint4-change-request.spec.ts" time="6.265">
+</testcase>
+</testsuite>
+<testsuite name="sprint4-multi-venue-sessions.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="3" failures="0" skipped="0" time="12.193" errors="0">
+<testcase name="S4-SESSIONS: independent room decisions, complete Safety confirmation and public session display" classname="sprint4-multi-venue-sessions.spec.ts" time="6.458">
+</testcase>
+<testcase name="S4-SCRUM-88: Venue Staff place and revise a hold, then the coordinator confirms it" classname="sprint4-multi-venue-sessions.spec.ts" time="3.006">
+</testcase>
+<testcase name="S4-US-73: staff warning, rejection with alternative and coordinator acceptance" classname="sprint4-multi-venue-sessions.spec.ts" time="2.729">
+</testcase>
+</testsuite>
+<testsuite name="sprint4-status-filter.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="1" failures="0" skipped="0" time="2.494" errors="0">
+<testcase name="SCRUM-57: real multi-status filters, empty state, clear and current-assignment permissions" classname="sprint4-status-filter.spec.ts" time="2.494">
+</testcase>
+</testsuite>
+<testsuite name="venue-discovery.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="3" failures="0" skipped="0" time="7.82" errors="0">
+<testcase name="G12 SCRUM-64/68: search, persist, refresh real approval/withdrawal, blocks and venue status" classname="venue-discovery.spec.ts" time="6.461">
+</testcase>
+<testcase name="SCRUM-64 AC6: organiser@acme.example cannot open venue discovery" classname="venue-discovery.spec.ts" time="0.562">
+</testcase>
+<testcase name="SCRUM-64 AC6: attendee@example.com cannot open venue discovery" classname="venue-discovery.spec.ts" time="0.797">
+</testcase>
+</testsuite>
+<testsuite name="venue-disruption.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="1" failures="0" skipped="0" time="8.321" errors="0">
+<testcase name="E2E-09 disrupted venue is replaced and requires fresh Safety approval" classname="venue-disruption.spec.ts" time="8.321">
+</testcase>
+</testsuite>
+<testsuite name="venue-hold-expiry.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="1" failures="0" skipped="0" time="17.498" errors="0">
+<testcase name="E2E-10 SCRUM-88 expiry releases the room and refuses late confirmation" classname="venue-hold-expiry.spec.ts" time="17.498">
+</testcase>
+</testsuite>
+<testsuite name="venues.spec.ts" timestamp="2026-11-05T16:28:41.002Z" hostname="" tests="3" failures="0" skipped="0" time="2.753" errors="0">
+<testcase name="venue staff add a venue, are stopped by a zero capacity, then update it" classname="venues.spec.ts" time="1.076">
+</testcase>
+<testcase name="SCRUM-9: venue staff open a venue&apos;s full details, and gaps are named" classname="venues.spec.ts" time="0.876">
+</testcase>
+<testcase name="SCRUM-9 AC5: an attendee cannot open the venue catalogue" classname="venues.spec.ts" time="0.801">
+</testcase>
+</testsuite>
+</testsuites>

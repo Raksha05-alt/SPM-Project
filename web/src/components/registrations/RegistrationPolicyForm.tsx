@@ -60,6 +60,12 @@ export function RegistrationPolicyForm({ eventId }: { eventId: number }) {
     },
   });
 
+  if (policy.isError && !policy.data) return (
+    <div role="alert" className="mb-6 text-red-700">
+      We could not load the registration settings.{" "}
+      <button type="button" className="underline" onClick={() => void policy.refetch()}>Try again</button>
+    </div>
+  );
   if (policy.isLoading || !policy.data) return null;
   const errors =
     save.error instanceof ApiError ? ((save.error.body ?? {}) as Record<string, string[]>) : {};
@@ -100,6 +106,7 @@ export function RegistrationPolicyForm({ eventId }: { eventId: number }) {
             value={form.opens_at}
             onChange={(e) => setForm({ ...form, opens_at: e.target.value })}
           />
+          {errors.opens_at && <span className="text-red-700">{errors.opens_at[0]}</span>}
         </label>
         <label className="block">
           Registration closes
@@ -146,7 +153,7 @@ export function RegistrationPolicyForm({ eventId }: { eventId: number }) {
           Save registration settings
         </button>
         {saved && <p role="status">Registration settings saved.</p>}
-        {save.error && !errors.capacity && !errors.closes_at && (
+        {save.error && !errors.capacity && !errors.closes_at && !errors.opens_at && (
           <p role="alert" className="text-red-700">
             {(save.error instanceof ApiError &&
               (save.error.body as { detail?: string } | null)?.detail) ||

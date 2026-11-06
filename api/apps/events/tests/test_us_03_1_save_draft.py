@@ -2,6 +2,7 @@
 
 import pytest
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.core.statuses import EventStatus
 from apps.events.models import EventRequest
@@ -37,26 +38,28 @@ def test_ac2_a_request_with_empty_fields_still_saves(signed_in_organiser):
 @pytest.mark.django_db
 def test_ac3_reopening_a_draft_shows_every_value_unchanged(signed_in_organiser):
     start = timezone.now() + timezone.timedelta(days=21)
-    created = signed_in_organiser.post(
-        EVENTS,
-        {
-            "name": "Q4 Engineering Workshop",
-            "purpose": "Internal upskilling",
-            "expected_attendance": 40,
-            "preferred_start": start.isoformat(),
-            "accessibility_needs": "Wheelchair access",
-        },
-        format="json",
-    )
-
+    payload = {
+        "name": "Q4 Engineering Workshop",
+        "purpose": "Internal upskilling",
+        "description": "A practical workshop",
+        "expected_attendance": 40,
+        "preferred_start": start.isoformat(),
+        "preferred_end": (start + timezone.timedelta(hours=3)).isoformat(),
+        "required_layout": "THEATRE",
+        "accessibility_needs": "Wheelchair access",
+        "equipment_notes": "One projector",
+        "registration_required": True,
+    }
+    created = signed_in_organiser.post(EVENTS, payload, format="json")
+    assert created.status_code == 201
     reopened = signed_in_organiser.get(f"{EVENTS}{created.data['id']}/")
 
     assert reopened.status_code == 200
-    assert reopened.data["name"] == "Q4 Engineering Workshop"
-    assert reopened.data["purpose"] == "Internal upskilling"
-    assert reopened.data["expected_attendance"] == 40
-    assert reopened.data["accessibility_needs"] == "Wheelchair access"
-    assert reopened.data["preferred_start"] is not None
+    for field, expected in payload.items():
+        if field in ("preferred_start", "preferred_end"):
+            assert parse_datetime(reopened.data[field]) == parse_datetime(expected)
+        else:
+            assert reopened.data[field] == expected
 
 
 @pytest.mark.django_db
@@ -110,3 +113,10 @@ def test_a_draft_can_be_edited_and_reloaded(signed_in_organiser, incomplete_draf
     assert patch.status_code == 200
     assert patch.data["name"] == "Now it has a name"
     assert patch.data["expected_attendance"] == 75
+    reopened = signed_in_organiser.get(f"{EVENTS}{incomplete_draft.pk}/")
+    assert reopened.status_code == 200
+    assert reopened.data["name"] == "Now it has a name"
+    assert reopened.data["expected_attendance"] == 75
+    incomplete_draft.refresh_from_db()
+    assert incomplete_draft.name == "Now it has a name"
+    assert incomplete_draft.expected_attendance == 75

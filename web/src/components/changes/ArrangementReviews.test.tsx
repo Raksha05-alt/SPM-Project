@@ -115,7 +115,7 @@ describe("ArrangementReviews (SCRUM-80)", () => {
   it.each([
     [{ reason: ["Enter the reason for your outcome."] }, "Enter the reason for your outcome."],
     [{ outcome: ["Choose whether the change can be accommodated."] }, "Choose whether the change can be accommodated."],
-  ])("names a missing reason or outcome", async (body, text) => {
+  ])("names a missing reason or outcome (%j)", async (body, text) => {
     vi.mocked(decideArrangement).mockRejectedValue(new ApiError(400, body, "Refused."));
     const user = userEvent.setup();
     renderReviews();

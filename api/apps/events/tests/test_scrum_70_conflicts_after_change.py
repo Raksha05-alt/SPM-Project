@@ -174,3 +174,116 @@ def test_reasons_permission_scoped(api, scenario, coordinator, venue_staff, orga
         assert response.status_code == expected
         if expected == 200:
             assert "Proposed period" in response.data["open"][0]["reasons"][0]["message"]
+
+
+@pytest.mark.parametrize("value", ["invalid-date", START.replace(tzinfo=None)])
+def test_scrum70_shift_requires_an_aware_valid_datetime(value):
+    booking = SimpleNamespace(starts_at=START, ends_at=END, session=SimpleNamespace(kind="MAIN"))
+    event = SimpleNamespace(preferred_start=START, preferred_end=END)
+    with pytest.raises(ValueError, match="aware date and time"):
+        shifted(booking, event, {"preferred_start": value})
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "selection", ["unrelated_fields", "unchanged_period", "one_booking", "foreign_booking"]
+)
+def test_scrum70_preview_scopes_only_changed_bookings(scenario, selection):
+    booking, change = scenario
+    if selection == "unrelated_fields":
+        assert venue_conflicts(booking.event, {"name": "Different title"}) == []
+    elif selection == "unchanged_period":
+        assert (
+            venue_conflicts(booking.event, {"preferred_start": START, "preferred_end": END}) == []
+        )
+    elif selection == "foreign_booking":
+        with pytest.raises(ValueError, match="this event's approved bookings"):
+            venue_conflicts(
+                booking.event, change.proposed_values, target_bookings=[booking.pk + 10000]
+            )
+    else:
+        rows = venue_conflicts(booking.event, change.proposed_values, target_bookings=[booking.pk])
+        assert [row["booking"] for row in rows] == [booking.pk]
+    booking.refresh_from_db()
+    assert (booking.starts_at, booking.ends_at) == (START, END)
+    assert not VenuePeriodReview.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_scrum70_review_writer_requires_its_callers_transaction(scenario, coordinator):
+    _, change = scenario
+    with pytest.raises(RuntimeError, match="transaction"):
+        record_period_reviews(change, coordinator)
+    assert not VenuePeriodReview.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("invalid", ["pending_change", "stale_revision", "unconfirmed_source"])
+def test_scrum70_writer_rejects_unapproved_stale_or_unconfirmed_changes(
+    scenario, coordinator, invalid
+):
+    booking, change = scenario
+    updates = {
+        "pending_change": {"status": ChangeRequestStatus.PENDING, "decided_at": None},
+        "stale_revision": {"revision": change.revision + 1},
+        "unconfirmed_source": {"source_status": EventStatus.APPROVED},
+    }[invalid]
+    EventChangeRequest.objects.filter(pk=change.pk).update(**updates)
+    with transaction.atomic(), pytest.raises(ValueError, match="approved|confirmed"):
+        record_period_reviews(change, coordinator)
+    booking.refresh_from_db()
+    assert (booking.starts_at, booking.ends_at) == (START, END)
+    assert not VenuePeriodReview.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("invalid", ["wrong_role", "inactive_staff", "blank_reason"])
+def test_scrum70_staff_outcome_requires_active_staff_and_a_reason(
+    scenario, coordinator, venue_staff, invalid
+):
+    booking, change = scenario
+    with transaction.atomic():
+        review = record_period_reviews(change, coordinator)[0]
+    actor = coordinator if invalid == "wrong_role" else venue_staff
+    if invalid == "inactive_staff":
+        actor.is_active = False
+        actor.save(update_fields=["is_active"])
+    error = ValueError if invalid == "blank_reason" else PermissionError
+    with pytest.raises(error, match="reason|active Venue Staff"):
+        review_period(review, actor, reason="   " if invalid == "blank_reason" else "Checked")
+    review.refresh_from_db()
+    assert review.reviewed_by is None and review.reviewed_at is None
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.APPROVED
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "invalid", ["already_decided", "new_revision", "change_pending", "booking_withdrawn"]
+)
+def test_scrum70_review_cannot_overwrite_a_decision_or_use_stale_arrangements(
+    scenario, coordinator, venue_staff, invalid
+):
+    booking, change = scenario
+    with transaction.atomic():
+        review = record_period_reviews(change, coordinator)[0]
+    if invalid == "already_decided":
+        review_period(review, venue_staff, reason="First verified decision")
+    elif invalid == "new_revision":
+        EventChangeRequest.objects.filter(pk=change.pk).update(revision=change.revision + 1)
+    elif invalid == "change_pending":
+        EventChangeRequest.objects.filter(pk=change.pk).update(
+            status=ChangeRequestStatus.PENDING, decided_at=None
+        )
+    else:
+        booking.status = BookingStatus.WITHDRAWN
+        booking.save(update_fields=["status"])
+    with pytest.raises(ValueError, match="already|superseded|no longer approved"):
+        review_period(review, venue_staff, reason="Replacement decision")
+    review.refresh_from_db()
+    assert review.review_reason == (
+        "First verified decision" if invalid == "already_decided" else ""
+    )
+    assert bool(review.reviewed_at) is (invalid == "already_decided")
+    booking.refresh_from_db()
+    assert (booking.starts_at, booking.ends_at) == (START, END)

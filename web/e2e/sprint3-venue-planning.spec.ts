@@ -1,3 +1,4 @@
+import { futureDate, roleApi, json } from "./helpers";
 import { expect, test, type Page } from "@playwright/test";
 
 /**
@@ -34,17 +35,30 @@ async function csrf(page: Page) {
 }
 
 test("J2: request, staff approval and confirmed venue withdrawal preserve the decision", async ({
-  page,
+  page, baseURL,
 }) => {
   const eventName = `J2 Venue Request ${Date.now()}`;
+  const venueName = `J2 Hall ${Date.now()}`;
+  const staffApi = await roleApi(baseURL!, VENUE_STAFF);
+  try {
+    await json(await staffApi.post("/api/venues/", {
+      name: venueName, capacity: 200, location: "J2 test wing",
+      layouts: ["THEATRE", "BANQUET"], facilities: ["Hearing loop"],
+      wheelchair_access: true, opens_at: "08:00", closes_at: "22:00",
+      operating_days: [0, 1, 2, 3, 4, 5, 6],
+    }), 201);
+  } finally {
+    await staffApi.api.dispose();
+  }
+
 
   // An organiser submits a Theatre event for 60 people.
   await signIn(page, ORGANISER);
   await page.getByRole("link", { name: "New event request" }).click();
   await page.getByLabel("Event name").fill(eventName);
   await page.getByLabel("Purpose").fill("Sprint 3 venue planning journey");
-  await page.getByLabel("Preferred start").fill("2027-03-01T09:00");
-  await page.getByLabel("Preferred end").fill("2027-03-01T17:00");
+  await page.getByLabel("Preferred start").fill(futureDate(35) + "T09:00");
+  await page.getByLabel("Preferred end").fill(futureDate(35) + "T17:00");
   await page.getByLabel("Expected attendance").fill("60");
   await page.getByLabel("Required room layout").selectOption({ label: "Theatre" });
   await page.getByRole("button", { name: "Send to ConnectSphere" }).click();
@@ -80,15 +94,15 @@ test("J2: request, staff approval and confirmed venue withdrawal preserve the de
   await expect(planner).toContainText("No venue has been requested yet.");
 
   // AC1-AC4 - a suitable room, timing and requirements; confirmation shown.
-  await planner.getByLabel("Venue", { exact: true }).selectOption({ label: "Harbour Hall (capacity 200)" });
+  await planner.getByLabel("Venue", { exact: true }).selectOption({ label: `${venueName} (capacity 200)` });
   await planner.getByLabel("Required facilities").fill("Hearing loop");
   await planner.getByLabel("Wheelchair access required").check();
   await planner.getByRole("button", { name: "Send request to Venue Staff" }).click();
   await expect(planner.getByRole("status")).toContainText(
-    "Your request for Harbour Hall has been sent to Venue Staff.",
+    `Your request for ${venueName} has been sent to Venue Staff.`,
   );
   // AC5 - the request and its current status appear on the event.
-  await expect(planner.getByRole("cell", { name: "Harbour Hall", exact: true })).toBeVisible();
+  await expect(planner.getByRole("cell", { name: venueName, exact: true })).toBeVisible();
   await expect(planner.getByRole("cell", { name: /Pending/ })).toBeVisible();
   // The first request started planning.
   await page.reload();
@@ -98,7 +112,7 @@ test("J2: request, staff approval and confirmed venue withdrawal preserve the de
   // AC6 - another coordinator cannot request a venue for this event.
   await signIn(page, OTHER_COORDINATOR);
   const probe = await page.request.post(`/api/events/${eventId}/venue-bookings/`, {
-    data: { venue: 1, starts_at: "2027-03-01T01:00:00Z", ends_at: "2027-03-01T09:00:00Z", attendance: 60 },
+    data: { venue: 1, starts_at: futureDate(35) + "T01:00:00Z", ends_at: futureDate(35) + "T09:00:00Z", attendance: 60 },
     headers: { "X-CSRFToken": await csrf(page) },
   });
   expect(probe.status()).toBe(403);
@@ -109,7 +123,7 @@ test("J2: request, staff approval and confirmed venue withdrawal preserve the de
   await page.getByRole("link", { name: "Booking requests" }).click();
   await expect(page).toHaveURL(/\/venues\/requests$/);
   const row = page.getByRole("row", { name: new RegExp(eventName) });
-  await expect(row).toContainText("Harbour Hall");
+  await expect(row).toContainText(venueName);
   await expect(row).toContainText("Cora Coordinator");
   await expect(row).toContainText("Pending");
   await expect(row).toContainText("Wheelchair access required");
@@ -122,45 +136,45 @@ test("J2: request, staff approval and confirmed venue withdrawal preserve the de
   // G13 (INT-02): removing Theatre from Harbour Hall warns about this approved
   // booking; confirming removes the layout and keeps the booking unchanged.
   await page.goto("/venues");
-  await page.getByRole("button", { name: "Edit Harbour Hall" }).click();
+  await page.getByRole("button", { name: `Edit ${venueName}` }).click();
   const venueForm = page.getByRole("form", { name: "Venue details" });
   await venueForm.getByLabel("Theatre", { exact: true }).uncheck();
   await venueForm.getByRole("button", { name: "Save venue" }).click();
   const layoutWarning = venueForm.getByRole("alert", { name: "Layout removal warning" });
-  await expect(layoutWarning).toContainText("Removing Theatre from Harbour Hall affects");
+  await expect(layoutWarning).toContainText(`Removing Theatre from ${venueName} affects`);
   await expect(layoutWarning).toContainText(`${eventName} · Theatre`);
   await layoutWarning.getByRole("button", { name: "Remove anyway" }).click();
-  await expect(page.getByRole("status")).toContainText("Saved Harbour Hall");
+  await expect(page.getByRole("status")).toContainText(`Saved ${venueName}`);
   await page.goto("/venues/requests");
   await page.getByLabel("Show requests").selectOption({ label: "All requests" });
   await expect(page.getByRole("row", { name: new RegExp(eventName) })).toContainText("Approved");
   // Put Theatre back so later runs find Harbour Hall suitable; adding never warns.
   await page.goto("/venues");
-  await page.getByRole("button", { name: "Edit Harbour Hall" }).click();
+  await page.getByRole("button", { name: `Edit ${venueName}` }).click();
   await venueForm.getByLabel("Theatre", { exact: true }).check();
   await venueForm.getByRole("button", { name: "Save venue" }).click();
-  await expect(page.getByRole("status")).toContainText("Saved Harbour Hall");
+  await expect(page.getByRole("status")).toContainText(`Saved ${venueName}`);
   await signOut(page);
 
   // G11: declining the warning leaves the approved arrangement unchanged.
   await signIn(page, COORDINATOR);
   await page.goto(`/coordinator/events/${eventId}`);
   const requests = page.getByRole("region", { name: "Venue requests" });
-  const approved = requests.getByRole("row", { name: /Harbour Hall/ });
+  const approved = requests.getByRole("row", { name: new RegExp(venueName) });
   await expect(approved).toContainText("Approved");
   page.once("dialog", async dialog => {
     expect(dialog.message()).toContain("release a confirmed venue arrangement");
     await dialog.dismiss();
   });
-  await approved.getByRole("button", { name: "Withdraw Harbour Hall" }).click();
+  await approved.getByRole("button", { name: `Withdraw ${venueName}` }).click();
   await page.reload();
-  await expect(requests.getByRole("row", { name: /Harbour Hall/ })).toContainText("Approved");
+  await expect(requests.getByRole("row", { name: new RegExp(venueName) })).toContainText("Approved");
 
   page.once("dialog", async dialog => { await dialog.accept(); });
-  await requests.getByRole("button", { name: "Withdraw Harbour Hall" }).click();
+  await requests.getByRole("button", { name: `Withdraw ${venueName}` }).click();
   await expect(requests.getByRole("status")).toContainText("Booking withdrawn");
   await page.reload();
-  const withdrawn = requests.getByRole("row", { name: /Harbour Hall/ });
+  const withdrawn = requests.getByRole("row", { name: new RegExp(venueName) });
   await expect(withdrawn).toContainText("Withdrawn by Cora Coordinator");
   await expect(withdrawn).toContainText("by Vera Venue");
   await expect(withdrawn.getByRole("button", { name: /Withdraw/ })).toHaveCount(0);

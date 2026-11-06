@@ -1,3 +1,4 @@
+import { futureDate } from "./helpers";
 import { expect, test, type Page } from "@playwright/test";
 
 /**
@@ -42,8 +43,8 @@ test("J1: coordinator-led clarification with offline notes, edits and resumed re
   await page.getByRole("link", { name: "New event request" }).click();
   await page.getByLabel("Event name").fill(eventName);
   await page.getByLabel("Purpose").fill("Sprint 3 clarification journey");
-  await page.getByLabel("Preferred start").fill("2027-03-01T09:00");
-  await page.getByLabel("Preferred end").fill("2027-03-01T17:00");
+  await page.getByLabel("Preferred start").fill(futureDate(35) + "T09:00");
+  await page.getByLabel("Preferred end").fill(futureDate(35) + "T17:00");
   await page.getByLabel("Expected attendance").fill("60");
   await page.getByRole("button", { name: "Send to ConnectSphere" }).click();
   await expect(page).toHaveURL(/\/organiser$/);

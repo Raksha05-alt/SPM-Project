@@ -1,3 +1,4 @@
+import { futureDate } from "./helpers";
 import { expect, request, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const PASSWORD = "connectsphere-demo";
@@ -24,7 +25,7 @@ test("S4-SESSIONS: independent room decisions, complete Safety confirmation and 
   const [organiser, lead, coordinator, staff, tech] = clients;
   const suffix = `${Date.now()}`;
   const event = await jsonOk(await organiser.post("/api/events/", { name: `Multi-session ${suffix}`, purpose: "Session acceptance journey",
-    preferred_start: "2030-06-18T02:00:00Z", preferred_end: "2030-06-18T04:00:00Z", expected_attendance: 120 }), 201);
+    preferred_start: futureDate(77) + "T02:00:00Z", preferred_end: futureDate(77) + "T04:00:00Z", expected_attendance: 120 }), 201);
   const context = await browser.newContext({ baseURL, timezoneId: "Asia/Singapore" });
   const page = await context.newPage();
   try {
@@ -118,7 +119,7 @@ test("S4-SCRUM-88: Venue Staff place and revise a hold, then the coordinator con
 
   const event = await jsonOk(await organiser.post("/api/events/", {
     name, purpose: "Venue hold acceptance journey",
-    preferred_start: "2030-06-19T02:00:00Z", preferred_end: "2030-06-19T04:00:00Z",
+    preferred_start: futureDate(78) + "T02:00:00Z", preferred_end: futureDate(78) + "T04:00:00Z",
     expected_attendance: 30,
   }), 201);
   try {
@@ -133,7 +134,7 @@ test("S4-SCRUM-88: Venue Staff place and revise a hold, then the coordinator con
       opens_at: "08:00", closes_at: "22:00", operating_days: [0, 1, 2, 3, 4, 5, 6],
     }), 201);
     const { booking } = await jsonOk(await coordinator.post(`/api/events/${event.id}/venue-bookings/`, {
-      venue: room.id, starts_at: "2030-06-19T02:00:00Z", ends_at: "2030-06-19T04:00:00Z",
+      venue: room.id, starts_at: futureDate(78) + "T02:00:00Z", ends_at: futureDate(78) + "T04:00:00Z",
       attendance: 30, layout: "THEATRE",
     }), 201);
 
@@ -188,7 +189,7 @@ test("S4-US-73: staff warning, rejection with alternative and coordinator accept
   const suffix = String(Date.now());
   const event = await jsonOk(await organiser.post("/api/events/", {
     name: `Alternative event ${suffix}`, purpose: "Alternative booking journey",
-    preferred_start: "2030-06-20T02:00:00Z", preferred_end: "2030-06-20T04:00:00Z",
+    preferred_start: futureDate(79) + "T02:00:00Z", preferred_end: futureDate(79) + "T04:00:00Z",
     expected_attendance: 30,
   }), 201);
   try {
@@ -207,11 +208,11 @@ test("S4-US-73: staff warning, rejection with alternative and coordinator accept
       }), 201));
     }
     await jsonOk(await staff.post(`/api/venues/${rooms[1].id}/blocks/`, {
-      starts_at: "2030-06-20T02:00:00Z", ends_at: "2030-06-20T04:00:00Z",
+      starts_at: futureDate(79) + "T02:00:00Z", ends_at: futureDate(79) + "T04:00:00Z",
       reason: "Scheduled maintenance",
     }), 201);
     const { booking } = await jsonOk(await coordinator.post(`/api/events/${event.id}/venue-bookings/`, {
-      venue: rooms[0].id, starts_at: "2030-06-20T02:00:00Z", ends_at: "2030-06-20T04:00:00Z",
+      venue: rooms[0].id, starts_at: futureDate(79) + "T02:00:00Z", ends_at: futureDate(79) + "T04:00:00Z",
       attendance: 30, layout: "THEATRE", required_facilities: ["Projector"],
     }), 201);
 

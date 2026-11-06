@@ -1,0 +1,30 @@
+Case ID,Stories,Scenario,Preconditions,Steps,Test data,Expected result,Executed cases,Result,Current workbook case ID
+QA01_Form_Queue_Recovery,"SCRUM-7, SCRUM-8, SCRUM-15, SCRUM-47, SCRUM-81",Form and queue error recovery,Isolated PostgreSQL16 and current source build,"1. Submit draft saves with detail-only, array and string field errors.
+2. Submit an incomplete request and verify field names plus editable draft state.
+3. Save registration times, capacity, manual closure and waiting-list settings.
+4. Refuse invalid opening/closing times and server/network errors without success feedback.
+5. Fail a settings load, retry it, and distinguish an empty queue from a failed queue load.","API refusals: 400 detail/field errors, 409 event closed, connection failure. Registration window 09:30–11:30 local time; capacity 12; waiting-list/manual-close enabled.",The organiser receives the specific reason for a refusal. Valid settings persist with unchanged instants. Failed loads can recover. Empty and failed queues display different messages.,11,Pass,US-8-TC06
+QA02_Withdrawal_Recovery,"SCRUM-14, SCRUM-19",Withdrawal refusal and connection recovery,Isolated PostgreSQL16 and current source build,"1. Open a registered attendee's withdrawal summary.
+2. Refuse confirmation with a server reason, an empty API body and a network failure.
+3. Fail the summary load and retry; keep the existing place without sending withdrawal.
+4. Pause the summary while offline and resume after reconnection.
+5. Open a waiting-list withdrawal and verify it describes leaving the queue rather than releasing a registered seat.",Registration 9; active attendee versus waiting-list status; 409 server refusal; empty response body; disconnected/paused query; missing event date.,"Failures leave the registration intact and explain the problem. An offline query resumes when connectivity returns. The attendee can keep the place, and a waiting-list withdrawal describes the correct consequence.",6,Pass,US-14-TC07
+QA03_Hold_Safeguards,SCRUM-88,Venue hold state and worker safeguards,Isolated PostgreSQL16 and current source build,"1. Attempt hold confirmation/deadline changes after event closure or session removal.
+2. Refuse deadline writes by a coordinator or inactive Venue Staff without history/notice changes.
+3. Change venue hours and refuse an unsuitable confirmation.
+4. Filter live, elapsed and recorded-expired bookings; the read must not invent worker history.
+5. Check worker interval validation, one-shot output, connection refresh and clean shutdown.
+6. Display hold state/conflict/assignment/network refusals and reload current bookings.",Closed event variants: Cancelled and Completed; removed breakout session. Live hold +1 hour; elapsed hold −1 second. Worker interval 0 rejected; interval 1 used for watch mode.,"Invalid actors and closed arrangements cannot change a hold. Inbox filtering respects the deadline, while persisted expiry history remains the worker's responsibility. Worker lifecycle and UI refusal feedback remain consistent.",14,Pass,US-88-TC09
+QA04_Change_Review_Guards,SCRUM-70,Proposed-period review scope and freshness,Isolated PostgreSQL16 and current source build,"1. Reject invalid or timezone-naive proposed dates.
+2. Preview unrelated, unchanged, selected and foreign booking scopes without writes.
+3. Require the applying transaction, approved/current revision and confirmed source.
+4. Require active Venue Staff and a nonblank review reason.
+5. Reject an already-decided review, superseded change or withdrawn original booking.","Period-review provider fixtures with one approved booking. Inputs include invalid date, naive datetime, foreign booking ID, pending change, changed revision and withdrawn booking.","Previews remain read-only. Invalid or stale inputs cannot create or overwrite review records, move the original period or replace an earlier staff decision.",17,Pass,US-70-TC05
+QA05_Confirmation_Access,"SCRUM-1, SCRUM-58",Confirmation and unavailability access guards,Isolated PostgreSQL16 and current source build,"1. Request draft readiness as a Lead and Coordinator.
+2. Confirm a real ready event, reassign it and request arrangements as the previous coordinator.
+3. Attempt to record equipment unavailability for a closed event or withdrawn request.
+4. Check denial auditing and verify that no false unavailability history/notice is written.","Lead/current/previous coordinator actors; Draft, Cancelled and Confirmed states; requested versus withdrawn equipment.",Draft arrangements and reassigned events remain private. Closed/withdrawn resources refuse unavailability actions without false history or notifications; access refusals are audited.,5,Pass,US-58-TC07
+QA06_Layout_Write_Races,SCRUM-91,Simultaneous layout creation and rename,Isolated PostgreSQL16 and current source build,"1. Start two authenticated Venue Staff requests that both validate before saving.
+2. Create the same layout code/name concurrently.
+3. Rename two different layouts to the same name concurrently.
+4. Check the persisted rows and both HTTP responses.",Real PostgreSQL threads and a save-boundary barrier. Duplicate creation: RACE_LAYOUT. Rename inputs: RACE_A and RACE_B → Shared layout name.,Exactly one writer succeeds and the other receives HTTP 400 with a duplicate explanation. No HTTP 500 occurs; duplicate rows and partial losing updates do not persist.,2,Pass,US-91-TC06

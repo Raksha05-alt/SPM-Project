@@ -1,3 +1,4 @@
+import { futureDate, notifications, roleApi as attendeeApi } from "./helpers";
 import { expect, request, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 
 /**
@@ -201,9 +202,29 @@ test("S4-J3: an approved change goes through staff review and a fresh Safety che
   baseURL,
 }) => {
   test.setTimeout(150_000);
-  const state = await confirmedEvent(baseURL!, browser, "2027-09-07");
+  const state = await confirmedEvent(baseURL!, browser, futureDate(63));
+  const active = await attendeeApi(baseURL!, "attendee@example.com");
+  const withdrawn = await attendeeApi(baseURL!, "attendee2@example.com");
   try {
-    await approvedMove(state, "2027-09-08");
+    const policy = await state.organiser.api.put(`/api/events/${state.event.id}/registration-policy/`, {
+      headers: { "X-CSRFToken": await token(state.organiser.api) },
+      data: { enabled: true, opens_at: new Date(Date.now() - 3_600_000).toISOString(),
+        closes_at: new Date(Date.now() + 86_400_000).toISOString(), capacity: 60 },
+    });
+    expect(policy.status()).toBe(200);
+    for (const [client, full_name, email] of [
+      [active, "Andy Attendee", "attendee@example.com"],
+      [withdrawn, "Bea Attendee", "attendee2@example.com"],
+    ] as const) {
+      const registered = await client.post(`/api/events/${state.event.id}/registration/`, { full_name, email, accessibility_requirements: "" });
+      expect(registered.status()).toBe(201);
+      if (client === withdrawn) {
+        const id = (await registered.json()).registration.id;
+        expect((await client.post(`/api/registrations/${id}/withdraw/`, { confirm: true })).status()).toBe(200);
+      }
+    }
+
+    await approvedMove(state, futureDate(64));
     const item = await applyInBrowser(state);
 
     // AC1/AC2 - Venue Staff and Technical Support each accommodate their arrangement.
@@ -227,6 +248,24 @@ test("S4-J3: an approved change goes through staff review and a fresh Safety che
     });
     await expect(history).toContainText("Every affected arrangement was accommodated.");
 
+    // SCRUM-18: applying the real change notifies active registrations only.
+    const activeNotices = (await notifications(active, state.event.id)).filter((n: { kind: string }) => n.kind === "EVENT_CHANGED");
+    const withdrawnNotices = (await notifications(withdrawn, state.event.id)).filter((n: { kind: string }) => n.kind === "EVENT_CHANGED");
+    expect(activeNotices).toHaveLength(1);
+    expect(withdrawnNotices).toHaveLength(0);
+    const attendeeContext = await browser.newContext({ baseURL, timezoneId: "Asia/Singapore" });
+    state.contexts.push(attendeeContext);
+    const attendeePage = await attendeeContext.newPage();
+    await signIn(attendeePage, "attendee@example.com");
+    await attendeePage.getByText(/^Notifications/).click();
+    const notice = attendeePage.getByRole("list", { name: "Notifications" }).getByRole("button", { name: `Unread: ${activeNotices[0].kind_label} - ${state.eventName}`, exact: true });
+    await expect(notice).toContainText("changed");
+    await notice.click();
+    await expect(attendeePage).toHaveURL(/\/(events|attendee)$/);
+    const registrations = await (await active.api.get("/api/registrations/mine/")).json();
+    const current = registrations.find((r: { event: number }) => r.event === state.event.id);
+    expect(Date.parse(current.event_details.starts_at)).toBe(Date.parse(futureDate(64) + "T02:00:00Z"));
+
     // AC6 - only the affected equipment goes back through Technical Support approval...
     const plan = await (await state.tech.api.get(`/api/events/${state.event.id}/equipment-plan/`)).json();
     expect(
@@ -235,22 +274,23 @@ test("S4-J3: an approved change goes through staff review and a fresh Safety che
     // ...and the event needs a fresh Safety check before it is confirmed again.
     await safetyAndConfirm(state);
   } finally {
+    await Promise.all([active.api.dispose(), withdrawn.api.dispose()]);
     await cleanup(state);
   }
 });
 
 test("S4-J4: when staff cannot accommodate a change, the original arrangement stays", async ({ browser, baseURL }) => {
   test.setTimeout(150_000);
-  const state = await confirmedEvent(baseURL!, browser, "2027-09-14");
+  const state = await confirmedEvent(baseURL!, browser, futureDate(70));
   try {
-    const change = await approvedMove(state, "2027-09-15");
+    const change = await approvedMove(state, futureDate(71));
     await applyInBrowser(state);
 
     // AC3 - Venue Staff cannot accommodate the new date; nothing is moved.
     await signIn(state.staffPage, "venue@connectsphere.example");
     await staffOutcome(state.staffPage, "/venues/requests", state.venue.name, "Cannot accommodate", "The hall is closed that day.");
     const booking = (await (await state.coordinator.api.get(`/api/events/${state.event.id}/venue-bookings/`)).json())[0];
-    expect(Date.parse(booking.starts_at)).toBe(Date.parse("2027-09-14T02:00:00Z"));
+    expect(Date.parse(booking.starts_at)).toBe(Date.parse(futureDate(70) + "T02:00:00Z"));
     expect(booking.status).toBe("APPROVED");
 
     // The coordinator records what was agreed with the organiser.
@@ -271,7 +311,7 @@ test("S4-J4: when staff cannot accommodate a change, the original arrangement st
     expect(history.completion_note).toBe("Keep the original date.");
     // The original booking and date are unchanged; the event can be confirmed again.
     const event = await (await state.coordinator.api.get(`/api/events/${state.event.id}/`)).json();
-    expect(Date.parse(event.preferred_start)).toBe(Date.parse("2027-09-14T02:00:00Z"));
+    expect(Date.parse(event.preferred_start)).toBe(Date.parse(futureDate(70) + "T02:00:00Z"));
     await safetyAndConfirm(state);
   } finally {
     await cleanup(state);

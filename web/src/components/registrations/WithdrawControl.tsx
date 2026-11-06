@@ -33,7 +33,7 @@ export function WithdrawControl({
   const failed =
     confirm.error instanceof ApiError
       ? ((confirm.error.body as { detail?: string } | null)?.detail ?? "Could not withdraw.")
-      : null;
+      : confirm.error ? "We could not withdraw. Please try again." : null;
 
   if (!asking) {
     return (
@@ -43,9 +43,20 @@ export function WithdrawControl({
     );
   }
   const data = summary.data;
+  const offline = summary.fetchStatus === "paused";
   return (
     <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3">
-      {!data && <p className="text-slate-500">Loading…</p>}
+      {!data && !summary.isError && !offline && <p className="text-slate-500">Loading…</p>}
+      {offline && !data && <p role="alert" className="text-red-700">
+        You are offline. Reconnect to load the withdrawal details.
+      </p>}
+      {summary.isError && !data && (
+        <p role="alert" className="text-red-700">
+          We could not load the withdrawal details.{" "}
+          <button type="button" className="underline" onClick={() => void summary.refetch()}>Try again</button>
+        </p>
+      )}
+      {!data && <button type="button" className="underline" onClick={() => setAsking(false)}>Keep my place</button>}
       {data && (
         <>
           <p>

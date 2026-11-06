@@ -1,33 +1,23 @@
 # ConnectSphere Event Planning and Venue Booking System
 
-IS212 Software Project Management, AY 2026-27 T1. First release, built with Scrum
-over four sprints. This branch includes the Sprint 1 slice and SCRUM-51 from Sprint 2.
+IS212 Software Project Management, AY 2026-27 T1. ConnectSphere supports
+event requests, resource planning, safety approval and attendee registration.
 
 ## What works today
 
-Sprint 1 delivered one thin vertical slice through the whole stack:
+- Role-based sign-in, account details and event-level permissions.
+- Drafts, submission, Lead assignment/reassignment and coordinator review.
+- Venue records, layouts, search, shortlists, availability, booking decisions,
+  alternatives, multiple sessions, setup/turnaround buffers and expiring holds.
+- Equipment requests, stock availability, reservation, amendment and release.
+- Safety Officer decisions and readiness checks before event confirmation.
+- Approved changes with staff impact review, fresh safety checks and history.
+- Registration windows and capacity, withdrawal, FIFO waiting-list notices and
+  recipient-only notifications.
 
-| Story | What it does |
-|---|---|
-| US-01.1 | Sign in and land on the view for your role |
-| US-01.2 | Access is restricted by role and by relationship to an event |
-| US-02.1 | An Event Organiser creates an event request |
-| US-02.2 | An Event Organiser submits a completed request |
-| US-03.1 | An Event Organiser saves an incomplete request as a draft |
-| US-04.1 | An Event Coordinator sees submitted requests in a queue |
-| US-06.1 | Every event shows its current status in plain language |
-| SCRUM-51 | Assign one available coordinator on submission, notify both users, and show coordinator contact details |
-| SCRUM-65 | Venue Staff create and update venue records with the user and time of each change; capacity must be at least one, and only Venue Staff may write |
-| SCRUM-9 | Venue Staff open the venue catalogue and each venue's full details; missing information is named rather than left blank, and the operational status is shown. Attendees are refused |
-
-Sprint 2 extended US-01.2 (SCRUM-1): anonymous refusals are now recorded, the
-audit write can no longer turn a 403 into a 500, and `GET /api/audit/` lets
-ConnectSphere staff read the recorded refusals back. See
-`docs/scrum-1-access-control-notes.md`.
-
-Venues, equipment, registration, change requests and broader notifications arrive in
-sprints 2 to 4. Assignment notifications are already implemented; the other Django apps are empty so that the
-repository structure matches the C4 level 3 component diagram in `docs/c4`.
+Leads assign submitted requests manually. SCRUM-89 replaced SCRUM-51's earlier
+automatic allocation. Historical implementation notes describe their original
+slices; current API behaviour and acceptance tests take precedence.
 
 ## Running it
 
@@ -83,6 +73,8 @@ restart, the worker catches up on outstanding notices and expiry history.
 | venue@connectsphere.example | Venue Staff |
 | tech@connectsphere.example | Technical Support Staff |
 | attendee@example.com | Attendee |
+| attendee2@example.com | Attendee |
+| attendee3@example.com | Attendee |
 | safety@connectsphere.example | Safety Officer |
 
 Sign in as both organisers to see that neither can reach the other's events.
@@ -93,8 +85,8 @@ Sign in as both organisers to see that neither can reach the other's events.
 
 Run migrations and seed_demo_data to add shared equipment records and stock
 examples. Authorised staff can maintain stock and damaged/maintenance records
-in Django admin. Equipment workflows and Safety integration follow in later
-gates; no request/reservation HTTP action is added here.
+in Django admin. The implemented workflows include requests, stock availability, reservation,
+amendment, release, cancellation and transactional Safety invalidation.
 See the [equipment contract and handoff](docs/equipment-contract.md).
 
 ### Venue discovery and shortlists (SCRUM-64/68 implementation slice)
@@ -110,8 +102,8 @@ actions. Available periods show **Available for this period**; missing dates
 remain unverified. A booking that obstructs a saved venue leaves that entry in
 the shortlist with its conflict reference. **Refresh availability** updates both
 results and saved entries. Searching does not reserve the venue; staff recheck
-at approval. Tentative holds remain a later capability, reported separately by
-the API. See the [G12 contract and evidence](docs/venue-discovery-booking-integration.md)
+at approval. Tentative holds occupy the venue until their deadline; the worker records
+expiration and sends the coordinator a notice. See the [G12 contract and evidence](docs/venue-discovery-booking-integration.md)
 and the [earlier AC/test map](docs/scrum-64-68-venue-discovery.md).
 
 ### Operational Safety Check (SCRUM-90)
@@ -129,10 +121,31 @@ approval stale. See the [safety check guide](docs/safety-check.md).
 ### Running the test suites
 
 ```bash
-cd api  && pytest                 # coverage gate at 80%
-cd web  && npm run test
-cd web  && npm run e2e            # Playwright, needs api + web running
+# Run each command from the repository root in a fresh terminal.
+(cd api && pytest --cov-branch --junitxml=test-results/api-junit.xml)
+(cd web && npm run lint && npm run test && npm run build)
+(cd web && npx playwright install chromium)
+(cd web && npx playwright test --workers=1 --retries=0 --reporter=list,json,junit,html)
 ```
+
+Browser tests use real API actions, PostgreSQL and the seeded accounts. Keep the
+API and hold worker running. Playwright starts the frontend when needed. Use an
+isolated, disposable database: the tests create events, notifications and rooms,
+and exercise account edits, cancellations and expiring holds. Do not point them
+at a shared project database.
+
+To use separate ports, set `E2E_BASE_URL=http://127.0.0.1:5174` and
+`API_PROXY_TARGET=http://127.0.0.1:8001` on the Playwright command, run Django on
+8001, and add `http://127.0.0.1:5174` to
+`DJANGO_CSRF_TRUSTED_ORIGINS`. Run the worker with the same database environment
+as Django. HTML evidence opens with `npx playwright show-report`; CI exports
+JSON/JUnit and failure traces instead.
+
+The pytest configuration enforces an 80% minimum. Report production-only line
+and branch coverage separately from test/migration coverage; the course's
+coverage and human-review requirements still apply.
+
+The [testing guide](docs/testing/README.md) links the complete US case workbook, story index, packaged execution reports and coverage gaps.
 
 Backend tests are named after the acceptance criteria they verify. Open
 `api/apps/events/tests/test_us_03_1_save_draft.py` and you will find
@@ -176,8 +189,8 @@ api/
 web/
   src/api/                fetch wrapper, CSRF handling, endpoints
   src/auth/               session context and route guards
-  src/pages/              one file per screen
-  e2e/                    Playwright journey for the sprint goal
+  src/pages/              screens and browser routes
+  e2e/                    real browser acceptance journeys
 docs/
   c4/                     context, container and component diagrams
   adr/                    architecture decision records
@@ -186,11 +199,11 @@ docs/
 
 ## Conventions
 
-- Branch names carry the Jira key: `feature/SCRUM-12-submit-draft`.
+- Use the agreed feature group, for example `feature/venue-discovery`; include the Jira keys in commits and PRs.
 - Every pull request needs one approving review and a green pipeline.
-- Access control lives in DRF permission classes, never in view bodies.
-- Business rules live in `services.py`, not in serializers or views.
-- Every refused request is written to `core.AuditLog`.
+- Access checks run on the server, including role and relationship checks in API permissions and domain services.
+- Keep transactional business rules in their domain services.
+- See the [access-control notes](docs/scrum-1-access-control-notes.md) for audit behaviour.
 
 ### Amend or withdraw equipment (SCRUM-75)
 
