@@ -205,5 +205,8 @@ describe("EquipmentAvailability (SCRUM-12)", () => {
 
     expect(await screen.findByRole("region", { name: "Holding events" })).toBeInTheDocument();
     expect(getEquipmentHolders).toHaveBeenCalledWith(9, 2, RESULT.period);
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("region", { name: "Holding events" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "See who is holding Microphone" })).toBeVisible();
   });
 });

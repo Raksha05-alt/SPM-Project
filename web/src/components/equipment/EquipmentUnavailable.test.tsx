@@ -1,3 +1,4 @@
+import { ApiError } from "../../api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -49,3 +50,22 @@ describe("EquipmentUnavailable (SCRUM-58 AC3)", () => {
     expect(recordEquipmentUnavailable).not.toHaveBeenCalled();
   });
 });
+
+it.each([new Error("Connection interrupted"), new ApiError(409, {}, "Refused")])(
+  "US-58 retains the unavailable reason and refreshes after a failed recording (%s)",
+  async (error) => {
+    vi.mocked(recordEquipmentUnavailable).mockReset().mockRejectedValueOnce(error).mockResolvedValue({ detail: "Recorded after retry." });
+    const refresh = renderIt();
+    await userEvent.click(screen.getByRole("button", { name: "Record as unavailable" }));
+    await userEvent.type(screen.getByLabelText("Why is it unavailable?"), "  Awaiting repair.  ");
+    await userEvent.click(screen.getByRole("button", { name: "Record unavailable" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not record it.");
+    expect(screen.getByLabelText("Why is it unavailable?")).toHaveValue("  Awaiting repair.  ");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: "Record unavailable" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Recorded after retry.");
+    expect(recordEquipmentUnavailable).toHaveBeenLastCalledWith(11, "Awaiting repair.");
+    expect(refresh).toHaveBeenCalledTimes(2);
+  },
+);

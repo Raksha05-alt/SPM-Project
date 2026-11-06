@@ -1,0 +1,10 @@
+{
+  "coverage-summary.json": "d0d61ef30f7eb7272ce165203c62970f422efdd0ecaee06ab74095c89751a84d",
+  "frontend-coverage-cases.csv": "22f9e421159532eeaf495b9c392aaf0daa232d0327b2813510c68b985e621c6a",
+  "frontend-audit-summary.json": "b901cb4e6b880815c8e5e2d7a9702e7031e3c63417ffe697e71ec9416ad0c9d3",
+  "tested-build.json": "6450ffd80014048daaa3cca99b5c4593ee652f669f5b1483ff9b7636efc41540",
+  "vitest-verified.json": "a6ca3598b2afdc60c639d7580eb057e8afc042cde639f7fbc329971d8966c375",
+  "remaining-coverage-gaps.csv": "76597c6cf95845068e61d77f886dad19f2a8a72287d71433007a04cd18c32c58",
+  "vitest-gated.json": "bf890df6ae535861a0f6b06d48b6eff51a58ffe2fd92f8a9f39707fb88e2beed",
+  "coverage-final.json": "bb51dac2755549729b0d145834220f3564737e02981ac8be0460c5ad7f6d0ae3"
+}
