@@ -1,0 +1,196 @@
+Source,Gap type,Start line,End line,Detail
+web/src/api/events.ts,Uncovered statement,52,52,
+web/src/api/events.ts,Uncovered function,20,20,listEvents
+web/src/api/events.ts,Uncovered function,51,52,deleteDraft
+web/src/auth/AuthContext.tsx,Uncovered branch,17,17,"branch 1, arm 0"
+web/src/components/ClarificationNoteForm.tsx,Uncovered branch,49,49,"branch 3, arm 0"
+web/src/components/Clarifications.tsx,Uncovered branch,61,61,"branch 14, arm 0"
+web/src/components/CoordinatorEventEditor.tsx,Uncovered branch,62,62,"branch 11, arm 0"
+web/src/components/CoordinatorEventEditor.tsx,Uncovered branch,175,175,"branch 34, arm 0"
+web/src/components/Notifications.tsx,Uncovered branch,37,37,"branch 18, arm 0"
+web/src/components/changes/ArrangementReviews.tsx,Uncovered branch,16,16,"branch 5, arm 0"
+web/src/components/changes/ArrangementReviews.tsx,Uncovered branch,17,17,"branch 6, arm 0"
+web/src/components/changes/ArrangementReviews.tsx,Uncovered branch,20,20,"branch 10, arm 0"
+web/src/components/changes/ChangeProgress.tsx,Uncovered branch,16,16,"branch 5, arm 0"
+web/src/components/changes/ChangeProgress.tsx,Uncovered branch,17,17,"branch 6, arm 0"
+web/src/components/changes/ChangeProgress.tsx,Uncovered branch,19,19,"branch 8, arm 0"
+web/src/components/changes/ChangeProgress.tsx,Uncovered branch,29,29,"branch 10, arm 0"
+web/src/components/changes/ChangeProgress.tsx,Uncovered branch,48,48,"branch 17, arm 0"
+web/src/components/changes/ChangeRequests.tsx,Uncovered branch,47,47,"branch 8, arm 0"
+web/src/components/changes/ChangeRequests.tsx,Uncovered branch,49,49,"branch 11, arm 0"
+web/src/components/changes/ChangeRequests.tsx,Uncovered branch,55,55,"branch 14, arm 0"
+web/src/components/changes/ChangeRequests.tsx,Uncovered branch,147,147,"branch 51, arm 0"
+web/src/components/changes/ChangeReview.tsx,Uncovered branch,14,14,"branch 2, arm 0"
+web/src/components/changes/ChangeReview.tsx,Uncovered branch,15,15,"branch 3, arm 0"
+web/src/components/confirmation/ConfirmedArrangementsPanel.tsx,Uncovered branch,33,33,"branch 12, arm 0"
+web/src/components/confirmation/ReadinessPanel.tsx,Uncovered branch,47,47,"branch 28, arm 0"
+web/src/components/confirmation/ReadinessPanel.tsx,Uncovered branch,51,51,"branch 29, arm 0"
+web/src/components/equipment/EquipmentHoldersPanel.tsx,Uncovered statement,95,95,
+web/src/components/equipment/EquipmentHoldersPanel.tsx,Uncovered branch,94,95,"branch 15, arm 0"
+web/src/components/equipment/EquipmentRequests.tsx,Uncovered statement,137,137,
+web/src/components/equipment/EquipmentRequests.tsx,Uncovered statement,138,138,
+web/src/components/equipment/EquipmentRequests.tsx,Uncovered statement,139,139,
+web/src/components/equipment/EquipmentRequests.tsx,Uncovered branch,19,19,"branch 1, arm 0"
+web/src/components/equipment/EquipmentRequests.tsx,Uncovered branch,21,21,"branch 4, arm 0"
+web/src/components/equipment/EquipmentRequests.tsx,Uncovered branch,25,25,"branch 7, arm 0"
+web/src/components/equipment/EquipmentRequests.tsx,Uncovered branch,79,79,"branch 12, arm 0"
+web/src/components/equipment/EquipmentRequests.tsx,Uncovered branch,136,139,"branch 24, arm 0"
+web/src/components/equipment/EquipmentRequests.tsx,Uncovered branch,98,98,"branch 39, arm 0"
+web/src/components/equipment/EquipmentRequests.tsx,Uncovered branch,103,103,"branch 40, arm 0"
+web/src/components/layouts/useLayouts.ts,Uncovered branch,22,22,"branch 6, arm 0"
+web/src/components/registrations/MyRegistrations.tsx,Uncovered branch,5,5,"branch 1, arm 0"
+web/src/components/registrations/MyRegistrations.tsx,Uncovered branch,16,16,"branch 4, arm 0"
+web/src/components/registrations/MyRegistrations.tsx,Uncovered branch,17,17,"branch 6, arm 0"
+web/src/components/registrations/RegisterPanel.tsx,Uncovered branch,54,54,"branch 10, arm 0"
+web/src/components/registrations/RegisterPanel.tsx,Uncovered branch,99,99,"branch 30, arm 0"
+web/src/components/registrations/RegisterPanel.tsx,Uncovered branch,163,163,"branch 40, arm 0"
+web/src/components/registrations/RegisterPanel.tsx,Uncovered branch,167,167,"branch 54, arm 0"
+web/src/components/registrations/RegistrationPolicyForm.tsx,Uncovered branch,71,71,"branch 15, arm 0"
+web/src/components/registrations/RegistrationPolicyForm.tsx,Uncovered branch,82,82,"branch 20, arm 0"
+web/src/components/registrations/WithdrawControl.tsx,Uncovered function,59,59,onClick
+web/src/components/safety/SafetyCheckPanel.tsx,Uncovered branch,50,50,"branch 9, arm 0"
+web/src/components/safety/SafetyCheckPanel.tsx,Uncovered branch,50,50,"branch 11, arm 0"
+web/src/components/safety/SafetyCheckPanel.tsx,Uncovered branch,55,55,"branch 14, arm 0"
+web/src/components/safety/SafetyStatusBadge.tsx,Uncovered branch,21,21,"branch 2, arm 0"
+web/src/components/safety/SafetyStatusBadge.tsx,Uncovered branch,26,26,"branch 4, arm 0"
+web/src/components/venues/BookingDecision.tsx,Uncovered statement,122,122,
+web/src/components/venues/BookingDecision.tsx,Uncovered branch,33,33,"branch 10, arm 0"
+web/src/components/venues/BookingDecision.tsx,Uncovered branch,121,121,"branch 27, arm 0"
+web/src/components/venues/BookingDecision.tsx,Uncovered branch,249,249,"branch 45, arm 0"
+web/src/components/venues/VenueForm.tsx,Uncovered statement,277,277,
+web/src/components/venues/VenueForm.tsx,Uncovered statement,278,278,
+web/src/components/venues/VenueForm.tsx,Uncovered statement,279,279,
+web/src/components/venues/VenueForm.tsx,Uncovered branch,71,71,"branch 10, arm 0"
+web/src/components/venues/VenueForm.tsx,Uncovered branch,72,72,"branch 12, arm 0"
+web/src/components/venues/VenueForm.tsx,Uncovered branch,81,81,"branch 18, arm 0"
+web/src/components/venues/VenueForm.tsx,Uncovered branch,83,83,"branch 22, arm 0"
+web/src/components/venues/VenueForm.tsx,Uncovered branch,276,279,"branch 47, arm 0"
+web/src/components/venues/VenueForm.tsx,Uncovered branch,374,374,"branch 52, arm 0"
+web/src/components/venues/VenueForm.tsx,Uncovered branch,312,312,"branch 87, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered statement,184,184,
+web/src/components/venues/VenuePlanner.tsx,Uncovered statement,185,185,
+web/src/components/venues/VenuePlanner.tsx,Uncovered function,69,69,onError
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,24,24,"branch 3, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,39,39,"branch 15, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,54,54,"branch 17, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,55,55,"branch 18, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,152,152,"branch 35, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,155,155,"branch 37, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,293,293,"branch 52, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,109,109,"branch 94, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,110,110,"branch 95, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,134,134,"branch 106, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,183,185,"branch 117, arm 0"
+web/src/components/venues/VenuePlanner.tsx,Uncovered branch,256,256,"branch 137, arm 0"
+web/src/components/venues/VenueSuitability.tsx,Uncovered statement,132,132,
+web/src/components/venues/VenueSuitability.tsx,Uncovered branch,25,25,"branch 7, arm 0"
+web/src/components/venues/VenueSuitability.tsx,Uncovered branch,26,26,"branch 8, arm 0"
+web/src/components/venues/VenueSuitability.tsx,Uncovered branch,131,131,"branch 27, arm 0"
+web/src/pages/AccountPage.tsx,Uncovered branch,12,12,"branch 3, arm 0"
+web/src/pages/AttendeeEvents.tsx,Uncovered branch,14,14,"branch 2, arm 0"
+web/src/pages/AttendeeEvents.tsx,Uncovered branch,16,16,"branch 4, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered statement,373,373,
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered statement,374,374,
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered statement,375,375,
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered function,273,273,onClick
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered function,317,317,onClick
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,36,36,"branch 1, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,141,141,"branch 6, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,150,150,"branch 11, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,198,198,"branch 17, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,199,199,"branch 18, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,203,203,"branch 20, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,206,206,"branch 22, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,209,209,"branch 23, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,212,212,"branch 24, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,216,216,"branch 25, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,220,220,"branch 26, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,372,375,"branch 40, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,448,448,"branch 59, arm 0"
+web/src/pages/CoordinatorEventDetail.tsx,Uncovered branch,136,136,"branch 75, arm 0"
+web/src/pages/CoordinatorQueue.tsx,Uncovered branch,13,13,"branch 4, arm 0"
+web/src/pages/EquipmentAvailability.tsx,Uncovered statement,54,54,
+web/src/pages/EquipmentAvailability.tsx,Uncovered statement,55,55,
+web/src/pages/EquipmentAvailability.tsx,Uncovered statement,56,56,
+web/src/pages/EquipmentAvailability.tsx,Uncovered statement,126,126,
+web/src/pages/EquipmentAvailability.tsx,Uncovered statement,226,226,
+web/src/pages/EquipmentAvailability.tsx,Uncovered statement,228,228,
+web/src/pages/EquipmentAvailability.tsx,Uncovered branch,52,52,"branch 4, arm 0"
+web/src/pages/EquipmentAvailability.tsx,Uncovered branch,53,56,"branch 6, arm 0"
+web/src/pages/EquipmentAvailability.tsx,Uncovered branch,69,69,"branch 16, arm 0"
+web/src/pages/EquipmentAvailability.tsx,Uncovered branch,125,126,"branch 32, arm 0"
+web/src/pages/EquipmentAvailability.tsx,Uncovered branch,130,130,"branch 49, arm 0"
+web/src/pages/EquipmentAvailability.tsx,Uncovered branch,159,159,"branch 52, arm 0"
+web/src/pages/EquipmentAvailability.tsx,Uncovered branch,168,168,"branch 54, arm 0"
+web/src/pages/EquipmentAvailability.tsx,Uncovered branch,225,228,"branch 57, arm 0"
+web/src/pages/EquipmentAvailability.tsx,Uncovered branch,236,236,"branch 58, arm 0"
+web/src/pages/EquipmentInbox.tsx,Uncovered branch,7,7,"branch 1, arm 0"
+web/src/pages/EquipmentInbox.tsx,Uncovered branch,9,9,"branch 2, arm 0"
+web/src/pages/EquipmentInbox.tsx,Uncovered branch,61,61,"branch 11, arm 0"
+web/src/pages/EquipmentInbox.tsx,Uncovered branch,81,81,"branch 14, arm 0"
+web/src/pages/EquipmentPlan.tsx,Uncovered branch,103,103,"branch 87, arm 0"
+web/src/pages/EquipmentPlan.tsx,Uncovered branch,103,103,"branch 88, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered statement,181,181,
+web/src/pages/EventRequestForm.tsx,Uncovered branch,131,132,"branch 15, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,180,181,"branch 34, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,206,206,"branch 38, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,214,214,"branch 39, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,223,223,"branch 40, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,274,274,"branch 42, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,293,293,"branch 45, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,302,302,"branch 46, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,344,344,"branch 51, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,115,115,"branch 78, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,195,195,"branch 83, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,236,236,"branch 88, arm 0"
+web/src/pages/EventRequestForm.tsx,Uncovered branch,281,281,"branch 97, arm 0"
+web/src/pages/OrganiserDashboard.tsx,Uncovered branch,33,33,"branch 8, arm 0"
+web/src/pages/OrganiserDashboard.tsx,Uncovered branch,34,34,"branch 9, arm 0"
+web/src/pages/OrganiserDashboard.tsx,Uncovered branch,107,107,"branch 26, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,14,14,"branch 1, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,82,82,"branch 10, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,88,88,"branch 14, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,106,106,"branch 18, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,115,115,"branch 23, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,116,116,"branch 25, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,140,140,"branch 36, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,63,63,"branch 47, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,74,74,"branch 50, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,74,74,"branch 51, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,74,74,"branch 52, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,98,98,"branch 58, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,98,98,"branch 59, arm 0"
+web/src/pages/VenueAvailability.tsx,Uncovered branch,98,98,"branch 60, arm 0"
+web/src/pages/VenueBookingInbox.tsx,Uncovered statement,55,55,
+web/src/pages/VenueBookingInbox.tsx,Uncovered statement,91,91,
+web/src/pages/VenueBookingInbox.tsx,Uncovered statement,92,92,
+web/src/pages/VenueBookingInbox.tsx,Uncovered statement,93,93,
+web/src/pages/VenueBookingInbox.tsx,Uncovered statement,94,94,
+web/src/pages/VenueBookingInbox.tsx,Uncovered branch,59,59,"branch 6, arm 0"
+web/src/pages/VenueBookingInbox.tsx,Uncovered branch,90,94,"branch 16, arm 0"
+web/src/pages/VenueBookingInbox.tsx,Uncovered branch,98,98,"branch 17, arm 0"
+web/src/pages/VenueCatalogue.tsx,Uncovered branch,39,39,"branch 6, arm 0"
+web/src/pages/VenueCatalogue.tsx,Uncovered branch,66,66,"branch 8, arm 0"
+web/src/pages/VenueCatalogue.tsx,Uncovered branch,112,112,"branch 24, arm 0"
+web/src/pages/VenueCatalogue.tsx,Uncovered branch,116,116,"branch 25, arm 0"
+web/src/pages/VenueCatalogue.tsx,Uncovered branch,121,121,"branch 26, arm 0"
+web/src/pages/VenueComparison.tsx,Uncovered branch,30,30,"branch 3, arm 0"
+web/src/pages/VenueComparison.tsx,Uncovered branch,22,22,"branch 10, arm 0"
+web/src/pages/VenueComparison.tsx,Uncovered branch,22,22,"branch 11, arm 0"
+web/src/pages/VenueComparison.tsx,Uncovered branch,22,22,"branch 12, arm 0"
+web/src/pages/VenueDetail.tsx,Uncovered branch,87,87,"branch 23, arm 0"
+web/src/pages/VenueDetail.tsx,Uncovered branch,96,96,"branch 29, arm 0"
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered statement,75,75,
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered statement,76,76,
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered statement,77,77,
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered statement,130,130,
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered branch,39,39,"branch 4, arm 0"
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered branch,40,40,"branch 5, arm 0"
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered branch,51,51,"branch 7, arm 0"
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered branch,53,53,"branch 8, arm 0"
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered branch,60,60,"branch 9, arm 0"
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered branch,74,77,"branch 10, arm 0"
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered branch,129,130,"branch 14, arm 0"
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered branch,148,148,"branch 19, arm 0"
+web/src/pages/safety/SafetyCheckReview.tsx,Uncovered branch,217,217,"branch 27, arm 0"
+web/src/pages/safety/SafetyQueue.tsx,Uncovered branch,81,81,"branch 18, arm 0"

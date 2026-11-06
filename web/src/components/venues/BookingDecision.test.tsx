@@ -189,9 +189,25 @@ it("US-73 sends an optional alternative with the rejection in Singapore time", a
   await screen.findByRole("option", { name: "Workshop Room" });
   expect(screen.getByLabelText("Suggested start (Singapore time)")).toHaveValue("2030-06-18T10:00");
   await userEvent.selectOptions(screen.getByLabelText("Suggested venue"), "8");
+  fireEvent.change(screen.getByLabelText("Suggested start (Singapore time)"), { target: { value: "2030-06-18T10:30" } });
+  fireEvent.change(screen.getByLabelText("Suggested end (Singapore time)"), { target: { value: "2030-06-18T12:30" } });
   await userEvent.click(screen.getByRole("button", { name: "Confirm rejection" }));
   expect(rejectBooking).toHaveBeenCalledWith(7, "Use the workshop instead", {
-    venue: 8, starts_at: "2030-06-18T10:00+08:00", ends_at: "2030-06-18T12:00+08:00",
+    venue: 8, starts_at: "2030-06-18T10:30+08:00", ends_at: "2030-06-18T12:30+08:00",
   });
   venueSpy.mockRestore();
+});
+
+it("US-88 cancelling a changed hold deadline discards it before the editor is reopened", async () => {
+  vi.clearAllMocks();
+  renderDecision({ ...PENDING, status: "HELD", hold_until: "2030-06-17T07:00:00Z" });
+  await userEvent.click(screen.getByRole("button", { name: "Change expiry" }));
+  const deadline = screen.getByLabelText("Hold expiry (Singapore time)");
+  fireEvent.change(deadline, { target: { value: "2030-06-18T14:00" } });
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(updateHoldExpiry).not.toHaveBeenCalled();
+  expect(screen.queryByLabelText("Hold expiry (Singapore time)")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Change expiry" }));
+  expect(screen.getByLabelText("Hold expiry (Singapore time)")).toHaveValue("");
+  expect(screen.getByRole("button", { name: "Save expiry" })).toBeDisabled();
 });

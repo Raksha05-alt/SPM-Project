@@ -5,14 +5,18 @@ Run commands from the repository root. The root [README](../../README.md#running
 | Layer | Tests | Run |
 | --- | --- | --- |
 | Backend unit and integration | api/apps/**/tests/ | cd api && pytest --cov-branch --junitxml=test-results/api-junit.xml |
-| Frontend component and unit | web/src/**/*.test.tsx | cd web && npm run test |
+| Frontend unit, component and integration | web/src/**/*.test.{ts,tsx} | cd web && npm run test |
 | Real browser journeys | web/e2e/*.spec.ts | cd web && npx playwright test --workers=1 --retries=0 --reporter=list,json,junit,html |
 | Type and build checks | web/ | cd web && npm run lint && npm run build |
 | Backend style and migrations | api/ | cd api && ruff check . && ruff format --check . && python manage.py makemigrations --check --dry-run |
 
 ## Case register
 
-The complete [workbook](../test-cases/Test_Cases_All_Sprints.xlsx) uses US-<story>-TC<number> IDs. Its 338 records cover all 62 US stories and distinguish current, historical and superseded criteria. [The story index](../test-cases/story-test-index.csv) links stories to case IDs and source modules. Exact code selectors retain their original names.
+The actual-records [workbook](../test-cases/Test_Cases_All_Sprints.xlsx) uses US-<story>-TC<number> IDs. Its 347 records cover all 62 US stories and distinguish current, historical and superseded criteria. [The story index](../test-cases/story-test-index.csv) links stories to case IDs and source modules. Exact code selectors retain their original names.
+
+## Latest frontend verification
+
+[The frontend coverage follow-up](frontend-coverage.md) records 494 passing tests, 99.56% line coverage, 99.08% function coverage and 93.23% branch coverage, with the same production source scope. The coverage gate, TypeScript check and production build passed. Nine supporting case groups map the 40 new executions to their US stories. The earlier full-stack records below retain their own build and run dates.
 
 ## Recorded local execution
 
@@ -29,7 +33,7 @@ There are 2,411 distinct recorded executions. The 12 business-journey groups are
 
 ## Coverage and review limits
 
-Production-only backend coverage was 99.14% of lines and 97.69% of branches; frontend instrumentation measured 94.55% of lines and 91.37% of branches. The backend summary excludes tests and migrations. api-coverage-final.json, frontend coverage JSON and remaining-coverage-gaps.csv retain the measurements and exact gaps.
+For the earlier readiness run below, production-only backend coverage was 99.14% of lines and 97.69% of branches; frontend instrumentation measured 94.55% of lines and 91.37% of branches. The backend summary excludes tests and migrations. api-coverage-final.json, frontend coverage JSON and remaining-coverage-gaps.csv retain the measurements and exact gaps.
 
 [Coverage regression notes](coverage-gap-closure.md) explain the recovery and concurrency cases. Older sprint audit directories and SCRUM-specific notes remain historical records; their counts describe their own build.
 

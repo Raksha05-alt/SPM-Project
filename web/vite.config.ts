@@ -17,5 +17,10 @@ export default defineConfig({
     globals: true,
     setupFiles: "./src/setupTests.ts",
     exclude: ["node_modules/**", "e2e/**"],
+    coverage: {
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.*", "src/**/__mocks__/**", "src/setupTests.ts"],
+      thresholds: { lines: 99, statements: 99, functions: 98, branches: 93 },
+    },
   },
 });

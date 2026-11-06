@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client";
@@ -83,6 +83,11 @@ describe("VenuePlanner (SCRUM-11)", () => {
 
     await screen.findByRole("option", { name: "Harbour Hall (capacity 60)" });
     await user.selectOptions(screen.getByLabelText("Venue"), "3");
+    fireEvent.change(screen.getByLabelText("Starts"), { target: { value: "2030-06-18T09:30" } });
+    fireEvent.change(screen.getByLabelText("Ends"), { target: { value: "2030-06-18T11:30" } });
+    await user.selectOptions(screen.getByLabelText("Room layout"), "CLASSROOM");
+    await user.clear(screen.getByLabelText("Accessibility needs"));
+    await user.type(screen.getByLabelText("Accessibility needs"), "Ramp at entrance.");
     await user.type(
       screen.getByLabelText("Required facilities"),
       "Video conferencing, Hearing loop",
@@ -92,13 +97,13 @@ describe("VenuePlanner (SCRUM-11)", () => {
 
     expect(requestVenue).toHaveBeenCalledWith(9, {
       venue: 3,
-      starts_at: "2027-03-01T02:00:00.000Z",
-      ends_at: "2027-03-01T04:00:00.000Z",
+      starts_at: new Date("2030-06-18T09:30").toISOString(),
+      ends_at: new Date("2030-06-18T11:30").toISOString(),
       attendance: 60,
-      layout: "THEATRE",
+      layout: "CLASSROOM",
       required_facilities: ["Video conferencing", "Hearing loop"],
       wheelchair_access_required: true,
-      accessibility_notes: "Two wheelchair users.",
+      accessibility_notes: "Ramp at entrance.",
     });
     // AC4 - confirmation that it reached Venue Staff.
     expect(await screen.findByRole("status")).toHaveTextContent(

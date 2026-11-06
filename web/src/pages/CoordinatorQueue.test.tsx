@@ -62,3 +62,18 @@ it("SCRUM-47 AC5 distinguishes an empty queue from a failed load", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("We could not load the queue.");
   expect(screen.queryByText(/Nothing is waiting/)).not.toBeInTheDocument();
 });
+
+it("US-47 displays incomplete imported dates and assignment details without an invalid date", async () => {
+  vi.mocked(fetchQueue).mockResolvedValue([{
+    id: 8, name: "Imported request", organisation_name: "Acme",
+    preferred_start: null, expected_attendance: null, submitted_at: null,
+    status: "SUBMITTED", status_label: "Submitted", status_description: "Awaiting review",
+    coordinator: null, coordinator_name: null, assignment_requires_attention: false,
+    approved_by_name: null, approved_at: null,
+  }]);
+  renderPage();
+  expect(await screen.findByRole("link", { name: "Imported request" })).toHaveAttribute("href", "/coordinator/events/8");
+  expect(screen.getAllByRole("cell", { name: "—" })).toHaveLength(3);
+  expect(screen.getByText("Not assigned")).toBeVisible();
+  expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument();
+});

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -398,5 +398,91 @@ describe("CoordinatorEventDetail", () => {
     expect(await screen.findByText("Client called: six wheelchair users.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Resume review" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Add a note from your conversation")).not.toBeInTheDocument();
+  });
+});
+
+
+describe("US-61 edit payload and US-50 ownership regression checks", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("US-61 edits every planning field while preserving the exact selected instants", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event({ status: "PLANNING", is_editable: true }));
+    vi.mocked(updateEvent).mockResolvedValue(event({ status: "PLANNING", is_editable: true }));
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+    for (const [label, value] of [
+      ["Purpose", "Training"], ["Description", "Two breakout groups"],
+      ["Accessibility needs", "Hearing loop"], ["Equipment and technical requirements", "Four microphones"],
+    ]) {
+      await userEvent.clear(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText(label));
+      await userEvent.type(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText(label), value);
+    }
+    fireEvent.change(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Preferred start"), { target: { value: "2030-06-18T09:30" } });
+    fireEvent.change(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Preferred end"), { target: { value: "2030-06-18T11:30" } });
+    await userEvent.selectOptions(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Required room layout"), "CLASSROOM");
+    await userEvent.clear(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Expected attendance"));
+    await userEvent.type(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Expected attendance"), "80");
+    await userEvent.click(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Attendees will need to register for this event"));
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(updateEvent).toHaveBeenCalledWith(9, {
+      purpose: "Training", description: "Two breakout groups",
+      preferred_start: new Date("2030-06-18T09:30").toISOString(),
+      preferred_end: new Date("2030-06-18T11:30").toISOString(),
+      expected_attendance: 80, required_layout: "CLASSROOM",
+      accessibility_needs: "Hearing loop", equipment_notes: "Four microphones",
+      registration_required: false,
+    }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Changes saved.");
+  });
+
+  it("US-61 cancels without saving, then sends cleared optional values as null", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event({ status: "PLANNING", is_editable: true }));
+    vi.mocked(updateEvent).mockResolvedValue(event({ status: "PLANNING", is_editable: true }));
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+    await userEvent.clear(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Purpose"));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(updateEvent).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Edit details" }));
+    expect(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Purpose")).toHaveValue("Annual partner briefing");
+    fireEvent.change(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Preferred start"), { target: { value: "" } });
+    fireEvent.change(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Preferred end"), { target: { value: "" } });
+    await userEvent.clear(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Expected attendance"));
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(updateEvent).toHaveBeenCalledWith(9, {
+      preferred_start: null, preferred_end: null, expected_attendance: null,
+    }));
+  });
+
+  it("US-61 retains unsaved edits when the server fails and allows an explicit retry", async () => {
+    vi.mocked(getEvent).mockResolvedValue(event({ status: "PLANNING", is_editable: true }));
+    vi.mocked(updateEvent).mockRejectedValueOnce(new Error("Connection interrupted."))
+      .mockResolvedValue(event({ status: "PLANNING", is_editable: true, name: "Retry safely" }));
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+    await userEvent.clear(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Event name"));
+    await userEvent.type(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Event name"), "Retry safely");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByText("Connection interrupted.")).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Edit event details" })).getByLabelText("Event name")).toHaveValue("Retry safely");
+    expect(screen.queryByText("Changes saved.")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Changes saved.");
+    expect(updateEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("US-50 refreshes ownership after a refused approval and removes stale decision controls", async () => {
+    vi.mocked(getEvent).mockResolvedValueOnce(event()).mockResolvedValue(event({
+      coordinator: 99, coordinator_name: "New Coordinator", is_editable: false,
+    }));
+    vi.mocked(approveEvent).mockRejectedValue(new ApiError(403, { detail: "This request has been reassigned." }, "This request has been reassigned."));
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Approve request" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This request has been reassigned.");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Approve request" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Reject request" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Request clarification" })).not.toBeInTheDocument();
+    expect(approveEvent).toHaveBeenCalledTimes(1);
+    expect(getEvent).toHaveBeenCalledTimes(2);
   });
 });
