@@ -1,0 +1,2 @@
+# Preserve original execution artifacts, including their native CSV line endings.
+docs/testing/evidence/submission-readiness/* -text whitespace=cr-at-eol
