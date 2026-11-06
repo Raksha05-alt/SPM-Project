@@ -71,6 +71,9 @@ def _claim_required_layout(validated_data, *, keep):
 
 
 class EventRequestViewSet(ModelViewSet):
+    # Final E2E defect 2: get_object looks the id up itself, so a non-numeric
+    # id must not reach it (it raised ValueError, a 500). Route digits only.
+    lookup_value_regex = r"[0-9]+"
     serializer_class = EventRequestSerializer
     # HasAnyRole is listed first on purpose. DRF stops at the first permission
     # class that returns False, and HasAnyRole is the class that writes the

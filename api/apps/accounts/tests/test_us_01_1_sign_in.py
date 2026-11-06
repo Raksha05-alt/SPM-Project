@@ -76,3 +76,26 @@ def test_ac4_an_expired_session_is_returned_to_the_sign_in_screen(api, organiser
     session.save()
 
     assert api.get(ME).status_code == 403
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("transform", [str.upper, str.title, lambda e: e.replace("acme", "ACME")])
+def test_email_is_matched_without_regard_to_case(api, organiser, password, transform):
+    """Final E2E defect 1: a capitalised address signed in nobody."""
+    typed = transform(organiser.email)
+    assert typed != organiser.email
+
+    response = api.post(LOGIN, {"email": typed, "password": password}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["email"] == organiser.email
+
+
+@pytest.mark.django_db
+def test_case_insensitive_match_still_needs_the_right_password(api, organiser):
+    response = api.post(
+        LOGIN, {"email": organiser.email.upper(), "password": "definitely-wrong"}, format="json"
+    )
+
+    assert response.status_code == 401
+    assert api.get(ME).status_code == 403

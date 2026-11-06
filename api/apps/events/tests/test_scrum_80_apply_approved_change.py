@@ -1027,3 +1027,47 @@ def test_s4_80_07_a_closed_change_leaves_no_live_review_work(
 
     # The equipment review was never recorded, but its change is closed.
     assert api.get("/api/arrangement-reviews/").data == []
+
+
+# Final E2E defect 3 - two changes applied together left the first stuck in review.
+
+
+@pytest.mark.django_db
+def test_a_second_change_cannot_be_applied_while_one_is_in_staff_review(
+    coordinator_api, organiser, coordinator, gala
+):
+    first = move_one_day(gala, organiser, coordinator)
+    second = approved_change(gala, organiser, coordinator, expected_attendance=80)
+    assert coordinator_api.post(apply_url(first)).status_code == 200
+
+    response = coordinator_api.post(apply_url(second))
+
+    assert response.status_code == 409
+    assert f"#{first.pk} is still in staff review" in response.data["detail"]
+    second.refresh_from_db()
+    assert second.status == ChangeRequestStatus.APPROVED
+    assert not second.arrangement_reviews.exists()
+
+
+@pytest.mark.django_db
+def test_the_second_change_can_be_applied_once_the_first_is_settled(
+    coordinator_api, organiser, coordinator, venue_staff, tech, gala
+):
+    from apps.events.impact import keep_original
+
+    first = move_one_day(gala, organiser, coordinator)
+    second = approved_change(gala, organiser, coordinator, expected_attendance=80)
+    coordinator_api.post(apply_url(first))
+    for review in ArrangementReview.objects.filter(change_request=first):
+        staff = venue_staff if review.kind == "VENUE" else tech
+        review_arrangement(
+            review=review,
+            actor=staff,
+            outcome=ArrangementOutcome.NOT_ACCOMMODATED,
+            reason="Not that day.",
+        )
+    keep_original(change=first, actor=coordinator, reason="Agreed with the organiser.")
+
+    response = coordinator_api.post(apply_url(second))
+
+    assert response.status_code == 200, response.data

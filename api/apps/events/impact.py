@@ -749,6 +749,20 @@ def apply_change(*, change, actor):
             raise ApplyRefused(f"A {event.get_status_display()} event cannot take a change.")
         if source_snapshot(event)[1] != locked.source_digest:
             raise StaleChangeRequest
+        # Final E2E defect 3: the event's values only switch once staff finish,
+        # so a second change applied meanwhile was not seen as stale and left
+        # the first stuck in review. One change in staff review at a time.
+        in_review = (
+            EventChangeRequest.objects.filter(event=event, status=ChangeRequestStatus.IN_REVIEW)
+            .exclude(pk=locked.pk)
+            .order_by("pk")
+            .first()
+        )
+        if in_review is not None:
+            raise ApplyRefused(
+                f"Change request #{in_review.pk} is still in staff review. Finish it, or keep "
+                "the original arrangement, before applying another change."
+            )
         proposed = _typed(locked.proposed_values)
         items = _review_items(locked, event, proposed)
         if (

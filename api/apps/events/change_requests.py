@@ -39,6 +39,15 @@ OPEN_TO_CHANGE_REQUESTS = frozenset(
     }
 )
 
+# A request in these states still stands; an identical new one is a duplicate.
+STILL_OPEN = frozenset(
+    {
+        ChangeRequestStatus.PENDING,
+        ChangeRequestStatus.APPROVED,
+        ChangeRequestStatus.IN_REVIEW,
+    }
+)
+
 # Event fields a change request may propose new values for. Registration
 # policy is the organiser's separate control (SCRUM-21/81), not a change here.
 PROPOSABLE_FIELDS = tuple(field for field in EDITABLE_FIELDS if field != "registration_required")
@@ -215,6 +224,28 @@ def request_change(
     )
     if errors:
         raise ChangeRequestError(errors)
+    # Final E2E defect 3: a double submit made two identical open requests.
+    # The event row is locked above, so two simultaneous submits are serialised
+    # and the second one sees the first here. Identical = same description,
+    # proposed values and referenced arrangements.
+    duplicate = EventChangeRequest.objects.filter(
+        event=locked,
+        status__in=STILL_OPEN,
+        description__iexact=description,
+        proposed_values=proposed,
+    ).order_by("pk")
+    for open_request in duplicate:
+        if sorted(open_request.target_bookings or []) == sorted(bookings) and sorted(
+            open_request.target_equipment_requests or []
+        ) == sorted(equipment):
+            raise ChangeRequestError(
+                {
+                    "proposed_values": (
+                        f"Change request #{open_request.pk} already asks for this change "
+                        f"and is {open_request.get_status_display()}."
+                    )
+                }
+            )
 
     values, digest = source_snapshot(locked)
     change = EventChangeRequest.objects.create(
