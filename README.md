@@ -199,7 +199,7 @@ docs/
 
 ## Conventions
 
-- Use the agreed feature group, for example `feature/venue-discovery`; include the Jira keys in commits and PRs.
+- Use the agreed feature group, for example `feature/venue-discovery`; include the Jira keys in commits and PRs. See [the contribution guide](CONTRIBUTING.md) for branch scope, integration and historical feature mappings.
 - Every pull request needs one approving review and a green pipeline.
 - Access checks run on the server, including role and relationship checks in API permissions and domain services.
 - Keep transactional business rules in their domain services.
