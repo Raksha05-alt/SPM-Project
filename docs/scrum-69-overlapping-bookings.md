@@ -1,4 +1,4 @@
-# SCRUM-69 — G08 occupancy/conflict service
+# SCRUM-69 â€” G08 occupancy/conflict service
 
 Branch: `feature/venue-booking-conflicts` (implementation guide section 6).
 The user explicitly requested integration from `feature/venue-suitability` and no commits/pushes. That branch was fetched and merged with `--no-commit --no-ff`; the merge remains unfinished and its imported changes are staged by Git. SCRUM-69 edits remain uncommitted.
@@ -17,8 +17,8 @@ Executable: `api/apps/venues/tests/test_scrum_69_overlapping_bookings.py`.
 
 | Case | Setup/action | Expected result | Current evidence |
 | --- | --- | --- | --- |
-| S3-SCRUM-69-01 / AC1 | Approve 10:00–12:00; inspect 11:59–13:00 | Booked; first booking/event IDs identified | Backend blocked by unavailable PostgreSQL |
-| S3-SCRUM-69-02 / AC2 | Approved 10:00–12:00; query 08:00–10:00 and 12:00–13:00 | Both free | Backend blocked |
+| S3-SCRUM-69-01 / AC1 | Approve 10:00â€“12:00; inspect 11:59â€“13:00 | Booked; first booking/event IDs identified | Backend blocked by unavailable PostgreSQL |
+| S3-SCRUM-69-02 / AC2 | Approved 10:00â€“12:00; query 08:00â€“10:00 and 12:00â€“13:00 | Both free | Backend blocked |
 | S3-SCRUM-69-03 / AC3 | Approve first; attempt overlapping second approval | Validation refusal; second Pending, no decision/history mutation | Service test authored; HTTP action awaits G10 |
 | S3-SCRUM-69-04 / AC4 | Cancel occupying event; inspect/approve second | Obstruction disappears, second can approve | Model exclusion test authored; real cancellation journey awaits INT-03 |
 | S3-SCRUM-69-05 / AC5 | Two Pending requests; approve one; reread other | Initially free, then conflicting; withdrawal clears | Service test authored; request/inbox journeys await G09/G10 |
@@ -26,7 +26,7 @@ Executable: `api/apps/venues/tests/test_scrum_69_overlapping_bookings.py`.
 
 All periods above are 1 March 2027 in Asia/Singapore. Tests use persisted records and independent expected intervals. Correctness reviewer, teammate browser walkthrough and PO acceptance remain pending.
 
-## Verification — 1 November 2026
+## Verification â€” 1 November 2026
 
 - Ruff checks and formatting of changed Python modules: passed.
 - TypeScript `npm run lint`: passed.
@@ -37,7 +37,7 @@ All periods above are 1 March 2027 in Asia/Singapore. Tests use persisted record
 
 Remaining integration: G09 request validation calls shared availability; G10 real staff approval/inbox runs concurrency and refusal cases; INT-03 cancellation verifies release through the real action. This is the guide's G08 slice, not a claim that the full story meets Definition of Done.
 
-## Bulk occupancy performance fix — 1 November 2026
+## Bulk occupancy performance fix â€” 1 November 2026
 
 Search and shortlist reads now prefetch Approved, non-cancelled bookings once for all venues, using the same queryset as direct conflict checks. Availability uses this request-scoped snapshot when present, retaining half-open comparisons and reference ordering. Approval continues querying fresh state under its existing venue lock.
 
