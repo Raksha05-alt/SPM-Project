@@ -20,6 +20,20 @@ class CsrfView(APIView):
         return Response({"detail": "CSRF cookie set"})
 
 
+def stored_email(email: str) -> str:
+    """The account's email as stored, matched without regard to case.
+
+    Email addresses are compared case-insensitively (account updates already
+    refuse a case-only duplicate), so ``Organiser@Acme.example`` signs in to
+    ``organiser@acme.example``. Unknown addresses are returned unchanged and
+    fail authentication with the usual message.
+    """
+    from apps.accounts.models import User
+
+    matches = list(User.objects.filter(email__iexact=email).values_list("email", flat=True)[:2])
+    return matches[0] if len(matches) == 1 else email
+
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -29,7 +43,7 @@ class LoginView(APIView):
         email = serializer.validated_data["email"]
         user = authenticate(
             request,
-            username=email,
+            username=stored_email(email),
             password=serializer.validated_data["password"],
         )
         if user is None:

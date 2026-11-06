@@ -675,3 +675,82 @@ def test_s4_20_06_a_refusal_found_under_the_lock_is_still_audited(
         allowed=False,
         detail="only the event's own organisation may request a change",
     ).exists()
+
+
+# Final E2E defect 3 - a double submit made two identical open requests.
+
+
+@pytest.mark.django_db
+def test_an_identical_open_request_is_refused_as_a_duplicate(organiser_api, confirmed):
+    body = {"proposed_values": {"expected_attendance": 80}}
+    first = post(organiser_api, confirmed, **body)
+
+    second = post(organiser_api, confirmed, **body)
+
+    assert first.status_code == 201
+    assert second.status_code == 400
+    assert f"#{first.data['change_request']['id']} already asks" in str(second.data)
+    assert EventChangeRequest.objects.filter(event=confirmed).count() == 1
+
+
+@pytest.mark.django_db
+def test_the_duplicate_check_ignores_case_and_surrounding_spaces(organiser_api, confirmed):
+    post(organiser_api, confirmed, description="Add a projector")
+
+    response = post(organiser_api, confirmed, description="  add a PROJECTOR ")
+
+    assert response.status_code == 400
+    assert EventChangeRequest.objects.filter(event=confirmed).count() == 1
+
+
+@pytest.mark.django_db
+def test_a_different_value_is_not_a_duplicate(organiser_api, confirmed):
+    post(organiser_api, confirmed, proposed_values={"expected_attendance": 80})
+
+    response = post(organiser_api, confirmed, proposed_values={"expected_attendance": 90})
+
+    assert response.status_code == 201
+    assert EventChangeRequest.objects.filter(event=confirmed).count() == 2
+
+
+@pytest.mark.django_db
+def test_the_same_request_can_be_sent_again_once_the_first_is_decided(
+    organiser_api, coordinator, confirmed
+):
+    post(organiser_api, confirmed)
+    # Low-level fixture: SCRUM-78 records decisions through its own action.
+    EventChangeRequest.objects.filter(event=confirmed).update(
+        status=ChangeRequestStatus.REJECTED,
+        decided_by=coordinator,
+        decided_at=timezone.now(),
+        decision_reason="Not this time.",
+    )
+
+    assert post(organiser_api, confirmed).status_code == 201
+
+
+@pytest.mark.django_db(transaction=True)
+def test_two_simultaneous_identical_submits_create_one_request(organiser, confirmed):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from django.db import close_old_connections
+    from rest_framework.test import APIClient
+
+    gate = Barrier(2)
+
+    def send(_):
+        close_old_connections()
+        try:
+            client = APIClient()
+            client.force_authenticate(organiser)
+            gate.wait(timeout=10)
+            return post(client, confirmed).status_code
+        finally:
+            close_old_connections()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = sorted(pool.map(send, range(2)))
+
+    assert statuses == [201, 400]
+    assert EventChangeRequest.objects.filter(event=confirmed).count() == 1

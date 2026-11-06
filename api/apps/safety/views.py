@@ -53,6 +53,9 @@ def refused(exc: SafetyRefused) -> Response:
 
 
 class SafetyCheckViewSet(ReadOnlyModelViewSet):
+    # Final E2E defect 2: get_object looks the id up itself, so a non-numeric
+    # id must not reach it (it raised ValueError, a 500). Route digits only.
+    lookup_value_regex = r"[0-9]+"
     permission_classes = [HasAnyRole, IsAuthenticated]
     allowed_roles = READERS
 
