@@ -1,20 +1,37 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { listEvents } from "../api/events";
+import { listOrganiserEvents } from "../api/events";
 import { StatusBadge } from "../components/StatusBadge";
+import type { EventRequest } from "../types";
 
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("en-SG");
+}
+
+/**
+ * SCRUM-45 - every request of the organiser's organisation, with its coordinator.
+ * SCRUM-48 - saved drafts together, each with when it was last saved.
+ * The API scopes both lists to the organisation (``?group=drafts|submitted``).
+ */
 export function OrganiserDashboard() {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["events"],
-    queryFn: listEvents,
+  const drafts = useQuery({
+    queryKey: ["events", "drafts"],
+    queryFn: () => listOrganiserEvents("drafts"),
+  });
+  const submitted = useQuery({
+    queryKey: ["events", "submitted"],
+    queryFn: () => listOrganiserEvents("submitted"),
   });
 
-  if (isLoading) return <p className="text-slate-500">Loading your event requests…</p>;
-  if (isError) return <p role="alert">We could not load your event requests.</p>;
+  if (drafts.isLoading || submitted.isLoading) {
+    return <p className="text-slate-500">Loading your event requests…</p>;
+  }
+  if (drafts.isError || submitted.isError) {
+    return <p role="alert">We could not load your event requests.</p>;
+  }
 
-  const events = data ?? [];
-  const drafts = events.filter((e) => e.status === "DRAFT");
-  const submitted = events.filter((e) => e.status !== "DRAFT");
+  const draftRows = drafts.data ?? [];
+  const submittedRows = submitted.data ?? [];
 
   return (
     <div>
@@ -28,14 +45,30 @@ export function OrganiserDashboard() {
         </Link>
       </div>
 
-      {events.length === 0 && (
+      {draftRows.length === 0 && submittedRows.length === 0 ? (
         <p className="rounded-md border border-dashed border-slate-300 p-8 text-center text-slate-500">
           You have no event requests yet. Start one and save it as a draft whenever you like.
         </p>
+      ) : (
+        <>
+          <Section
+            title="Drafts"
+            rows={draftRows}
+            empty="You have no saved drafts."
+            detail={(row) => `Last saved ${formatDateTime(row.updated_at)}`}
+          />
+          <Section
+            title="Sent to ConnectSphere"
+            rows={submittedRows}
+            empty="Nothing has been sent to ConnectSphere yet."
+            detail={(row) =>
+              row.coordinator_name
+                ? `Coordinator: ${row.coordinator_name}`
+                : "Coordinator: not yet assigned"
+            }
+          />
+        </>
       )}
-
-      {drafts.length > 0 && <Section title="Drafts" rows={drafts} />}
-      {submitted.length > 0 && <Section title="Sent to ConnectSphere" rows={submitted} />}
     </div>
   );
 }
@@ -43,46 +76,47 @@ export function OrganiserDashboard() {
 function Section({
   title,
   rows,
+  empty,
+  detail,
 }: {
   title: string;
-  rows: Array<{
-    id: number;
-    name: string;
-    status: "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "APPROVED" | "PLANNING" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | "REJECTED";
-    status_label: string;
-    status_description: string;
-    preferred_start: string | null;
-    expected_attendance: number | null;
-  }>;
+  rows: EventRequest[];
+  empty: string;
+  detail: (row: EventRequest) => string;
 }) {
   return (
-    <section className="mb-8">
+    <section aria-label={title} className="mb-8">
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
-      <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-        {rows.map((row) => (
-          <li key={row.id} className="flex items-center justify-between px-4 py-3">
-            <div>
-              <Link
-                to={`/organiser/requests/${row.id}`}
-                className="font-medium text-navy-700 hover:underline"
-              >
-                {row.name || "(untitled draft)"}
-              </Link>
-              <p className="text-xs text-slate-500">
-                {row.preferred_start
-                  ? new Date(row.preferred_start).toLocaleString("en-SG")
-                  : "No date yet"}
-                {row.expected_attendance ? ` · ${row.expected_attendance} attending` : ""}
-              </p>
-            </div>
-            <StatusBadge
-              status={row.status}
-              label={row.status_label}
-              title={row.status_description}
-            />
-          </li>
-        ))}
-      </ul>
+      {rows.length === 0 ? (
+        <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+          {empty}
+        </p>
+      ) : (
+        <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+          {rows.map((row) => (
+            <li key={row.id} className="flex items-center justify-between px-4 py-3">
+              <div>
+                <Link
+                  to={`/organiser/requests/${row.id}`}
+                  className="font-medium text-navy-700 hover:underline"
+                >
+                  {row.name || "(untitled draft)"}
+                </Link>
+                <p className="text-xs text-slate-500">
+                  {row.preferred_start ? formatDateTime(row.preferred_start) : "No date yet"}
+                  {row.expected_attendance ? ` · ${row.expected_attendance} attending` : ""}
+                </p>
+                <p className="text-xs text-slate-500">{detail(row)}</p>
+              </div>
+              <StatusBadge
+                status={row.status}
+                label={row.status_label}
+                title={row.status_description}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

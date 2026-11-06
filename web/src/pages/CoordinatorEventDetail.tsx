@@ -1,28 +1,39 @@
+import { formatSgt } from "../dateTime";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { approveEvent, getEvent, rejectEvent, requestClarification } from "../api/events";
+import {
+  approveEvent,
+  getEvent,
+  rejectEvent,
+  requestClarification,
+  resumeReview,
+} from "../api/events";
 import { useAuth } from "../auth/AuthContext";
 import { ApprovalNote } from "../components/ApprovalNote";
+import { ChangeHistory } from "../components/ChangeHistory";
+import { ChangeRequests } from "../components/changes/ChangeRequests";
 import { CLARIFIABLE_FIELDS, ClarificationHistory } from "../components/Clarifications";
+import { ClarificationNoteForm } from "../components/ClarificationNoteForm";
+import { CoordinatorEventEditor } from "../components/CoordinatorEventEditor";
 import { inputClass } from "../components/Field";
+import { layoutName, useLayouts } from "../components/layouts/useLayouts";
+import { EquipmentRequests } from "../components/equipment/EquipmentRequests";
+import { EventCancellation } from "../components/EventCancellation";
 import { RejectionNotice } from "../components/RejectionNotice";
+import { SafetyCheckPanel } from "../components/safety/SafetyCheckPanel";
+import { ReadinessPanel } from "../components/confirmation/ReadinessPanel";
 import { StatusBadge } from "../components/StatusBadge";
+import { VenueSuitability } from "../components/venues/VenueSuitability";
+import { VenuePlanner } from "../components/venues/VenuePlanner";
+import { VenueReviews } from "../components/venues/VenueReviews";
 import type { EventRequest, EventStatus } from "../types";
-
-const LAYOUT_LABELS: Record<string, string> = {
-  CLASSROOM: "Classroom",
-  THEATRE: "Theatre",
-  BOARDROOM: "Boardroom",
-  BANQUET: "Banquet",
-  EXHIBITION: "Exhibition",
-};
 
 /** Statuses a coordinator can approve from; the API enforces the same rule. */
 const REVIEWABLE: EventStatus[] = ["SUBMITTED", "UNDER_REVIEW"];
 
 function formatDateTime(value: string | null) {
-  return value ? new Date(value).toLocaleString("en-SG") : "—";
+  return value ? formatSgt(value) : "—";
 }
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
@@ -39,6 +50,7 @@ export function CoordinatorEventDetail() {
   const eventId = Number(id);
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { layouts } = useLayouts();
 
   const {
     data: event,
@@ -46,6 +58,7 @@ export function CoordinatorEventDetail() {
     isError,
   } = useQuery({
     queryKey: ["event", eventId],
+    refetchOnWindowFocus: true,
     queryFn: () => getEvent(eventId),
   });
 
@@ -55,13 +68,27 @@ export function CoordinatorEventDetail() {
     void queryClient.invalidateQueries({ queryKey: ["queue"] });
   }
 
-  const approve = useMutation({ mutationFn: approveEvent, onSuccess: onDecision });
+  const refreshOwnership = () => queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+  const approve = useMutation({ mutationFn: approveEvent, onSuccess: onDecision, onError: refreshOwnership });
+
+  // SCRUM-61 - edit details; SCRUM-92 - resume review after a clarification.
+  const [showEdit, setShowEdit] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const resume = useMutation({
+    mutationFn: resumeReview,
+    onError: refreshOwnership,
+    onSuccess: (updated) => {
+      onDecision(updated);
+      setSaved("Review resumed. The request is back in the review queue.");
+    },
+  });
 
   const [showReject, setShowReject] = useState(false);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
   const reject = useMutation({
     mutationFn: () => rejectEvent(eventId, reason.trim()),
+    onError: refreshOwnership,
     onSuccess: (updated) => {
       onDecision(updated);
       setShowReject(false);
@@ -85,6 +112,7 @@ export function CoordinatorEventDetail() {
   const [messageError, setMessageError] = useState<string | null>(null);
   const clarify = useMutation({
     mutationFn: () => requestClarification(eventId, message.trim(), fields),
+    onError: refreshOwnership,
     onSuccess: (updated) => {
       onDecision(updated);
       setShowClarify(false);
@@ -116,6 +144,10 @@ export function CoordinatorEventDetail() {
   const canApprove = isAssigned && REVIEWABLE.includes(event.status);
   const canClarify = isAssigned && event.status === "SUBMITTED";
   const canReject = canApprove;
+  // The server decides who may edit now (assigned coordinator, Submitted to Planning).
+  const canEdit = event.is_editable;
+  const canResume = isAssigned && event.status === "UNDER_REVIEW";
+  const openClarification = (event.clarifications ?? []).find((c) => c.resolved_at === null);
   const decisionError = approve.error ?? clarify.error ?? reject.error;
 
   return (
@@ -126,6 +158,9 @@ export function CoordinatorEventDetail() {
         </Link>
         <Link to="/coordinator" className="text-navy-700 underline">
           Incoming requests
+        </Link>
+        <Link to={`/coordinator/events/${eventId}/venues`} className="text-navy-700 underline">
+          Venue search and shortlist
         </Link>
       </div>
 
@@ -165,7 +200,7 @@ export function CoordinatorEventDetail() {
           <Detail label="Preferred start">{formatDateTime(event.preferred_start)}</Detail>
           <Detail label="Preferred end">{formatDateTime(event.preferred_end)}</Detail>
           <Detail label="Required room layout">
-            {LAYOUT_LABELS[event.required_layout] ?? "No preference"}
+            {event.required_layout ? layoutName(layouts, event.required_layout) : "No preference"}
           </Detail>
           <Detail label="Registration required">
             {event.registration_required ? "Yes" : "No"}
@@ -329,7 +364,91 @@ export function CoordinatorEventDetail() {
         </div>
       )}
 
+      {saved && (
+        <p role="status" className="mt-6 rounded-md bg-emerald-50 p-3 text-sm text-emerald-800">
+          {saved}
+        </p>
+      )}
+      {resume.error && (
+        <p role="alert" className="mt-6 rounded-md bg-rose-50 p-3 text-sm text-rose-800">
+          {resume.error.message}
+        </p>
+      )}
+
+      {(canEdit || canResume) && !showEdit && (
+        <div className="mt-6 flex justify-end gap-3">
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setSaved(null);
+                setShowEdit(true);
+              }}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              Edit details
+            </button>
+          )}
+          {canResume && (
+            <button
+              type="button"
+              onClick={() => resume.mutate(event.id)}
+              disabled={resume.isPending}
+              className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-600 disabled:opacity-50"
+            >
+              Resume review
+            </button>
+          )}
+        </div>
+      )}
+
+      {showEdit && canEdit && (
+        <CoordinatorEventEditor
+          event={event}
+          onCancel={() => setShowEdit(false)}
+          onSaved={(updated) => {
+            onDecision(updated);
+            setShowEdit(false);
+            setSaved("Changes saved.");
+          }}
+        />
+      )}
+
+      {canResume && openClarification && (
+        <ClarificationNoteForm eventId={event.id} onSaved={onDecision} />
+      )}
+
+      {event.updated_by_name && (
+        <p className="mt-6 text-xs text-slate-500">
+          Last edited by {event.updated_by_name} ·{" "}
+          {formatSgt(event.updated_at)}
+        </p>
+      )}
+
+      {/* SCRUM-71 - check venues against this event's requirements. */}
+      {isAssigned && <VenueSuitability eventId={event.id} />}
+
+      {/* SCRUM-11 - request a venue and follow each request's status. */}
+      {/* SCRUM-66 AC3 - why a booked venue was flagged after the event changed. */}
+      {isAssigned && <VenueReviews eventId={event.id} />}
+      {isAssigned && <VenuePlanner event={event} />}
+
+      {/* SCRUM-74 - record the equipment the event requires. */}
+      {isAssigned && <EquipmentRequests event={event} />}
+
+      {/* SCRUM-20 - the organiser's change requests for this event. */}
+      {isAssigned && <ChangeRequests eventId={event.id} eventStatus={event.status} canDecide />}
+      {isAssigned && <EventCancellation event={event} />}
+
+      {isAssigned && <SafetyCheckPanel eventId={event.id} status={event.status} />}
+
+      {/* SCRUM-58 - confirm the event once every essential arrangement is approved. */}
+      {isAssigned && <ReadinessPanel eventId={event.id} status={event.status} />}
+
       <ClarificationHistory clarifications={event.clarifications ?? []} />
+
+      {/* SCRUM-60 - internal before/after history of the event's details. */}
+      {isAssigned && <ChangeHistory eventId={event.id} />}
     </div>
   );
 }

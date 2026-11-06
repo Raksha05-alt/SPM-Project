@@ -2,6 +2,9 @@
 
 import pytest
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+
+from apps.events.models import EventRequest
 
 EVENTS = "/api/events/"
 
@@ -26,24 +29,19 @@ def _payload(**overrides):
 
 @pytest.mark.django_db
 def test_ac1_an_organiser_can_record_every_field_the_customer_asked_for(signed_in_organiser):
-    response = signed_in_organiser.post(EVENTS, _payload(), format="json")
+    payload = _payload()
+    response = signed_in_organiser.post(EVENTS, payload, format="json")
 
     assert response.status_code == 201
-    for field in (
-        "name",
-        "purpose",
-        "description",
-        "preferred_start",
-        "preferred_end",
-        "expected_attendance",
-        "required_layout",
-        "accessibility_needs",
-        "equipment_notes",
-        "registration_required",
-    ):
-        assert field in response.data
-    assert response.data["expected_attendance"] == 120
-    assert response.data["registration_required"] is True
+    stored = EventRequest.objects.get(pk=response.data["id"])
+    for field, expected in payload.items():
+        if field in ("preferred_start", "preferred_end"):
+            expected_instant = parse_datetime(expected)
+            assert parse_datetime(response.data[field]) == expected_instant
+            assert getattr(stored, field) == expected_instant
+        else:
+            assert response.data[field] == expected
+            assert getattr(stored, field) == expected
     assert response.data["organisation_name"] == "Acme Pte Ltd"
 
 

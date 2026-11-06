@@ -5,13 +5,14 @@ from django.core.management import call_command
 
 from apps.accounts.models import Role, User
 from apps.events.models import EventRequest
+from apps.venues.models import Venue
 
 
 @pytest.mark.django_db
 def test_seeding_creates_one_user_per_role_and_some_events():
     call_command("seed_demo_data")
 
-    assert User.objects.count() == 6
+    assert User.objects.count() == 12
     assert set(User.objects.values_list("role", flat=True)) == set(Role.values)
     assert EventRequest.objects.count() == 3
 
@@ -21,5 +22,17 @@ def test_seeding_twice_does_not_duplicate_anything():
     call_command("seed_demo_data")
     call_command("seed_demo_data")
 
-    assert User.objects.count() == 6
+    assert User.objects.count() == 12
     assert EventRequest.objects.count() == 3
+
+
+@pytest.mark.django_db
+def test_seeding_gives_venue_staff_a_small_catalogue():
+    call_command("seed_demo_data")
+    call_command("seed_demo_data")
+
+    assert Venue.objects.count() == 4
+    assert all(v.capacity > 0 for v in Venue.objects.all())
+    # SCRUM-9 AC3 demo: one venue is deliberately incomplete.
+    annex = Venue.objects.get(name="Studio Annex")
+    assert annex.opens_at is None and not annex.facilities

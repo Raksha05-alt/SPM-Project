@@ -6,11 +6,24 @@ import { Layout } from "./components/Layout";
 import { CoordinatorQueue } from "./pages/CoordinatorQueue";
 import { CoordinatorMyEvents } from "./pages/CoordinatorMyEvents";
 import { CoordinatorEventDetail } from "./pages/CoordinatorEventDetail";
+import { AccountPage } from "./pages/AccountPage";
 import { AttendeeEvents } from "./pages/AttendeeEvents";
 import { EventRequestForm } from "./pages/EventRequestForm";
 import { LoginPage } from "./pages/LoginPage";
 import { OrganiserDashboard } from "./pages/OrganiserDashboard";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { EquipmentAvailabilityPage } from "./pages/EquipmentAvailability";
+import { EquipmentInbox } from "./pages/EquipmentInbox";
+import { EquipmentPlanPage } from "./pages/EquipmentPlan";
+import { RoomLayouts } from "./pages/RoomLayouts";
+import { VenueBookingInbox } from "./pages/VenueBookingInbox";
+import { VenueCatalogue } from "./pages/VenueCatalogue";
+import { VenueDetail } from "./pages/VenueDetail";
+import { VenueAvailability } from "./pages/VenueAvailability";
+import { VenueDiscoveryPage } from "./pages/VenueDiscovery";
+import { LeadDashboard } from "./pages/lead/LeadDashboard";
+import { LeadEventDetail } from "./pages/lead/LeadEventDetail";
+import { SafetyCheckReview } from "./pages/safety/SafetyCheckReview";
+import { SafetyQueue } from "./pages/safety/SafetyQueue";
 
 function Home() {
   const { user, loading } = useAuth();
@@ -25,6 +38,10 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<Home />} />
+          {/* SCRUM-2 - every signed-in user maintains their own contact details. */}
+          <Route path="/account" element={<RequireRole><AccountPage /></RequireRole>} />
+          <Route path="/lead" element={<RequireRole roles={["COORDINATOR_LEAD"]}><LeadDashboard /></RequireRole>} />
+          <Route path="/lead/events/:id" element={<RequireRole roles={["COORDINATOR_LEAD"]}><LeadEventDetail /></RequireRole>} />
 
           <Route
             path="/organiser"
@@ -75,10 +92,54 @@ export default function App() {
             }
           />
           <Route
+            path="/coordinator/venues"
+            element={
+              <RequireRole roles={["COORDINATOR"]}>
+                <VenueDiscoveryPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/coordinator/events/:id/venues"
+            element={
+              <RequireRole roles={["COORDINATOR"]}>
+                <VenueDiscoveryPage />
+              </RequireRole>
+            }
+          />
+          <Route
             path="/venues"
             element={
               <RequireRole roles={["VENUE_STAFF"]}>
-                <PlaceholderPage title="Venues" sprint="sprint 2" />
+                <VenueCatalogue />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/venues/requests"
+            element={
+              <RequireRole roles={["VENUE_STAFF"]}>
+                <VenueBookingInbox />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/venues/layouts"
+            element={
+              <RequireRole roles={["VENUE_STAFF"]}>
+                <RoomLayouts />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/venues/availability"
+            element={<RequireRole roles={["COORDINATOR", "VENUE_STAFF"]}><VenueAvailability /></RequireRole>}
+          />
+          <Route
+            path="/venues/:id"
+            element={
+              <RequireRole roles={["VENUE_STAFF"]}>
+                <VenueDetail />
               </RequireRole>
             }
           />
@@ -86,7 +147,38 @@ export default function App() {
             path="/equipment"
             element={
               <RequireRole roles={["TECH_SUPPORT"]}>
-                <PlaceholderPage title="Equipment" sprint="sprint 4" />
+                <EquipmentInbox />
+              </RequireRole>
+            }
+          />
+          {/* SCRUM-12 - Technical Support or the assigned coordinator. */}
+          {["/equipment/plans", "/equipment/plans/:id"].map((path) => (
+            <Route key={path} path={path} element={<RequireRole roles={["TECH_SUPPORT", "COORDINATOR"]}><EquipmentPlanPage /></RequireRole>} />
+          ))}
+          {["/equipment/availability", "/equipment/availability/:id"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <RequireRole roles={["TECH_SUPPORT", "COORDINATOR"]}>
+                  <EquipmentAvailabilityPage />
+                </RequireRole>
+              }
+            />
+          ))}
+          <Route
+            path="/safety"
+            element={
+              <RequireRole roles={["SAFETY_OFFICER"]}>
+                <SafetyQueue />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/safety/checks/:id"
+            element={
+              <RequireRole roles={["SAFETY_OFFICER"]}>
+                <SafetyCheckReview />
               </RequireRole>
             }
           />

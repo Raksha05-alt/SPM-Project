@@ -1,5 +1,5 @@
 import { request } from "./client";
-import type { AssignedEventRow, AttendeeEvent, EventRequest, QueueRow } from "../types";
+import type { AssignedEventRow, AttendeeEvent, EventRequest, EventStatus, QueueRow } from "../types";
 
 export type EventDraft = Partial<
   Pick<
@@ -19,6 +19,10 @@ export type EventDraft = Partial<
 
 export const listEvents = () => request<EventRequest[]>("/api/events/");
 
+/** SCRUM-45/48 - the organiser's drafts or the requests sent to ConnectSphere. */
+export const listOrganiserEvents = (group: "drafts" | "submitted") =>
+  request<EventRequest[]>(`/api/events/?group=${group}`);
+
 export const listAttendeeEvents = () => request<AttendeeEvent[]>("/api/events/");
 
 export const getEvent = (id: number) => request<EventRequest>(`/api/events/${id}/`);
@@ -29,6 +33,21 @@ export const createDraft = (draft: EventDraft) =>
 export const updateDraft = (id: number, draft: EventDraft) =>
   request<EventRequest>(`/api/events/${id}/`, { method: "PATCH", body: draft });
 
+/** SCRUM-61 - the assigned coordinator edits a request up to Planning. */
+export const updateEvent = (id: number, changes: EventDraft) =>
+  request<EventRequest>(`/api/events/${id}/`, { method: "PATCH", body: changes });
+
+/** SCRUM-92 AC4 - the assigned coordinator returns an answered request to review. */
+export const resumeReview = (id: number) =>
+  request<EventRequest>(`/api/events/${id}/resume-review/`, { method: "POST" });
+
+/** SCRUM-92 AC1 - record a note from an offline clarification conversation. */
+export const addClarificationNote = (id: number, body: string) =>
+  request<EventRequest>(`/api/events/${id}/clarification-notes/`, {
+    method: "POST",
+    body: { body },
+  });
+
 export const deleteDraft = (id: number) =>
   request<void>(`/api/events/${id}/`, { method: "DELETE" });
 
@@ -37,7 +56,11 @@ export const submitEvent = (id: number) =>
 
 export const fetchQueue = () => request<QueueRow[]>("/api/events/queue/");
 
-export const fetchMyEvents = () => request<AssignedEventRow[]>("/api/events/mine/");
+export const fetchMyEvents = (statuses: EventStatus[] = []) => {
+  const params = new URLSearchParams();
+  statuses.forEach(status => params.append("status", status));
+  return request<AssignedEventRow[]>(`/api/events/mine/${params.size ? `?${params}` : ""}`);
+};
 
 export const approveEvent = (id: number) =>
   request<EventRequest>(`/api/events/${id}/approve/`, { method: "POST" });

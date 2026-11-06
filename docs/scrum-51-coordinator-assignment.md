@@ -1,5 +1,9 @@
 # SCRUM-51: automatic coordinator assignment
 
+Historical Sprint 2 implementation record. SCRUM-89 replaces automatic allocation
+with manual Lead assignment; see [current implementation](lead-assignment.md).
+Keep the original acceptance evidence below as the record of that earlier increment.
+
 ## Scope and branch
 
 Story: SCRUM-51, assigned to Nethren Balamurugan in Sprint 2; 5 points, Medium.

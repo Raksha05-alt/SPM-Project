@@ -13,7 +13,7 @@ vi.mock("react-router-dom", async () => {
 
 function renderLogin(signIn: ReturnType<typeof vi.fn>) {
   return render(
-    <AuthContext.Provider value={{ user: null, loading: false, signIn, signOut: vi.fn() }}>
+    <AuthContext.Provider value={{ user: null, loading: false, signIn, signOut: vi.fn(), updateUser: vi.fn() }}>
       <MemoryRouter>
         <LoginPage />
       </MemoryRouter>

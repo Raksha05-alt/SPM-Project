@@ -50,3 +50,15 @@ describe("CoordinatorQueue", () => {
     expect(screen.getByText("Unassigned — staff action needed")).toBeInTheDocument();
   });
 });
+
+it("SCRUM-47 AC5 distinguishes an empty queue from a failed load", async () => {
+  vi.mocked(fetchQueue).mockResolvedValue([]);
+  const empty = renderPage();
+  expect(await screen.findByText(/Nothing is waiting/)).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  empty.unmount();
+  vi.mocked(fetchQueue).mockRejectedValue(new Error("offline"));
+  renderPage();
+  expect(await screen.findByRole("alert")).toHaveTextContent("We could not load the queue.");
+  expect(screen.queryByText(/Nothing is waiting/)).not.toBeInTheDocument();
+});

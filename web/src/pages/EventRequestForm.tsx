@@ -2,13 +2,18 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
+import { ChangeRequests } from "../components/changes/ChangeRequests";
+import { ConfirmedArrangementsPanel } from "../components/confirmation/ConfirmedArrangementsPanel";
+import { RegistrationPolicyForm } from "../components/registrations/RegistrationPolicyForm";
 import { createDraft, getEvent, submitEvent, updateDraft } from "../api/events";
 import type { EventDraft } from "../api/events";
 import { Field, inputClass } from "../components/Field";
+import { selectableLayouts, useLayouts } from "../components/layouts/useLayouts";
 import { StatusBadge } from "../components/StatusBadge";
 import { CoordinatorAssignment } from "../components/CoordinatorAssignment";
 import { RejectionNotice } from "../components/RejectionNotice";
 import { ClarificationHistory, OpenClarification } from "../components/Clarifications";
+import { ClarificationNoteForm } from "../components/ClarificationNoteForm";
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Event name",
@@ -31,6 +36,13 @@ const EMPTY: EventDraft = {
   registration_required: false,
 };
 
+/** Preserve the API instant when displaying it in a datetime-local input. */
+function toLocalInput(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
 export function EventRequestForm() {
   const { id } = useParams();
   const eventId = id ? Number(id) : null;
@@ -38,11 +50,12 @@ export function EventRequestForm() {
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState<EventDraft>(EMPTY);
+  const { layouts } = useLayouts();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
 
-  const { data: existing } = useQuery({
+  const { data: existing, isPending, isError, error } = useQuery({
     queryKey: ["events", eventId],
     queryFn: () => getEvent(eventId as number),
     enabled: eventId !== null,
@@ -56,7 +69,8 @@ export function EventRequestForm() {
   }, [existing]);
 
   const readOnly = existing ? !existing.is_editable : false;
-  // SCRUM-49 AC2 - a request awaiting clarification is open to edit and resubmit.
+  // SCRUM-92 - while a clarification is open the client records notes; the
+  // assigned coordinator makes the agreed edits and resumes review.
   const awaitingClarification = existing?.status === "UNDER_REVIEW";
   const openClarification = existing?.clarifications?.find((c) => c.resolved_at === null);
 
@@ -74,7 +88,7 @@ export function EventRequestForm() {
       }
       setFieldErrors(next);
       setMissing(error.missingFields);
-      setBanner(error.missingFields.length ? error.message : null);
+      setBanner(error.missingFields.length || typeof body.detail === "string" ? error.message : null);
       return;
     }
     setBanner("We could not save this request. Please try again.");
@@ -88,7 +102,7 @@ export function EventRequestForm() {
     },
     onSuccess: (saved) => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
-      setBanner(awaitingClarification ? "Changes saved." : "Draft saved.");
+      setBanner("Draft saved.");
       if (eventId === null) navigate(`/organiser/requests/${saved.id}`, { replace: true });
     },
     onError: handleApiError,
@@ -104,15 +118,19 @@ export function EventRequestForm() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["events"] });
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      setBanner(
-        awaitingClarification
-          ? "Your updated request has been resubmitted to ConnectSphere."
-          : "Your request has been sent to ConnectSphere.",
-      );
+      setBanner("Your request has been sent to ConnectSphere.");
       navigate("/organiser", { replace: true });
     },
     onError: handleApiError,
   });
+
+  if (eventId !== null && isPending) return <p role="status">Loading event request…</p>;
+  if (eventId !== null && isError) {
+    const forbidden = error instanceof ApiError && error.status === 403;
+    return <p role="alert">{forbidden
+      ? "You do not have access to this event request."
+      : "We could not load this event request. Please try again."}</p>;
+  }
 
   return (
     <div>
@@ -134,14 +152,38 @@ export function EventRequestForm() {
       )}
       {existing && <RejectionNotice event={existing} />}
       {existing && existing.status !== "DRAFT" && <CoordinatorAssignment event={existing} />}
-      {awaitingClarification && openClarification && (
-        <OpenClarification clarification={openClarification} />
+      {awaitingClarification && openClarification && existing && (
+        <>
+          <OpenClarification clarification={openClarification} />
+          <p className="mb-2 text-sm text-slate-600">
+            Your coordinator will make the agreed changes. Record anything you discussed below.
+          </p>
+          <ClarificationNoteForm
+            eventId={existing.id}
+            onSaved={() => void queryClient.invalidateQueries({ queryKey: ["events", eventId] })}
+          />
+        </>
       )}
 
       {banner && (
         <p role="status" className="mb-4 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900">
           {banner}
         </p>
+      )}
+
+      {existing?.venue_disruptions?.length ? <section aria-label="Disrupted venue bookings" className="mb-4 rounded border border-amber-300 p-4">
+        <h2 className="font-semibold">Original venue bookings affected by disruption</h2>
+        <p>These original bookings are retained for reference. Replacement arrangements require staff review.</p>
+        {existing.venue_disruptions.map(b => <p key={b.booking}>Booking #{b.booking}: {b.session}, {b.venue} · {new Date(b.starts_at).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })} to {new Date(b.ends_at).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })} (Disrupted)</p>)}
+      </section> : null}
+      {/* SCRUM-58 AC5 - the confirmed plan the organiser can rely on. */}
+      {existing && ["CONFIRMED", "COMPLETED"].includes(existing.status) && (
+        <ConfirmedArrangementsPanel eventId={existing.id} />
+      )}
+
+      {/* SCRUM-81 - the organiser controls registration once the event is approved. */}
+      {existing && ["APPROVED", "PLANNING", "CONFIRMED"].includes(existing.status) && (
+        <RegistrationPolicyForm eventId={existing.id} />
       )}
 
       {/* US-02.2 AC2 - every field blocking submission is named. */}
@@ -189,7 +231,7 @@ export function EventRequestForm() {
               id="preferred_start"
               type="datetime-local"
               className={inputClass}
-              value={(form.preferred_start ?? "").slice(0, 16)}
+              value={toLocalInput(form.preferred_start)}
               onChange={(e) =>
                 set("preferred_start", e.target.value ? new Date(e.target.value).toISOString() : null)
               }
@@ -200,7 +242,7 @@ export function EventRequestForm() {
               id="preferred_end"
               type="datetime-local"
               className={inputClass}
-              value={(form.preferred_end ?? "").slice(0, 16)}
+              value={toLocalInput(form.preferred_end)}
               onChange={(e) =>
                 set("preferred_end", e.target.value ? new Date(e.target.value).toISOString() : null)
               }
@@ -233,11 +275,12 @@ export function EventRequestForm() {
               onChange={(e) => set("required_layout", e.target.value)}
             >
               <option value="">No preference</option>
-              <option value="CLASSROOM">Classroom</option>
-              <option value="THEATRE">Theatre</option>
-              <option value="BOARDROOM">Boardroom</option>
-              <option value="BANQUET">Banquet</option>
-              <option value="EXHIBITION">Exhibition</option>
+              {/* SCRUM-91 - catalogue layouts; a retired one stays if already chosen. */}
+              {selectableLayouts(layouts, [existing?.required_layout ?? ""]).map((layout) => (
+                <option key={layout.code} value={layout.code}>
+                  {layout.is_active ? layout.name : `${layout.name} (retired)`}
+                </option>
+              ))}
             </select>
           </Field>
         </div>
@@ -280,7 +323,7 @@ export function EventRequestForm() {
             disabled={save.isPending}
             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
           >
-            {awaitingClarification ? "Save changes" : "Save draft"}
+            Save draft
           </button>
           <button
             type="button"
@@ -288,9 +331,14 @@ export function EventRequestForm() {
             disabled={submit.isPending}
             className="rounded-md bg-navy-700 px-4 py-2 text-sm font-medium text-white hover:bg-navy-600"
           >
-            {awaitingClarification ? "Resubmit to ConnectSphere" : "Send to ConnectSphere"}
+            Send to ConnectSphere
           </button>
         </div>
+      )}
+
+      {/* SCRUM-20 - after submission, changes are requested rather than edited. */}
+      {existing && existing.status !== "DRAFT" && (
+        <ChangeRequests eventId={existing.id} eventStatus={existing.status} canRequest />
       )}
 
       {existing && <ClarificationHistory clarifications={existing.clarifications ?? []} />}

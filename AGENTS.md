@@ -1,8 +1,10 @@
 # Repository contribution instructions
 
-- Read `CONTRIBUTING.md` before branch, code, documentation or test changes.
-- Use short-lived feature-group branches, not permanent personal branches for new work. More than one author may contribute; keep the new change coherent and preserve inherited history.
-- For the current reverse engineering task, the approved base is `e50c746e3f8892128e25d0f2baadc27f8e0a0521`. Do not import `Trial_Code`, `final_changes`, `c3e46ea`, or other later application work unless the user changes that scope.
-- A branch contains the full base application. Scope the new diff and evidence by feature group; do not copy, remove or recommit existing code just to make a branch appear feature-exclusive.
-- Include affected SCRUM keys in commits and pull requests. Jira ownership is not proof of sole Git authorship. Keep real dates, authors, original commits and actual execution results.
-- Preserve local changes and existing refs. Obtain an explicit instruction before branch deletion, force pushes, history rewriting, or a merge into main.
+- Read CONTRIBUTING.md before branch, code, documentation or test changes.
+- Start new work from the latest verified origin/main on a short-lived feature-group or story branch. A branch should normally last about 1–3 days; split independent changes rather than accumulating a whole sprint.
+- The 15 October 2026 reverse-engineering baseline e50c746e3f8892128e25d0f2baadc27f8e0a0521 and initial branch map are historical references, not the current release baseline. Do not restore them over later approved work.
+- Continue excluding Trial_Code, final_changes and the unmerged c3e46ea venue helper unless the user explicitly changes scope. Preserve those refs and original history.
+- Scope changes by their diff; do not copy or recommit existing code to make a branch appear feature-exclusive. Multiple authors may contribute.
+- Include affected Jira keys in feature/fix commits and PRs. Current imported stories use US keys; historical SCRUM keys and executable test names retain their original meaning.
+- Keep real authors, dates and execution results. A green CI run or agent review is separate from teammate correctness review, manual walkthrough and PO acceptance.
+- Preserve local changes and refs. Obtain explicit instruction before branch deletion, force pushes, history rewriting or merging into main.

@@ -9,7 +9,7 @@ export default defineConfig({
     // Everything under /api goes to Django. This removes CORS from the problem
     // entirely during development.
     proxy: {
-      "/api": { target: "http://localhost:8000", changeOrigin: true },
+      "/api": { target: process.env.API_PROXY_TARGET ?? "http://localhost:8000", changeOrigin: true },
     },
   },
   test: {
