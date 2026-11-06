@@ -1,3 +1,4 @@
+import { futureDate } from "./helpers";
 import { expect, test, type Page } from "@playwright/test";
 
 /**
@@ -47,8 +48,8 @@ test("S4-J3 (INTAKE + ASSESS): an organiser requests a change and the coordinato
   await page.getByRole("link", { name: "New event request" }).click();
   await page.getByLabel("Event name").fill(eventName);
   await page.getByLabel("Purpose").fill("Sprint 4 change request journey");
-  await page.getByLabel("Preferred start").fill("2027-05-03T09:00");
-  await page.getByLabel("Preferred end").fill("2027-05-03T17:00");
+  await page.getByLabel("Preferred start").fill(futureDate(49) + "T09:00");
+  await page.getByLabel("Preferred end").fill(futureDate(49) + "T17:00");
   await page.getByLabel("Expected attendance").fill("120");
   await page.getByRole("button", { name: "Send to ConnectSphere" }).click();
   await expect(page).toHaveURL(/\/organiser$/);

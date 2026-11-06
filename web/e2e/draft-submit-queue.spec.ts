@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { futureDate } from "./helpers";
+import { expect, test, type Page } from "@playwright/test";
 
 /**
  * The sprint 1 goal as a single end-to-end journey.
@@ -10,7 +11,7 @@ import { expect, test } from "@playwright/test";
 const ORGANISER = { email: "organiser@acme.example", password: "connectsphere-demo" };
 const COORDINATOR = { email: "coordinator@connectsphere.example", password: "connectsphere-demo" };
 
-async function signIn(page, who: { email: string; password: string }) {
+async function signIn(page: Page, who: { email: string; password: string }) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(who.email);
   await page.getByLabel("Password").fill(who.password);
@@ -34,9 +35,22 @@ test("an organiser drafts and submits a request, and the coordinator sees it", a
   await expect(page.getByRole("alert")).toContainText("Purpose");
 
   await page.getByLabel("Purpose").fill("End to end test");
-  await page.getByLabel("Preferred start").fill("2027-03-01T09:00");
-  await page.getByLabel("Preferred end").fill("2027-03-01T17:00");
+  await page.getByLabel("Preferred start").fill(futureDate(35) + "T09:00");
+  await page.getByLabel("Preferred end").fill(futureDate(35) + "T17:00");
   await page.getByLabel("Expected attendance").fill("60");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("status")).toContainText("Draft saved.");
+  await page.reload();
+  await expect(page.getByLabel("Preferred start")).toHaveValue(futureDate(35) + "T09:00");
+  await expect(page.getByLabel("Preferred end")).toHaveValue(futureDate(35) + "T17:00");
+  await expect(page.getByLabel("Purpose")).toHaveValue("End to end test");
+  await page.getByLabel("Description").fill("Preserve times while editing another field");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByRole("status")).toContainText("Draft saved.");
+  await page.reload();
+  await expect(page.getByLabel("Preferred start")).toHaveValue(futureDate(35) + "T09:00");
+  await expect(page.getByLabel("Preferred end")).toHaveValue(futureDate(35) + "T17:00");
+  await expect(page.getByLabel("Description")).toHaveValue("Preserve times while editing another field");
   await page.getByRole("button", { name: "Send to ConnectSphere" }).click();
 
   await expect(page).toHaveURL(/\/organiser$/);
@@ -92,4 +106,17 @@ test("an organiser drafts and submits a request, and the coordinator sees it", a
   await expect(page.getByRole("link", { name: eventName })).toBeVisible();
   await page.getByRole("link", { name: eventName }).click();
   await expect(page.getByRole("heading", { name: eventName })).toBeVisible();
+  // E2E-03 / SCRUM-52: the newly assigned coordinator rejects with a reason.
+  await page.getByRole("button", { name: "Reject request", exact: true }).click();
+  const rejection = page.getByRole("region", { name: "Reject request", exact: true });
+  await rejection.getByRole("button", { name: "Confirm rejection" }).click();
+  await expect(rejection.getByRole("alert")).toContainText("Enter a reason");
+  await rejection.getByLabel("Why can ConnectSphere not support this request?").fill("This event is outside the supported scope.");
+  await rejection.getByRole("button", { name: "Confirm rejection" }).click();
+  await expect(page.getByRole("region", { name: "Rejection decision" })).toContainText("This event is outside the supported scope.");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await signIn(page, ORGANISER);
+  await page.goto("/organiser/requests/" + eventId);
+  await expect(page.getByRole("region", { name: "Rejection decision" })).toContainText("This event is outside the supported scope.");
+  await expect(page.getByRole("button", { name: "Send to ConnectSphere" })).toHaveCount(0);
 });

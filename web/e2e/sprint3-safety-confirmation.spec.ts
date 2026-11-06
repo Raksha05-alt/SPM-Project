@@ -1,3 +1,4 @@
+import { futureDate } from "./helpers";
 import { expect, request, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 
 // J4/J5: real API/database setup, then coordinator and officer browser actions.
@@ -22,7 +23,7 @@ async function prepare(baseURL: string, browser: Browser) {
   const clients = await Promise.all(["organiser@acme.example", "lead@connectsphere.example", "coordinator@connectsphere.example", "venue@connectsphere.example", "tech@connectsphere.example"].map((email) => roleApi(baseURL, email)));
   const [organiser, lead, coordinator, staff, tech] = clients;
   const eventName = `Sprint 3 acceptance ${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const created = await organiser.post("/api/events/", { name: eventName, purpose: "Safety and confirmation acceptance", preferred_start: "2027-08-17T02:00:00Z", preferred_end: "2027-08-17T04:00:00Z", expected_attendance: 60 });
+  const created = await organiser.post("/api/events/", { name: eventName, purpose: "Safety and confirmation acceptance", preferred_start: futureDate(56) + "T02:00:00Z", preferred_end: futureDate(56) + "T04:00:00Z", expected_attendance: 60 });
   expect(created.status()).toBe(201); const event = await created.json();
   expect((await organiser.post(`/api/events/${event.id}/submit/`)).status()).toBe(200);
   const who = await (await coordinator.api.get("/api/auth/me/")).json();

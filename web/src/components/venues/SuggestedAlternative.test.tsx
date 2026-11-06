@@ -36,17 +36,21 @@ it("US-73 accepts the staff proposal as a new request and refreshes the event", 
 });
 
 it.each([
-  new ApiError(409, { detail: "Room unavailable", reasons: ["An active hold overlaps."] }, "Room unavailable"),
-  new ApiError(400, { detail: "Requirements changed", unmet_requirements: [{ message: "Capacity is now 10." }] }, "Requirements changed"),
-  new ApiError(400, { detail: "Invalid suggestion", suggestion: ["The time has passed."], status: ["A newer request exists."] }, "Invalid suggestion"),
-  new Error("Disconnected"),
-])("US-73 shows a refused or uncertain acceptance without claiming success", async (error) => {
+  { label: "overlapping hold", error: new ApiError(409, { detail: "Room unavailable", reasons: ["An active hold overlaps."] }, "Room unavailable"),
+    expected: ["Room unavailable", "An active hold overlaps."] },
+  { label: "changed capacity", error: new ApiError(400, { detail: "Requirements changed", unmet_requirements: [{ message: "Capacity is now 10." }] }, "Requirements changed"),
+    expected: ["Requirements changed", "Capacity is now 10."] },
+  { label: "stale proposal", error: new ApiError(400, { detail: "Invalid suggestion", suggestion: ["The time has passed."], status: ["A newer request exists."] }, "Invalid suggestion"),
+    expected: ["Invalid suggestion", "The time has passed.", "A newer request exists."] },
+  { label: "network failure", error: new Error("Disconnected"),
+    expected: ["The alternative could not be requested. Try again."] },
+])("US-73 $label refuses acceptance without claiming success", async ({ error, expected }) => {
   vi.mocked(acceptVenueSuggestion).mockRejectedValue(error);
   const client = show();
   const refresh = vi.spyOn(client, "invalidateQueries");
   await userEvent.click(screen.getByRole("button", { name: "Accept and request alternative" }));
   const message = await screen.findByRole("alert");
-  expect(message).not.toBeEmptyDOMElement();
+  for (const reason of expected) expect(message).toHaveTextContent(reason);
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
   await waitFor(() => expect(refresh).toHaveBeenCalledWith({ queryKey: ["venue-bookings", 9] }));
 });

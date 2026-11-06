@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client";
@@ -244,4 +244,28 @@ it("SCRUM-88 shows expired holds without a confirmation action", async () => {
   renderPlanner();
   expect(await screen.findByText("Expired", { exact: true })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Confirm hold" })).not.toBeInTheDocument();
+});
+
+describe("SCRUM-88 hold confirmation refusals", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listEventBookings).mockResolvedValue([
+      booking({ status: "HELD", status_label: "Held", hold_until: "2027-03-01T01:30:00Z" }),
+    ]);
+    vi.mocked(listVenues).mockResolvedValue([HALL]);
+  });
+
+  it.each([
+    ["expired state", new ApiError(400, { status: ["The hold expired."] }, "Cannot confirm"), "The hold expired."],
+    ["new conflict", new ApiError(409, { reasons: ["Another booking now overlaps."] }, "Venue unavailable"), "Another booking now overlaps."],
+    ["changed assignment", new ApiError(403, { detail: "Only the assigned coordinator can confirm." }, "Only the assigned coordinator can confirm."), "Only the assigned coordinator can confirm."],
+    ["network failure", new Error("offline"), "We could not send the request."],
+  ])("shows %s and reloads current bookings without claiming confirmation", async (_label, error, message) => {
+    vi.mocked(confirmVenueHold).mockRejectedValue(error);
+    renderPlanner();
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm hold" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(String(message));
+    expect(screen.queryByText("Venue hold confirmed.")).not.toBeInTheDocument();
+    await waitFor(() => expect(listEventBookings).toHaveBeenCalledTimes(2));
+  });
 });

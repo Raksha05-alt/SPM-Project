@@ -1,3 +1,4 @@
+import { futureDate } from "./helpers";
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
 test.use({ timezoneId: "Asia/Singapore" });
@@ -12,12 +13,13 @@ async function csrf(api: APIRequestContext) {
 test("G12 SCRUM-64/68: search, persist, refresh real approval/withdrawal, blocks and venue status", async ({
   page,
   playwright,
+  baseURL,
 }) => {
   const suffix = Date.now();
   const venueName = `Discovery room ${suffix}`;
   const eventName = `Discovery event ${suffix}`;
   const marker = `Discovery facility ${suffix}`;
-  const staff = await playwright.request.newContext({ baseURL: "http://localhost:5173" });
+  const staff = await playwright.request.newContext({ baseURL });
   try {
     // Real API precondition: create a dedicated venue, without changing shared demo rooms.
     await staff.get("/api/auth/csrf/");
@@ -52,8 +54,8 @@ test("G12 SCRUM-64/68: search, persist, refresh real approval/withdrawal, blocks
     await page.getByRole("link", { name: "New event request" }).click();
     await page.getByLabel("Event name").fill(eventName);
     await page.getByLabel("Purpose").fill("Venue discovery integration test");
-    await page.getByLabel("Preferred start").fill("2027-03-01T09:00");
-    await page.getByLabel("Preferred end").fill("2027-03-01T17:00");
+    await page.getByLabel("Preferred start").fill(futureDate(35) + "T09:00");
+    await page.getByLabel("Preferred end").fill(futureDate(35) + "T17:00");
     await page.getByLabel("Expected attendance").fill("60");
     await page.getByLabel("Required room layout").selectOption("THEATRE");
     await page.getByRole("button", { name: "Send to ConnectSphere" }).click();
@@ -95,7 +97,7 @@ test("G12 SCRUM-64/68: search, persist, refresh real approval/withdrawal, blocks
     })).status()).toBe(200);
     const requested = await page.request.post(`/api/events/${eventId}/venue-bookings/`, {
       headers: { "X-CSRFToken": await csrf(page.request) },
-      data: { venue: venueId, starts_at: "2027-03-01T01:00:00Z", ends_at: "2027-03-01T09:00:00Z",
+      data: { venue: venueId, starts_at: futureDate(35) + "T01:00:00Z", ends_at: futureDate(35) + "T09:00:00Z",
         attendance: 60, layout: "THEATRE", required_facilities: ["Projector", marker] },
     });
     expect(requested.status()).toBe(201);
@@ -124,8 +126,8 @@ test("G12 SCRUM-64/68: search, persist, refresh real approval/withdrawal, blocks
       headers: { "X-CSRFToken": await csrf(staff) },
       data: {
         reason: "Air conditioning repair",
-        starts_at: "2027-03-01T01:00:00Z",
-        ends_at: "2027-03-01T09:00:00Z",
+        starts_at: futureDate(35) + "T01:00:00Z",
+        ends_at: futureDate(35) + "T09:00:00Z",
       },
     });
     expect(block.status()).toBe(201);
@@ -138,7 +140,7 @@ test("G12 SCRUM-64/68: search, persist, refresh real approval/withdrawal, blocks
 
     expect((await staff.patch(blockUrl, {
       headers: { "X-CSRFToken": await csrf(staff) },
-      data: { starts_at: "2027-03-02T01:00:00Z", ends_at: "2027-03-02T09:00:00Z" },
+      data: { starts_at: futureDate(36) + "T01:00:00Z", ends_at: futureDate(36) + "T09:00:00Z" },
     })).status()).toBe(200);
     await page.reload();
     await expect(results.getByRole("heading", { name: venueName })).toBeVisible();

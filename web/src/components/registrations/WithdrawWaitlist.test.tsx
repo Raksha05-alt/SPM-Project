@@ -1,5 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,7 @@ import {
   type WithdrawalSummary,
 } from "../../api/registrations";
 import { RegisterPanel } from "./RegisterPanel";
+import { ApiError } from "../../api/client";
 
 vi.mock("../../api/registrations", () => ({
   getRegistrationSummary: vi.fn(),
@@ -181,4 +182,77 @@ describe("Waiting list (SCRUM-19)", () => {
     expect(await screen.findByRole("button", { name: "Register" })).toBeInTheDocument();
     expect(screen.getByText(/number 1 on the waiting list/)).toBeInTheDocument();
   });
+});
+
+describe("SCRUM-14 withdrawal failure and waiting-list regression gaps", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getRegistrationSummary).mockResolvedValue(REGISTERED);
+    vi.mocked(getWithdrawalSummary).mockResolvedValue(SUMMARY);
+  });
+
+  it.each([
+    ["server refusal", new ApiError(409, { detail: "The event has already started." }, "Conflict"), "The event has already started."],
+    ["empty refusal", new ApiError(409, null, "Conflict"), "Could not withdraw."],
+    ["connection failure", new Error("disconnected"), "We could not withdraw. Please try again."],
+  ])("keeps the place and explains a %s", async (_label, error, message) => {
+    vi.mocked(withdrawRegistration).mockRejectedValue(error);
+    wrap(<RegisterPanel eventId={3} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm withdrawal" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(String(message));
+    expect(screen.getByRole("button", { name: "Keep my place" })).toBeEnabled();
+    expect(screen.getByText(/Your place will be released/)).toBeVisible();
+  });
+
+  it("lets the attendee retry a failed withdrawal summary and safely keep the place", async () => {
+    vi.mocked(getWithdrawalSummary).mockRejectedValueOnce(new Error("unavailable"));
+    wrap(<RegisterPanel eventId={3} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("could not load");
+    expect(screen.queryByRole("button", { name: "Confirm withdrawal" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText(/Your place will be released/)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Keep my place" }));
+    expect(screen.getByRole("button", { name: "Withdraw" })).toBeVisible();
+    expect(withdrawRegistration).not.toHaveBeenCalled();
+  });
+
+  it("explains that leaving a waiting entry does not release a registered place", async () => {
+    vi.mocked(getRegistrationSummary).mockResolvedValue({
+      ...FULL, waitlist_offered: false, my_status: "WAITLISTED",
+      my_registration: 9, waitlist_position: 1,
+    });
+    vi.mocked(getWithdrawalSummary).mockResolvedValue({
+      ...SUMMARY, status: "WAITLISTED", starts_at: null, releases_place: false,
+    });
+    wrap(<RegisterPanel eventId={3} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Leave the waiting list" }));
+    expect(await screen.findByText("You will leave the waiting list.")).toBeVisible();
+    expect(screen.getByText(/a date to be confirmed/)).toBeVisible();
+    expect(screen.queryByText(/Your place will be released/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Keep my place" }));
+    expect(withdrawRegistration).not.toHaveBeenCalled();
+  });
+});
+
+it("SCRUM-14 explains a paused offline summary and resumes when connection returns", async () => {
+  vi.clearAllMocks();
+  vi.mocked(getRegistrationSummary).mockResolvedValue(REGISTERED);
+  vi.mocked(getWithdrawalSummary).mockResolvedValue(SUMMARY);
+  wrap(<RegisterPanel eventId={3} />);
+  const open = await screen.findByRole("button", { name: "Withdraw" });
+  try {
+    act(() => onlineManager.setOnline(false));
+    await userEvent.click(open);
+    expect(await screen.findByRole("alert")).toHaveTextContent("offline");
+    expect(screen.queryByRole("button", { name: "Confirm withdrawal" })).not.toBeInTheDocument();
+    expect(getWithdrawalSummary).not.toHaveBeenCalled();
+    act(() => onlineManager.setOnline(true));
+    expect(await screen.findByText(/Your place will be released/)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Keep my place" }));
+    expect(withdrawRegistration).not.toHaveBeenCalled();
+  } finally {
+    act(() => onlineManager.setOnline(true));
+  }
 });

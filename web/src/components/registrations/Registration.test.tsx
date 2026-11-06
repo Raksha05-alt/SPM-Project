@@ -244,3 +244,73 @@ it("SCRUM-87 AC6: my registrations retain both session names and their independe
   expect(screen.getByText("Main Hall, Level 1")).toBeVisible();
   expect(screen.getByText("Workshop, Level 2")).toBeVisible();
 });
+
+const AUDIT_POLICY = {
+  event: 3, enabled: false, opens_at: "2027-01-04T01:00:00Z",
+  closes_at: "2027-01-04T03:00:00Z", manually_closed: false,
+  capacity: 2, registered: 2, remaining: 0, full: true, open: false,
+  waitlist_enabled: false, waiting: 2,
+};
+
+describe("SCRUM-81 registration settings regression gaps", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getRegistrationPolicy).mockResolvedValue(AUDIT_POLICY);
+  });
+
+  it("saves the window, capacity, manual close and waiting-list settings and persists the server response", async () => {
+    const user = userEvent.setup();
+    const opens = "2027-01-04T09:30";
+    const closes = "2027-01-04T11:30";
+    vi.mocked(updateRegistrationPolicy).mockResolvedValue({
+      ...AUDIT_POLICY, enabled: true, manually_closed: true, waitlist_enabled: true,
+      opens_at: new Date(opens).toISOString(), closes_at: new Date(closes).toISOString(),
+      capacity: 12, full: false, remaining: 10,
+    });
+    wrap(<RegistrationPolicyForm eventId={3} />);
+    expect(await screen.findByText(/2 on the waiting list/)).toHaveTextContent("Full");
+    expect(new Date((screen.getByLabelText("Registration opens") as HTMLInputElement).value).getTime()).toBe(Date.parse(AUDIT_POLICY.opens_at));
+    await user.click(screen.getByLabelText("Allow attendees to register"));
+    await user.clear(screen.getByLabelText("Registration capacity"));
+    await user.type(screen.getByLabelText("Registration capacity"), "12");
+    await user.click(screen.getByLabelText("Close registration now"));
+    await user.click(screen.getByLabelText("Offer a waiting list when the event is full"));
+    await user.clear(screen.getByLabelText("Registration opens"));
+    await user.type(screen.getByLabelText("Registration opens"), opens);
+    await user.clear(screen.getByLabelText("Registration closes"));
+    await user.type(screen.getByLabelText("Registration closes"), closes);
+    await user.click(screen.getByRole("button", { name: "Save registration settings" }));
+    expect(updateRegistrationPolicy).toHaveBeenCalledWith(3, {
+      enabled: true, opens_at: new Date(opens).toISOString(),
+      closes_at: new Date(closes).toISOString(), capacity: 12,
+      manually_closed: true, waitlist_enabled: true,
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("Registration settings saved.");
+    expect(screen.getByLabelText("Registration capacity")).toHaveValue(12);
+    expect(screen.getByText(/2 registered/)).toHaveTextContent("of 12");
+  });
+
+  it.each([
+    ["opening time", new ApiError(400, { opens_at: ["Registration must open before it closes."] }, "Bad request"), "Registration must open before it closes."],
+    ["closing time", new ApiError(400, { closes_at: ["Close registration before the event starts."] }, "Bad request"), "Close registration before the event starts."],
+    ["server refusal", new ApiError(409, { detail: "The event has been cancelled." }, "The event has been cancelled."), "The event has been cancelled."],
+    ["network failure", new Error("connection lost"), "The settings could not be saved."],
+  ])("shows the %s reason without claiming settings were saved", async (_label, error, message) => {
+    vi.mocked(updateRegistrationPolicy).mockRejectedValue(error);
+    wrap(<RegistrationPolicyForm eventId={3} />);
+    await screen.findByLabelText("Allow attendees to register");
+    await userEvent.click(screen.getByRole("button", { name: "Save registration settings" }));
+    expect(await screen.findByText(String(message))).toBeVisible();
+    expect(screen.queryByText("Registration settings saved.")).not.toBeInTheDocument();
+  });
+
+  it("shows a failed policy load and lets the organiser retry", async () => {
+    vi.mocked(getRegistrationPolicy).mockRejectedValueOnce(new Error("temporary outage"));
+    wrap(<RegistrationPolicyForm eventId={3} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("could not load");
+    expect(screen.queryByRole("button", { name: "Save registration settings" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByLabelText("Allow attendees to register")).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});

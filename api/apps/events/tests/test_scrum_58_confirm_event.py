@@ -567,3 +567,57 @@ def test_s3_58_05_concurrent_confirmations_confirm_once(
     confirmed = Notification.objects.filter(kind=NotificationKind.EVENT_CONFIRMED)
     assert confirmed.filter(recipient=organiser).count() == 1
     assert confirmed.count() == confirmed.values("recipient").distinct().count()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("actor_fixture", ["lead", "coordinator"])
+def test_scrum58_readiness_hides_draft_arrangements(api, planning_event, actor_fixture, request):
+    planning_event.status = EventStatus.DRAFT
+    planning_event.save(update_fields=["status"])
+    actor = request.getfixturevalue(actor_fixture)
+    api.force_authenticate(actor)
+    response = api.get(readiness_url(planning_event))
+    assert response.status_code == 403
+    assert response.data["detail"] == "This event is not available."
+    assert AuditLog.objects.filter(
+        actor=actor, allowed=False, detail="drafts are not visible"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_scrum58_arrangements_refuse_the_previous_coordinator(
+    api, approved_event, coordinator, second_coordinator
+):
+    confirm_event(approved_event, coordinator)
+    approved_event.coordinator = second_coordinator
+    approved_event.save(update_fields=["coordinator"])
+    api.force_authenticate(coordinator)
+    response = api.get(arrangements_url(approved_event))
+    assert response.status_code == 403
+    assert "assigned" in str(response.data["detail"])
+    assert "venues" not in response.data
+    assert AuditLog.objects.filter(
+        actor=coordinator, allowed=False, detail="event is not assigned to this coordinator"
+    ).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("invalid", ["event_closed", "request_withdrawn"])
+def test_scrum58_unavailability_refuses_closed_events_or_withdrawn_requests(
+    api, unreserved_item, tech, invalid
+):
+    from apps.equipment.models import EquipmentRequestStatus
+
+    if invalid == "event_closed":
+        unreserved_item.plan.event.status = EventStatus.CANCELLED
+        unreserved_item.plan.event.save(update_fields=["status"])
+    else:
+        unreserved_item.status = EquipmentRequestStatus.WITHDRAWN
+        unreserved_item.save(update_fields=["status"])
+    api.force_authenticate(tech)
+    response = api.post(
+        unavailable_url(unreserved_item), {"reason": "No stock available."}, format="json"
+    )
+    assert response.status_code == 409
+    assert not unreserved_item.history.filter(action=EquipmentHistoryAction.UNAVAILABLE).exists()
+    assert not Notification.objects.filter(kind=NotificationKind.RESOURCE_UNAVAILABLE).exists()

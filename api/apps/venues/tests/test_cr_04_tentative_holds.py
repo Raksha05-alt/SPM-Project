@@ -402,3 +402,120 @@ def test_expiry_rolls_back_if_the_notice_cannot_be_saved(request_record, venue_s
     assert not VenueBookingHistory.objects.filter(
         booking=booking, to_status=BookingStatus.EXPIRED
     ).exists()
+
+
+@pytest.mark.parametrize("closed_part", ["cancelled_event", "completed_event", "removed_session"])
+def test_scrum88_closed_arrangement_cannot_confirm_or_revise_a_hold(
+    request_record, venue_staff, coordinator, closed_part
+):
+    from apps.venues.holds import confirm_hold, update_hold_expiry
+    from apps.venues.models import EventSession, SessionKind
+
+    booking = request_record
+    if closed_part == "removed_session":
+        booking.session = EventSession.objects.create(
+            event=booking.event, name="Optional breakout", kind=SessionKind.BREAKOUT
+        )
+        booking.save(update_fields=["session"])
+    deadline = timezone.now() + timedelta(hours=2)
+    approve_booking(booking, venue_staff, hold_until=deadline)
+    if closed_part == "removed_session":
+        booking.session.is_active = False
+        booking.session.save(update_fields=["is_active"])
+    else:
+        booking.event.status = (
+            EventStatus.CANCELLED if closed_part == "cancelled_event" else EventStatus.COMPLETED
+        )
+        booking.event.save(update_fields=["status"])
+    before = VenueBookingHistory.objects.filter(booking=booking).count()
+    with pytest.raises(BookingValidationError, match="closed"):
+        confirm_hold(booking, coordinator)
+    with pytest.raises(BookingValidationError, match="closed"):
+        update_hold_expiry(booking, venue_staff, deadline + timedelta(hours=1))
+    booking.refresh_from_db()
+    assert booking.status == BookingStatus.HELD
+    assert booking.hold_until == deadline
+    assert VenueBookingHistory.objects.filter(booking=booking).count() == before
+
+
+@pytest.mark.parametrize("actor_kind", ["coordinator", "inactive_staff"])
+def test_scrum88_deadline_service_rejects_nonstaff_or_inactive_actor_without_writes(
+    request_record, venue_staff, coordinator, actor_kind
+):
+    from apps.venues.holds import update_hold_expiry
+
+    deadline = timezone.now() + timedelta(hours=2)
+    approve_booking(request_record, venue_staff, hold_until=deadline)
+    actor = coordinator if actor_kind == "coordinator" else venue_staff
+    if actor_kind == "inactive_staff":
+        actor.is_active = False
+        actor.save(update_fields=["is_active"])
+    notices = Notification.objects.count()
+    history = VenueBookingHistory.objects.filter(booking=request_record).count()
+    with pytest.raises(BookingValidationError, match="Only Venue Staff"):
+        update_hold_expiry(request_record, actor, deadline + timedelta(hours=1))
+    request_record.refresh_from_db()
+    assert request_record.hold_until == deadline
+    assert Notification.objects.count() == notices
+    assert VenueBookingHistory.objects.filter(booking=request_record).count() == history
+
+
+def test_scrum88_changed_operating_hours_refuse_confirmation_without_erasing_hold(
+    api, request_record, venue_staff, coordinator
+):
+    approve_booking(request_record, venue_staff, hold_until=timezone.now() + timedelta(hours=2))
+    api.force_authenticate(venue_staff)
+    changed = api.patch(
+        f"/api/venues/{request_record.venue_id}/", {"opens_at": "13:00"}, format="json"
+    )
+    assert changed.status_code == 200, changed.data
+    before = VenueBookingHistory.objects.filter(booking=request_record).count()
+    api.force_authenticate(coordinator)
+    response = api.post(f"/api/venue-bookings/{request_record.pk}/confirm-hold/")
+    assert response.status_code == 409, response.data
+    assert response.data["unmet_requirements"][0]["requirement"] == "OPERATING_HOURS"
+    request_record.refresh_from_db()
+    assert request_record.status == BookingStatus.HELD
+    assert VenueBookingHistory.objects.filter(booking=request_record).count() == before
+
+
+def test_scrum88_inbox_distinguishes_live_elapsed_and_recorded_expiry(
+    api, request_record, venue_staff, organiser, coordinator
+):
+    from apps.venues.holds import expire_hold
+
+    rows = [request_record]
+    for offset in [1, 2]:
+        event = make_event(organiser, status=EventStatus.PLANNING, coordinator=coordinator)
+        rows.append(
+            create_booking_record(
+                event=event,
+                venue=request_record.venue,
+                requested_by=coordinator,
+                starts_at=request_record.starts_at + timedelta(days=offset),
+                ends_at=request_record.ends_at + timedelta(days=offset),
+                attendance=30,
+            )
+        )
+    for booking in rows:
+        approve_booking(booking, venue_staff, hold_until=timezone.now() + timedelta(hours=1))
+    for booking in rows[1:]:
+        VenueBooking.objects.filter(pk=booking.pk).update(
+            hold_until=timezone.now() - timedelta(seconds=1)
+        )
+        booking.refresh_from_db()
+    with transaction.atomic():
+        expire_hold(rows[2].event, rows[2])
+    api.force_authenticate(venue_staff)
+    live = api.get("/api/venue-bookings/?status=HELD")
+    expired = api.get("/api/venue-bookings/?status=EXPIRED")
+    assert live.status_code == expired.status_code == 200
+    assert [b["id"] for b in live.data] == [rows[0].pk]
+    assert {b["id"] for b in expired.data} == {b.pk for b in rows[1:]}
+    assert {b["status"] for b in expired.data} == {BookingStatus.EXPIRED}
+    # Reading a deadline-aware inbox must not pretend the worker already wrote history.
+    rows[1].refresh_from_db()
+    assert rows[1].status == BookingStatus.HELD
+    assert not VenueBookingHistory.objects.filter(
+        booking=rows[1], to_status=BookingStatus.EXPIRED
+    ).exists()

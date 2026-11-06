@@ -28,7 +28,7 @@ resources atomically, and invalidate Safety using its existing contract.
 
 The existing permission-scoped venue-reviews API displays the affected period,
 conflicting event IDs, and reason. Coordinator event details and Venue Staff's
-“All requests” inbox display these records. Safety readiness blocks outstanding
+â€œAll requestsâ€ inbox display these records. Safety readiness blocks outstanding
 or conflicting period reviews. Existing suitability reviews are independent.
 
 ## Deliberate integration boundary

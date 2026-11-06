@@ -525,3 +525,97 @@ def test_api_an_unknown_event_is_not_found(api, coordinator):
     api.force_authenticate(coordinator)
 
     assert api.get("/api/events/999999/equipment-availability/").status_code == 404
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "offset_seconds,expected_available,expected_status",
+    [(-1, 4, 409), (0, 10, 200), (1, 10, 200)],
+    ids=["one-second-equipment-overlap", "adjacent-equipment-reuse", "one-second-gap"],
+)
+def test_scrum85_ac6_venue_buffers_do_not_extend_equipment_reservations(
+    api,
+    organiser,
+    coordinator,
+    venue_staff,
+    tech,
+    projector,
+    offset_seconds,
+    expected_available,
+    expected_status,
+):
+    """Venue buffers apply to rooms; equipment keeps the real event interval."""
+    from datetime import time
+
+    from apps.equipment.services import create_request
+    from apps.equipment.tests.test_scrum_16_reserve_equipment import reserve_as
+    from apps.venues.bookings import approve_booking, create_booking_record
+    from apps.venues.models import Venue
+
+    first = make_event(
+        organiser,
+        status=EventStatus.APPROVED,
+        coordinator=coordinator,
+        expected_attendance=60,
+        preferred_start=START,
+        preferred_end=END,
+    )
+    next_start = END + timedelta(seconds=offset_seconds)
+    second = make_event(
+        organiser,
+        status=EventStatus.APPROVED,
+        coordinator=coordinator,
+        expected_attendance=60,
+        preferred_start=next_start,
+        preferred_end=next_start + timedelta(hours=1),
+    )
+    # Separate rooms deliberately have overlapping buffered occupancy. That must
+    # not make six projectors busy after the first event's actual end.
+    for number, planned in enumerate((first, second)):
+        room = Venue.objects.create(
+            name=f"Buffered room {number}",
+            capacity=100,
+            layouts=["THEATRE"],
+            setup_minutes=30,
+            turnaround_minutes=45,
+            opens_at=time(8),
+            closes_at=time(22),
+            operating_days=list(range(7)),
+        )
+        booking = create_booking_record(
+            event=planned,
+            venue=room,
+            requested_by=coordinator,
+            starts_at=planned.preferred_start,
+            ends_at=planned.preferred_end,
+            attendance=60,
+        )
+        approve_booking(booking, venue_staff)
+
+    one = create_request(
+        event=first,
+        requested_by=coordinator,
+        equipment_type=projector.pk,
+        quantity=6,
+    )
+    assert reserve_as(api, tech, one).status_code == 200
+    two = create_request(
+        event=second,
+        requested_by=coordinator,
+        equipment_type=projector.pk,
+        quantity=6,
+    )
+    api.force_authenticate(tech)
+    response = api.get(url(second))
+    assert response.status_code == 200
+    row = next(r for r in response.data["equipment"] if r["equipment_type"] == projector.pk)
+    assert row["available_quantity"] == expected_available
+
+    result = reserve_as(api, tech, two)
+    assert result.status_code == expected_status
+    if expected_status == 200:
+        reservation = EquipmentReservation.objects.get(request=two, status="ACTIVE")
+        assert reservation.starts_at == next_start
+        assert reservation.ends_at == next_start + timedelta(hours=1)
+    else:
+        assert not EquipmentReservation.objects.filter(request=two).exists()

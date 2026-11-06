@@ -36,6 +36,13 @@ const EMPTY: EventDraft = {
   registration_required: false,
 };
 
+/** Preserve the API instant when displaying it in a datetime-local input. */
+function toLocalInput(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
 export function EventRequestForm() {
   const { id } = useParams();
   const eventId = id ? Number(id) : null;
@@ -48,7 +55,7 @@ export function EventRequestForm() {
   const [banner, setBanner] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
 
-  const { data: existing } = useQuery({
+  const { data: existing, isPending, isError, error } = useQuery({
     queryKey: ["events", eventId],
     queryFn: () => getEvent(eventId as number),
     enabled: eventId !== null,
@@ -81,7 +88,7 @@ export function EventRequestForm() {
       }
       setFieldErrors(next);
       setMissing(error.missingFields);
-      setBanner(error.missingFields.length ? error.message : null);
+      setBanner(error.missingFields.length || typeof body.detail === "string" ? error.message : null);
       return;
     }
     setBanner("We could not save this request. Please try again.");
@@ -116,6 +123,14 @@ export function EventRequestForm() {
     },
     onError: handleApiError,
   });
+
+  if (eventId !== null && isPending) return <p role="status">Loading event request…</p>;
+  if (eventId !== null && isError) {
+    const forbidden = error instanceof ApiError && error.status === 403;
+    return <p role="alert">{forbidden
+      ? "You do not have access to this event request."
+      : "We could not load this event request. Please try again."}</p>;
+  }
 
   return (
     <div>
@@ -159,7 +174,7 @@ export function EventRequestForm() {
       {existing?.venue_disruptions?.length ? <section aria-label="Disrupted venue bookings" className="mb-4 rounded border border-amber-300 p-4">
         <h2 className="font-semibold">Original venue bookings affected by disruption</h2>
         <p>These original bookings are retained for reference. Replacement arrangements require staff review.</p>
-        {existing.venue_disruptions.map(b => <p key={b.booking}>Booking #{b.booking}: {b.session}, {b.venue} � {new Date(b.starts_at).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })} to {new Date(b.ends_at).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })} (Disrupted)</p>)}
+        {existing.venue_disruptions.map(b => <p key={b.booking}>Booking #{b.booking}: {b.session}, {b.venue} · {new Date(b.starts_at).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })} to {new Date(b.ends_at).toLocaleString("en-SG", { timeZone: "Asia/Singapore" })} (Disrupted)</p>)}
       </section> : null}
       {/* SCRUM-58 AC5 - the confirmed plan the organiser can rely on. */}
       {existing && ["CONFIRMED", "COMPLETED"].includes(existing.status) && (
@@ -216,7 +231,7 @@ export function EventRequestForm() {
               id="preferred_start"
               type="datetime-local"
               className={inputClass}
-              value={(form.preferred_start ?? "").slice(0, 16)}
+              value={toLocalInput(form.preferred_start)}
               onChange={(e) =>
                 set("preferred_start", e.target.value ? new Date(e.target.value).toISOString() : null)
               }
@@ -227,7 +242,7 @@ export function EventRequestForm() {
               id="preferred_end"
               type="datetime-local"
               className={inputClass}
-              value={(form.preferred_end ?? "").slice(0, 16)}
+              value={toLocalInput(form.preferred_end)}
               onChange={(e) =>
                 set("preferred_end", e.target.value ? new Date(e.target.value).toISOString() : null)
               }

@@ -1,0 +1,6 @@
+{
+  "baseCommit": "1cf967ce9f8ca3ab7f4f48fe07424cc8ea338b66",
+  "branch": "test/submission-readiness",
+  "sourceSha256": "c4c1737ac22810accb0f8a01e70e21740362f48444385f4054a9356e968f3658",
+  "scope": "API/web/CI source and tests; excludes documentation"
+}
